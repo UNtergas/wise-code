@@ -1,0 +1,16 @@
+{
+  "name": "wise-code",
+  "owner": {
+    "name": "Nguyen Anh Tuan"
+  },
+  "metadata": {
+    "description": "Personal marketplace for wise-code."
+  },
+  "plugins": [
+    {
+      "name": "wise-code",
+      "source": "./",
+      "description": "Learning-first development with Hint, Pseudo and Full code assist levels."
+    }
+  ]
+}
