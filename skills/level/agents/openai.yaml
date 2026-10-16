@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Level"
+  short_description: "Show or set the assist level (Hint, Pseudo, Full code)"
+policy:
+  allow_implicit_invocation: false

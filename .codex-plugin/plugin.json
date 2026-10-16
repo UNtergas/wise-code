@@ -15,7 +15,7 @@
   "hooks": {},
   "interface": {
     "displayName": "WiseCode",
-    "shortDescription": "Learn to build software while Codex writes the code",
+    "shortDescription": "Learn to build software by writing the code yourself",
     "longDescription": "Fork of VibeWise with Hint, Pseudo and Full code assist levels. You own the design; at Hint or Pseudo you also write the code and Codex reviews it.",
     "developerName": "Nguyen Anh Tuan",
     "category": "Developer Tools",

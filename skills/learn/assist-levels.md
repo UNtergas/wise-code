@@ -15,7 +15,7 @@ language override beats the default; an explicit per-step request beats both.
 | **Pseudo** | Language-aware pseudocode + concepts | Learner |
 | **Full code** | Implementation of the agreed design | You (original VibeWise loop) |
 
-Full code is the default.
+Hint is the default. A profile with no `Assist level:` line uses Hint.
 
 ## Hint
 
@@ -103,7 +103,8 @@ Implementation checkpoint, you write the agreed code, then an Implementation rep
 ## Switching levels
 
 - The learner can change the level any time, globally or for one topic,
-  language, or step: "level hint", "pseudo for Rust", "full code for this step".
+  language, or step: `/wise-code:level`, or in chat with "level hint",
+  "pseudo for Rust", "full code for this step".
 - A per-step change applies to that step only, then the stored level resumes.
 - A global or per-topic change updates `profile.md` (`Assist level:` or
   `Level overrides:`). Announce the change in one line.

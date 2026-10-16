@@ -8,9 +8,9 @@ Main change: three assist levels, defined in `skills/learn/assist-levels.md`.
 
 | Level | Claude gives | You write real code |
 |---|---|---|
-| Hint | Direction only, one hint at a time | Yes |
+| Hint (default) | Direction only, one hint at a time | Yes |
 | Pseudo | Language-aware pseudocode + concepts | Yes |
-| Full code (default) | The agreed implementation | No |
+| Full code | The agreed implementation | No |
 
 At Hint and Pseudo, Claude never edits your source files. When you finish a step,
 it runs a Code review: reads your changes, runs the project's checks, and gives
@@ -19,6 +19,7 @@ feedback at your level.
 ## Commands
 
 - `/wise-code:learn` — start or resume learning mode.
+- `/wise-code:level [hint|pseudo|full] [for <topic>]` — show or set the assist level.
 - `/wise-code:reset` — back up learning notes and restart onboarding.
 
 Switch levels in chat at any time:

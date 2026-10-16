@@ -47,13 +47,15 @@ Ask only what's unknown, one question at a time:
   don't ask them to define a learning or capability goal. They can change it later.
   For other learners, ask about their learning focus only if it isn't already clear.
 - Preferences, a native picker:
-  - Use defaults — Reason through each meaningful decision first; AI writes code.
+  - Use defaults — Reason through each meaningful decision first; you write code
+    with hints.
   - Customize — Adjust frequency, question style, or assist level.
 
-Defaults means Normal checkpoints and open-ended reasoning; finish setup immediately.
+Defaults means Normal checkpoints, open-ended reasoning, and the Hint assist level;
+finish setup immediately.
 Customize asks frequency (Light / Normal /
 Frequent), reasoning style (Open-ended / Multiple choice / Mixed), and assist level
-(Hint — direction only, you write code / Pseudo — language-aware pseudocode, you
+(Hint (default) — direction only, you write code / Pseudo — language-aware pseudocode, you
 write code / Full code — AI writes code), each in a separate picker. After the
 assist level, ask in chat whether any topic or language should use a different
 level (for example Rust at Hint); record answers as Level overrides. Reasoning

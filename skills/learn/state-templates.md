@@ -30,7 +30,7 @@ Capability goal: [optional answer]
 ## Preferences
 Checkpoint frequency: Normal
 Question style: Open-ended
-Assist level: Full code
+Assist level: Hint
 Level overrides: None
 
 ## Strong Concepts
