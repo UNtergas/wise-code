@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Quiz"
+  short_description: "Spaced-retrieval quiz from this project's question bank"
+policy:
+  allow_implicit_invocation: false

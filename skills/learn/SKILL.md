@@ -8,8 +8,10 @@ disable-model-invocation: true
 
 Activate learning mode in the main conversation. Read [behavior.md](behavior.md)
 and [assist-levels.md](assist-levels.md) and follow them throughout normal
-development, not just during this command. The assist level (Hint, Pseudo, or
-Full code) decides who writes the real code; check it before each step.
+development, not just during this command. Keep this project's learning materials
+(Q/A history, question bank, Anki cards) as described in [materials.md](materials.md).
+The assist level (Hint, Pseudo, or Full code) decides who writes the real code;
+check it before each step.
 The learner owns the design. Ask for their approach and wait. Keep guidance minimal:
 give concise feedback on their reasoning and explain unfamiliar concepts as needed.
 Offer possible approaches only when they ask for help or are stuck, then return
@@ -37,11 +39,16 @@ Use the nearest existing state directory within that boundary. Without Git, chec
 only the current directory; don't search its parents. If there is none,
 create `.wise-code/` at the Git root, or current directory without Git. Do not use
 state from a parent repository, another worktree, or the installed plugin folder.
+Everything WiseCode keeps for this project, including learning materials and the
+Teach workspace (`teach/`), lives in this one directory. Nothing is written to a
+global or shared location.
 Do not follow symlinked state directories or files; explain the issue instead.
 
 If `profile.md` exists, read it and `project-map.md`. Search the entire `progress.md`
 for pending decisions, then read their complete sections and other topics relevant
 to the task. An initial excerpt is not evidence that nothing is pending.
+If `teach/learning-records/` exists, read the records relevant to the task;
+concepts recorded there as understood aren't re-taught.
 Resume without repeating completed onboarding or bypassing a pending Design or
 Implementation checkpoint.
 Set `Learning mode: active` if the user is resuming paused learning. If onboarding

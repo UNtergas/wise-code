@@ -1,6 +1,8 @@
 # Local state templates
 
-Create only these three files in the chosen project's `.wise-code/`. Use the directory selected by SKILL.md.
+Create only these three files in the chosen project's `.wise-code/` at setup. Use the directory selected by SKILL.md.
+Learning materials and the Teach workspace are created later, once there is content
+for them; see [materials.md](materials.md).
 Replace bracketed values with actual evidence or “Not specified.” Keep the two
 status lines unformatted and near the top; the restoration hook reads them.
 Do not replace existing state with a fresh template.

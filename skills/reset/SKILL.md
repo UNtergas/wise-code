@@ -9,6 +9,10 @@ disable-model-invocation: true
 Run this in the main conversation, only when explicitly invoked. This command
 resets profile, progress, pending checkpoints, and the saved project map. Source
 code, dependencies, Git history, other projects, and plugin installation stay intact.
+Learning materials (`qa-history.md`, `questions.md`, `cards.tsv`) and the Teach
+workspace (`teach/`) also stay intact: they are history the learner may want to
+keep. If the learner wants a clean slate, tell them which of those files exist so
+they can delete them themselves; don't delete them here.
 
 If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
 
@@ -25,7 +29,8 @@ If you are running in Codex rather than Claude Code, first read [codex.md](codex
    On any error, stop and explain; don't improvise deletion commands.
 
 2. Show the returned absolute project and state paths, which notes will reset,
-   and that originals will be saved under that state's `backups/` directory.
+   that originals will be saved under that state's `backups/` directory, and that
+   learning materials and `teach/` are kept.
    Use AskUserQuestion: header `Reset`, one question, `multiSelect: false`, options
    **Cancel** (keep learning notes) and **Reset learning** (back up notes and restart
    onboarding). Ask whether to reset learning for the named project. If the picker

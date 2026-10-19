@@ -1,7 +1,7 @@
 {
   "name": "wise-code",
-  "version": "0.2.0",
-  "description": "Learning-first development with three assist levels (Hint, Pseudo, Full code). Fork of VibeWise by Noah Kim.",
+  "version": "0.3.0",
+  "description": "Learning-first development with three assist levels (Hint, Pseudo, Full code), Teach lessons, and per-project Q/A history, question bank and Anki cards. Fork of VibeWise by Noah Kim.",
   "author": {
     "name": "Nguyen Anh Tuan"
   },

@@ -4,8 +4,9 @@ These notes adapt Claude Code tool and command names for Codex. They don't chang
 the learning behavior; follow SKILL.md and its guides as written.
 
 - Commands: `/wise-code:learn` is `$wise-code:learn`; `/wise-code:level` is
-  `$wise-code:level`; `/wise-code:reset` is
-  `$wise-code:reset`.
+  `$wise-code:level`; `/wise-code:reset` is `$wise-code:reset`;
+  `/wise-code:teach` is `$wise-code:teach`; `/wise-code:quiz` is
+  `$wise-code:quiz`.
 - Paths: `${CLAUDE_PLUGIN_ROOT}` is not expanded in Codex. The plugin root is two
   directories above this file; guides such as behavior.md sit beside it.
 - Files: where the guides say Read or Glob, use your file-reading and search tools.
