@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Explore"
+  short_description: "Predict, then check how or why existing code works"
+policy:
+  allow_implicit_invocation: false

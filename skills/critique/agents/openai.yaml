@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Critique"
+  short_description: "Feedback on your technical writing, without rewriting it"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Reflect"
+  short_description: "Write your session reflection, then check it against evidence"
+policy:
+  allow_implicit_invocation: false

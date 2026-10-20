@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Sharpen"
+  short_description: "Make a task deeper, not bigger, and rewrite it yourself"
+policy:
+  allow_implicit_invocation: false

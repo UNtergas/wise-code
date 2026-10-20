@@ -2,7 +2,8 @@
 
 Learning materials turn what happened in a session into something the learner can
 review later: a log of questions and answers, a question bank for retrieval
-practice, and flashcards for Anki. Learn, Teach and Quiz all use this guide.
+practice, flashcards for Anki, guardrails against repeated mistakes, and the
+learner's own reflections. Every WiseCode command uses this guide.
 
 ## Where they live
 
@@ -18,9 +19,12 @@ learner copies it themselves.
 
 | Path | Holds | Written by |
 |---|---|---|
-| `qa-history.md` | Log of questions and answers, in both directions | Learn, Teach, Quiz |
-| `questions.md` | Question bank with spaced-repetition schedule | Learn, Teach add; Quiz schedules |
+| `qa-history.md` | Log of questions and answers, in both directions | Learn, Teach, Quiz, Explore, Critique, Reflect |
+| `questions.md` | Question bank with spaced-repetition schedule | Learn, Teach, Explore, Reflect add; Quiz schedules |
 | `cards.tsv` | Flashcards in Anki's import format | Learn, Teach, Quiz |
+| `guardrails.md` | Recurring mistakes and the check that now prevents each | Correct |
+| `reflections.md` | The learner's own session reflections, in their words | Reflect |
+| `plugin-feedback.md` | Proposed edits to WiseCode itself, from this project's sessions | Reflect |
 | `teach/` | Teach workspace (mission, lessons, records) | Teach |
 
 Create each file lazily, the first time there is real content for it, starting
@@ -55,6 +59,9 @@ Follow-up: none
   - `review` — feedback from a Code review that exposed understanding or a gap
   - `quiz` — a Quiz question and the learner's answer
   - `lesson` — a Teach lesson exercise answered in chat
+  - `explore` — the learner's prediction about existing code, checked by Explore
+  - `critique` — a writing issue found by Critique
+  - `reflect` — a gap between the learner's reflection and the evidence
   - `asked` — the learner asked a question; `A:` is the gist of your answer
 - `A:` is a gist of one to three lines, never a transcript. For `asked`, log only
   questions with lasting value (a concept, a why, a tradeoff), not lookups such
@@ -90,7 +97,9 @@ Due: 2026-10-20
 - Add questions when a concept is demonstrated (to keep it), marked for
   reinforcement (to rebuild it), a misconception is corrected, or a lesson ends.
   At most three new questions per topic per session. Prefer why, how and tradeoff
-  questions over definitions.
+  questions over definitions. A principle from [principles.md](principles.md) the
+  learner applied or missed makes a good question when phrased in this project's
+  terms, never as "define <principle>".
 - Schedule (Leitner boxes): box 1 → 1 day, 2 → 3 days, 3 → 7 days, 4 → 21 days,
   5 → 60 days. A new question starts in box 1, due the next day. After an answer:
   correct moves up one box (box 5 stays at 5), partial stays in the same box,
@@ -122,6 +131,53 @@ Rust: what does slicing a &str at a non-char boundary do?	It panics.	wise-code r
   Anki matches existing notes on the front, updates their other fields, and keeps
   their review scheduling.
 
+## guardrails.md
+
+One table per project, kept by `/wise-code:correct`. One row per mistake class
+that happened at least twice.
+
+```markdown
+# Guardrails
+
+| Mistake class | Evidence | Level | Enforced by | Proven |
+|---|---|---|---|---|
+| Slicing `&str` at a byte index from user input | qa-history 2026-10-21, 2026-10-24 | types | `CharOffset` newtype in `src/span.rs` | 2026-10-25: reverted mistake fails `cargo check` |
+```
+
+- Level is one of `design`, `types`, `lint`, `test`, `note`, highest that works.
+- `Proven` records how the learner showed the check fails on the old mistake. Leave
+  it `no` until that is done.
+- When a class can no longer happen (the code that allowed it is gone), keep the
+  row and add `retired` with the date.
+
+## reflections.md
+
+Append-only, newest at the bottom. The learner's text goes in unchanged.
+
+```markdown
+# Reflections
+
+## 2026-10-20
+Learner: <their words, unedited>
+Evidence check: <one to three lines: what the evidence supports, what it doesn't>
+```
+
+## plugin-feedback.md
+
+Proposed changes to WiseCode itself, collected in this project because the
+installed plugin is shared and must not be edited from a project. The learner
+applies them in their WiseCode repository.
+
+```markdown
+# WiseCode feedback
+
+## 2026-10-20 · Hint level · assist-levels.md "Hint"
+What happened: wrote a full function signature after the second hint.
+Rule: "Never write code, pseudocode, signatures..."
+Proposed edit: <old text> → <new text>
+Status: proposed
+```
+
 ## How each mode uses them
 
 - **Learn:** after a Build or Design checkpoint answer, or a Code review, that
@@ -134,3 +190,12 @@ Rust: what does slicing a &str at a non-char boundary do?	It panics.	wise-code r
   treating them as evidence.
 - **Quiz:** reads `questions.md`, asks due questions, logs every answer to
   qa-history, reschedules, and offers cards for missed facts.
+- **Explore:** logs the learner's prediction and how it compared with the code;
+  a meaningfully wrong prediction becomes a question.
+- **Correct:** reads qa-history, progress and Git history for repeated mistakes;
+  keeps `guardrails.md`.
+- **Reflect:** stores the learner's reflection in `reflections.md`, checks it
+  against qa-history and progress, and writes WiseCode feedback to
+  `plugin-feedback.md`.
+- **Critique:** logs recurring writing issues to qa-history; they can feed
+  Correct like any other repeated mistake.

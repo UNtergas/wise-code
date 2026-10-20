@@ -27,7 +27,9 @@ def frontmatter(path):
 class SkillLayoutTests(unittest.TestCase):
     def test_expected_skills_exist(self):
         names = {path.name for path in SKILLS}
-        self.assertTrue({"learn", "level", "reset", "teach", "quiz"} <= names, names)
+        expected = {"learn", "level", "reset", "teach", "quiz",
+                    "explore", "correct", "reflect", "sharpen", "critique"}
+        self.assertTrue(expected <= names, expected - names)
 
     def test_each_skill_has_frontmatter_codex_notes_and_agent_policy(self):
         for skill in SKILLS:
@@ -68,7 +70,8 @@ class SharedPluginTests(unittest.TestCase):
 
     def test_plugin_contains_no_learning_state(self):
         state_names = {"profile.md", "progress.md", "project-map.md", "qa-history.md",
-                       "questions.md", "cards.tsv", "MISSION.md"}
+                       "questions.md", "cards.tsv", "guardrails.md", "reflections.md",
+                       "plugin-feedback.md", "MISSION.md"}
         found = [str(path.relative_to(ROOT)) for path in ROOT.rglob("*")
                  if ".git" not in path.parts and path.name in state_names]
         self.assertEqual(found, [])
@@ -83,10 +86,57 @@ class SharedPluginTests(unittest.TestCase):
 
     def test_materials_guide_defines_every_material(self):
         text = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
-        for heading in ("## qa-history.md", "## questions.md", "## cards.tsv"):
+        for heading in ("## qa-history.md", "## questions.md", "## cards.tsv",
+                        "## guardrails.md", "## reflections.md", "## plugin-feedback.md"):
             self.assertIn(heading, text)
         self.assertIn("#separator:Tab", text)
         self.assertIn("#tags column:3", text)
+
+    def test_reset_keeps_every_material(self):
+        materials = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
+        reset = (ROOT / "skills/reset/SKILL.md").read_text(encoding="utf-8")
+        for name in re.findall(r"^## ([\w-]+\.(?:md|tsv))$", materials, re.MULTILINE):
+            with self.subTest(material=name):
+                self.assertIn(f"`{name}`", reset)
+
+
+class LearnerFirstTests(unittest.TestCase):
+    """Borrowed skills must keep the learner doing the work."""
+
+    def test_principles_are_named_not_applied(self):
+        text = (ROOT / "skills/learn/principles.md").read_text(encoding="utf-8")
+        self.assertIn("Name, don't apply", text)
+        self.assertIn("## Checking a number", text)
+        # Autonomy principles conflict with learner-owned decisions.
+        self.assertIn("*Never block on the human*", text.split("## Not included")[1])
+
+    def test_learner_acts_before_claude_answers(self):
+        cues = {
+            "explore": "Prediction first",
+            "reflect": "The learner writes first",
+            "correct": "Ask the learner first",
+            "sharpen": "Ask the learner to rewrite the task",
+            "critique": "never rewrites the",
+        }
+        for name, cue in cues.items():
+            with self.subTest(skill=name):
+                text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn(cue, text)
+
+    def test_reflect_never_edits_the_installed_plugin(self):
+        text = (ROOT / "skills/reflect/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("Never edit the installed", text)
+        self.assertIn("plugin-feedback.md", text)
+
+    def test_borrowed_material_is_attributed(self):
+        notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+        self.assertIn("Copyright (c) 2026 Lauren Tan", notices)
+        for path in ("skills/learn/principles.md", "skills/explore/",
+                     "skills/correct/", "skills/reflect/", "skills/sharpen/",
+                     "skills/critique/writing-rubric.md"):
+            with self.subTest(path=path):
+                self.assertIn(path, notices)
+                self.assertTrue((ROOT / path).exists())
 
 
 if __name__ == "__main__":

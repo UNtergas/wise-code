@@ -10,6 +10,9 @@ Activate learning mode in the main conversation. Read [behavior.md](behavior.md)
 and [assist-levels.md](assist-levels.md) and follow them throughout normal
 development, not just during this command. Keep this project's learning materials
 (Q/A history, question bank, Anki cards) as described in [materials.md](materials.md).
+Read [principles.md](principles.md) before the session's first hint, Design
+checkpoint, or Code review; it names ideas for the learner to apply, not changes
+for you to make.
 The assist level (Hint, Pseudo, or Full code) decides who writes the real code;
 check it before each step.
 The learner owns the design. Ask for their approach and wait. Keep guidance minimal:

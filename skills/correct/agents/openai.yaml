@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Correct"
+  short_description: "Turn your repeated mistakes into checks you write"
+policy:
+  allow_implicit_invocation: false
