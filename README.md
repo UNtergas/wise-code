@@ -39,9 +39,11 @@ Build and learn:
 
 In a project with an active learning profile, both grills ask for your answer
 before showing Claude's recommendation, and in grill-with-docs you write the ADRs.
-Without a profile they behave as plain grills. `grill` and `research` can also
-start on their own when you say "grill me" or "research this"; the others run
-only when you call them.
+Without a profile they behave as plain grills. `grill` starts on its own whenever
+you describe a plan that still has open decisions and nothing is built yet; it
+says which decisions it sees, and "skip" or "just build it" stops it.
+`research` starts on its own when you say "find out" or "check the docs". The
+other commands run only when you call them.
 
 Review and retain:
 

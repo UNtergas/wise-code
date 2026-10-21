@@ -141,6 +141,13 @@ class LearnerFirstTests(unittest.TestCase):
         adr_rule = (ROOT / "skills/grill-with-docs/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("The learner writes the ADR", adr_rule)
 
+    def test_grill_starts_on_open_plans_and_can_be_stopped(self):
+        text = (ROOT / "skills/grill/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("Use proactively", frontmatter(ROOT / "skills/grill/SKILL.md")["description"])
+        section = text.split("## Starting on your own")[1].split("\n## ")[0]
+        self.assertIn('"skip"', section)
+        self.assertIn("Don't\nstart on your own again", section)
+
     def test_reflect_never_edits_the_installed_plugin(self):
         text = (ROOT / "skills/reflect/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Never edit the installed", text)
