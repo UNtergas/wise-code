@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 import re
-import subprocess
-import sys
 import unittest
 
 
@@ -159,39 +157,23 @@ class LearnerFirstTests(unittest.TestCase):
                 self.assertTrue((ROOT / path).exists())
 
 
-class MarketplaceTests(unittest.TestCase):
-    """One marketplace ships wise-code and standalone plugins people install alone."""
+class SinglePluginTests(unittest.TestCase):
+    """The repository is exactly one plugin; claude.ai syncs it as a whole."""
 
-    def test_claude_marketplace_entries_point_at_matching_plugins(self):
-        market = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
-        names = [entry["name"] for entry in market["plugins"]]
-        self.assertEqual(sorted(names), ["wise-code", "wise-research"])
-        for entry in market["plugins"]:
-            with self.subTest(plugin=entry["name"]):
-                self.assertNotIn("..", entry["source"])
-                manifest = ROOT / entry["source"] / ".claude-plugin/plugin.json"
-                # The install id uses the entry name, skills use the manifest name.
-                self.assertEqual(json.loads(manifest.read_text())["name"], entry["name"])
+    def test_marketplaces_list_only_this_plugin_at_the_root(self):
+        claude = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        self.assertEqual([(e["name"], e["source"]) for e in claude["plugins"]],
+                         [("wise-code", "./")])
+        codex = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+        self.assertEqual([(e["name"], e["source"]["path"]) for e in codex["plugins"]],
+                         [("wise-code", "./")])
 
-    def test_codex_marketplace_paths_exist(self):
-        market = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
-        for entry in market["plugins"]:
-            with self.subTest(plugin=entry["name"]):
-                path = ROOT / entry["source"]["path"]
-                self.assertTrue((path / ".codex-plugin/plugin.json").is_file())
-
-    def test_standalone_copies_match_their_source(self):
-        result = subprocess.run([sys.executable, str(ROOT / "scripts/sync_standalone.py"), "--check"],
-                                capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_standalone_research_ships_nothing_else(self):
-        skills = ROOT / "plugins/wise-research/skills"
-        self.assertEqual(sorted(p.name for p in skills.iterdir()), ["research"])
-        text = (skills / "research/SKILL.md").read_text(encoding="utf-8")
-        # A friend installs this without wise-code: it must not depend on its guides.
-        self.assertNotIn("../learn/", text)
-        self.assertNotIn(".wise-code", text)
+    def test_no_nested_plugin_manifest(self):
+        # claude.ai sync fails with "plugin.json must be at .claude-plugin/plugin.json
+        # at the plugin root" when another plugin.json sits below the root.
+        found = sorted(str(p.relative_to(ROOT)) for p in ROOT.rglob("plugin.json")
+                       if ".git" not in p.parts)
+        self.assertEqual(found, [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"])
 
 
 if __name__ == "__main__":

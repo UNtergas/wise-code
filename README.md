@@ -133,24 +133,11 @@ current directory as its workspace, while `/wise-code:teach` uses the project's
 `grill-with-docs` and `research` skills: with both installed, the same request can
 trigger either copy.
 
-## Only the research skill
-
-This repository is a marketplace with two plugins. `wise-research` holds just the
-research skill, for people who don't want the learning workflow:
-
-```sh
-/plugin marketplace add UNtergas/wise-code
-/plugin install wise-research@wise-code
-```
-
-The skill is then `/wise-research:research`. Don't install `wise-research` next to
-`wise-code`: wise-code already includes it.
-
 ## Development
 
-Run tests: `python3 -m unittest discover -s tests`
+Run tests: `python3 -m unittest discover -s tests`, and check the plugin with
+`claude plugin validate .`.
 
-`skills/research/` is the source of truth. After editing it, run
-`python3 scripts/sync_standalone.py` to copy it into `plugins/wise-research/`; a
-test fails while the two differ. Check both plugins with
-`claude plugin validate .` and `claude plugin validate ./plugins/wise-research`.
+The repository is one plugin. claude.ai syncs the whole repository as that
+plugin and rejects a second `plugin.json` anywhere below the root, so a test
+fails if one appears.
