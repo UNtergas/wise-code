@@ -11,6 +11,11 @@
       "name": "wise-code",
       "source": "./",
       "description": "Learning-first development: you design and write the code; Claude hints, reviews, quizzes and explains."
+    },
+    {
+      "name": "wise-research",
+      "source": "./plugins/wise-research",
+      "description": "Just the research skill: one cited Markdown file per external question."
     }
   ]
 }

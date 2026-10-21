@@ -30,6 +30,18 @@ Build and learn:
 - `/wise-code:explore <question>` — how or why existing code works: you predict,
   Claude checks the prediction against the code and its Git history. Read-only.
 - `/wise-code:sharpen <task>` — make a task deeper, not bigger; you rewrite it.
+- `/wise-code:grill <plan>` — stress-test a plan in rounds of questions until
+  nothing is left assumed.
+- `/wise-code:grill-with-docs <plan>` — the same inside a repo, keeping
+  `GLOSSARY.md` and ADRs in `docs/adr/` as decisions settle.
+- `/wise-code:research <question>` — answer an external question (API behavior,
+  spec, version claim) from primary sources in one cited Markdown file.
+
+In a project with an active learning profile, both grills ask for your answer
+before showing Claude's recommendation, and in grill-with-docs you write the ADRs.
+Without a profile they behave as plain grills. `grill` and `research` can also
+start on their own when you say "grill me" or "research this"; the others run
+only when you call them.
 
 Review and retain:
 
@@ -117,8 +129,28 @@ Restart Claude Code, then run `/wise-code:learn` or `/wise-code:teach` in your p
 
 If you also have a standalone `/teach` skill installed, remove it: it uses the
 current directory as its workspace, while `/wise-code:teach` uses the project's
-`.wise-code/teach/`.
+`.wise-code/teach/`. The same goes for account-level `grilling`,
+`grill-with-docs` and `research` skills: with both installed, the same request can
+trigger either copy.
+
+## Only the research skill
+
+This repository is a marketplace with two plugins. `wise-research` holds just the
+research skill, for people who don't want the learning workflow:
+
+```sh
+/plugin marketplace add UNtergas/wise-code
+/plugin install wise-research@wise-code
+```
+
+The skill is then `/wise-research:research`. Don't install `wise-research` next to
+`wise-code`: wise-code already includes it.
 
 ## Development
 
 Run tests: `python3 -m unittest discover -s tests`
+
+`skills/research/` is the source of truth. After editing it, run
+`python3 scripts/sync_standalone.py` to copy it into `plugins/wise-research/`; a
+test fails while the two differ. Check both plugins with
+`claude plugin validate .` and `claude plugin validate ./plugins/wise-research`.

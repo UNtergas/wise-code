@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Grill with docs"
+  short_description: "Grill a plan in a repo; keep a glossary and ADRs"
+policy:
+  allow_implicit_invocation: false

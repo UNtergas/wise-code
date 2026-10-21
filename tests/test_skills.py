@@ -3,11 +3,16 @@
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = sorted(path for path in (ROOT / "skills").iterdir() if path.is_dir())
+# Skills Claude may start on its own from their description; every other skill
+# runs only when the learner invokes it.
+MODEL_INVOKED = {"grill", "research"}
 FENCE = re.compile(r"^(```|~~~).*?^\1", re.MULTILINE | re.DOTALL)
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
@@ -28,7 +33,8 @@ class SkillLayoutTests(unittest.TestCase):
     def test_expected_skills_exist(self):
         names = {path.name for path in SKILLS}
         expected = {"learn", "level", "reset", "teach", "quiz",
-                    "explore", "correct", "reflect", "sharpen", "critique"}
+                    "explore", "correct", "reflect", "sharpen", "critique",
+                    "grill", "grill-with-docs", "research"}
         self.assertTrue(expected <= names, expected - names)
 
     def test_each_skill_has_frontmatter_codex_notes_and_agent_policy(self):
@@ -37,11 +43,15 @@ class SkillLayoutTests(unittest.TestCase):
                 fields = frontmatter(skill / "SKILL.md")
                 self.assertEqual(fields.get("name"), skill.name)
                 self.assertTrue(fields.get("description"))
-                # Learning commands run only when the learner asks for them.
-                self.assertEqual(fields.get("disable-model-invocation"), "true")
                 self.assertTrue((skill / "codex.md").is_file())
                 agent = (skill / "agents/openai.yaml").read_text(encoding="utf-8")
-                self.assertIn("allow_implicit_invocation: false", agent)
+                if skill.name in MODEL_INVOKED:
+                    self.assertNotIn("disable-model-invocation", fields)
+                    self.assertIn("allow_implicit_invocation: true", agent)
+                else:
+                    # Learning commands run only when the learner asks for them.
+                    self.assertEqual(fields.get("disable-model-invocation"), "true")
+                    self.assertIn("allow_implicit_invocation: false", agent)
 
     def test_relative_links_in_guides_resolve(self):
         for guide in sorted((ROOT / "skills").rglob("*.md")):
@@ -123,6 +133,16 @@ class LearnerFirstTests(unittest.TestCase):
                 text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
                 self.assertIn(cue, text)
 
+    def test_grills_hold_back_recommendations_in_learning_mode(self):
+        for name in ("grill", "grill-with-docs"):
+            with self.subTest(skill=name):
+                text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                section = text.split("## Learning mode")[1]
+                self.assertIn("Learner answers first", section)
+                self.assertIn("Learning mode: active", section)
+        adr_rule = (ROOT / "skills/grill-with-docs/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("The learner writes the ADR", adr_rule)
+
     def test_reflect_never_edits_the_installed_plugin(self):
         text = (ROOT / "skills/reflect/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Never edit the installed", text)
@@ -137,6 +157,41 @@ class LearnerFirstTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn(path, notices)
                 self.assertTrue((ROOT / path).exists())
+
+
+class MarketplaceTests(unittest.TestCase):
+    """One marketplace ships wise-code and standalone plugins people install alone."""
+
+    def test_claude_marketplace_entries_point_at_matching_plugins(self):
+        market = json.loads((ROOT / ".claude-plugin/marketplace.json").read_text())
+        names = [entry["name"] for entry in market["plugins"]]
+        self.assertEqual(sorted(names), ["wise-code", "wise-research"])
+        for entry in market["plugins"]:
+            with self.subTest(plugin=entry["name"]):
+                self.assertNotIn("..", entry["source"])
+                manifest = ROOT / entry["source"] / ".claude-plugin/plugin.json"
+                # The install id uses the entry name, skills use the manifest name.
+                self.assertEqual(json.loads(manifest.read_text())["name"], entry["name"])
+
+    def test_codex_marketplace_paths_exist(self):
+        market = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+        for entry in market["plugins"]:
+            with self.subTest(plugin=entry["name"]):
+                path = ROOT / entry["source"]["path"]
+                self.assertTrue((path / ".codex-plugin/plugin.json").is_file())
+
+    def test_standalone_copies_match_their_source(self):
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/sync_standalone.py"), "--check"],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_standalone_research_ships_nothing_else(self):
+        skills = ROOT / "plugins/wise-research/skills"
+        self.assertEqual(sorted(p.name for p in skills.iterdir()), ["research"])
+        text = (skills / "research/SKILL.md").read_text(encoding="utf-8")
+        # A friend installs this without wise-code: it must not depend on its guides.
+        self.assertNotIn("../learn/", text)
+        self.assertNotIn(".wise-code", text)
 
 
 if __name__ == "__main__":

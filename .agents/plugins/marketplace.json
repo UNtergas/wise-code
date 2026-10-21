@@ -1,14 +1,36 @@
 {
   "name": "wise-code",
-  "interface": { "displayName": "WiseCode" },
+  "interface": {
+    "displayName": "WiseCode"
+  },
   "plugins": [
     {
       "name": "wise-code",
-      "source": { "source": "local", "path": "./" },
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
       "policy": {
         "installation": "AVAILABLE",
         "authentication": "ON_INSTALL",
-        "products": ["CODEX"]
+        "products": [
+          "CODEX"
+        ]
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "wise-research",
+      "source": {
+        "source": "local",
+        "path": "./plugins/wise-research"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL",
+        "products": [
+          "CODEX"
+        ]
       },
       "category": "Developer Tools"
     }

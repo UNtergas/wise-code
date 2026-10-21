@@ -199,3 +199,7 @@ Status: proposed
   `plugin-feedback.md`.
 - **Critique:** logs recurring writing issues to qa-history; they can feed
   Correct like any other repeated mistake.
+- **Grill, Grill with docs:** in learning mode, log the learner's reasoning on
+  decisions as `checkpoint` entries.
+- **Research:** writes its file to the repository's notes folder, not to
+  `.wise-code/`; it records facts, not learning.

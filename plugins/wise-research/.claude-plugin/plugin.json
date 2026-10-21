@@ -1,0 +1,13 @@
+{
+  "name": "wise-research",
+  "version": "0.1.0",
+  "description": "One skill: answer an external question (API behavior, spec, version claim) from primary sources in one cited Markdown file. Standalone part of wise-code.",
+  "author": {
+    "name": "Nguyen Anh Tuan"
+  },
+  "keywords": [
+    "research",
+    "citations",
+    "docs"
+  ]
+}

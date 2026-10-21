@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Grill"
+  short_description: "Stress-test a plan, one round of questions at a time"
+policy:
+  allow_implicit_invocation: true
