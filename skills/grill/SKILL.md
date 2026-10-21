@@ -1,23 +1,30 @@
 ---
 name: grill
-description: "Grill the user relentlessly about a plan, decision, or idea until nothing is left assumed. Use proactively, without being asked, whenever the user describes a plan, feature, design, architecture or approach that still has open decisions and no code exists for it yet. Also use on any 'grill' trigger phrase or 'stress-test this'. Skip factual questions (research), tiny reversible edits, and requests to just build it."
+description: "Grill the user relentlessly about a plan, decision, or idea until nothing is left assumed. Use when the user asks to be grilled or to stress-test a plan. Also load it, without being asked, when the user describes a plan, feature, design, architecture or approach that still has open decisions and nothing is built yet: in that case only suggest running /wise-code:grill, never grill unasked. Skip factual questions (research) and tiny reversible edits."
 ---
+
+## First: did the user ask for a grill?
+
+- **Yes**: they ran `/wise-code:grill`, or said "grill me", "stress-test this" or
+  similar. Grill, following the rest of this file.
+- **No**: you loaded this because their message describes a plan with open
+  decisions. Don't grill. Add one line at the top of your reply naming the open
+  decisions you see and suggesting the command, then handle their message as you
+  otherwise would:
+
+  > Open decisions: storage, the position unit, offline behavior. Run
+  > `/wise-code:grill` to settle them before building.
+
+  Suggest at most once per plan in a conversation. If they ignore it or say no,
+  don't bring it up again.
+
+## Grilling
 
 Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round.
 
 If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
-## Starting on your own
-
-You may start this skill when the user didn't ask for a grill: they described a
-plan with open decisions and nothing is built yet. Then open with one line naming
-the open decisions you see and that you'll settle them before building ("Three
-things are still open: storage, the position unit, and what happens offline.
-Grilling those first."), and go straight into the first round. If the user says
-"skip", "just build it" or similar, stop grilling and do what they asked. Don't
-start on your own again in the same conversation for the same plan.
 
 Format a round like so:
 
