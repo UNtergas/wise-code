@@ -41,7 +41,7 @@ Shared learning materials (`qa-history.md`, `questions.md`, `cards.tsv`) sit one
 
 1. Read `MISSION.md`, `NOTES.md`, `GLOSSARY.md`, `learning-records/`, `assets/`. If `<state>/profile.md` or `<state>/progress.md` exist, read them (read-only) — concepts already demonstrated there count when judging ZPD. Don't edit Learn's files.
 2. No/vague mission → interview user on _why_ before anything else.
-3. `RESOURCES.md` thin → find high-trust resources first. Never trust parametric knowledge.
+3. `RESOURCES.md` thin → find high-trust resources first. Never trust parametric knowledge. Hand the search to one background agent (Agent tool, `model: sonnet`) briefed with the mission and the source rules of [../research/SKILL.md](../research/SKILL.md); vet its candidates yourself before they enter `RESOURCES.md`.
 4. Pick next lesson: user's explicit req, else most mission-relevant thing in zone of proximal development (ZPD — challenged "just enough"), judged from learning records.
 5. Build lesson from existing assets; add new reusable components to `./assets/`.
 6. Create/update reference docs alongside.

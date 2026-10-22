@@ -11,5 +11,7 @@ as written otherwise.
   `../learn/materials.md`, relative to this file.
 - Subagents: if you can't spawn read-only subagents, investigate each angle
   yourself, one after another, and keep notes short.
+- Models: Codex has no per-agent `model` input. Ignore `model:` hints in SKILL.md
+  and use the session model.
 - Replies: ask for the prediction once, at the end of your reply, then end your
   turn and wait. Don't quote these guides to the learner.

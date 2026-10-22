@@ -43,7 +43,7 @@ entry file you name and predict from that.
 
 - **Simple question** (one module, one function): read the code directly.
 - **Complex question** (a subsystem across several files): split it into two or
-  three distinct angles and give each to a read-only `Explore` subagent, briefed
+  three distinct angles and give each to a read-only `Explore` subagent (`model: sonnet`), briefed
   with the question, the angle, and "do not edit files". Keep their raw output out
   of the main thread; synthesize their findings yourself and check any
   contradiction in the code.

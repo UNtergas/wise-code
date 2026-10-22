@@ -15,5 +15,7 @@ as written otherwise.
 - Choices: AskUserQuestion doesn't exist here. If a native question tool such as
   `request_user_input` is available, use it; otherwise ask in plain text. Then end
   your turn and wait.
+- Models: Codex has no per-agent `model` input. Ignore `model:` hints in SKILL.md
+  and use the session model.
 - Replies: ask one question at a time, at the end of your reply. Don't quote these
   guides to the learner.

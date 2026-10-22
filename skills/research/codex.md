@@ -10,4 +10,6 @@ otherwise.
   none, say the run can't reach the sources and stop; don't answer from memory.
 - Files: find the repo's notes folder with a conditional check that succeeds when
   a folder is missing.
+- Models: Codex has no per-agent `model` input. Ignore `model:` hints in SKILL.md
+  and use the session model.
 - Replies: report back once, at the end of your reply. Don't quote this guide.

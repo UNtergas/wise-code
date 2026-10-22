@@ -153,6 +153,25 @@ class LearnerFirstTests(unittest.TestCase):
         self.assertIn("Don't grill.", section)
         self.assertIn("at most once per plan", section)
 
+    def test_delegated_steps_name_a_cheaper_model(self):
+        # Self-contained sub-steps run on a cheaper model; the main session keeps
+        # its model and prompt cache. Hints live in the body, not frontmatter,
+        # because claude.ai skill uploads reject Claude Code-only keys.
+        expected = {"research": "model: sonnet", "explore": "model: sonnet",
+                    "grill": "model: haiku", "teach": "model: sonnet"}
+        for skill, hint in expected.items():
+            with self.subTest(skill=skill):
+                path = ROOT / f"skills/{skill}/SKILL.md"
+                self.assertIn(hint, path.read_text(encoding="utf-8"))
+                self.assertIn("Ignore `model:` hints",
+                              (ROOT / f"skills/{skill}/codex.md").read_text(encoding="utf-8"))
+        for skill in SKILLS:
+            with self.subTest(frontmatter=skill.name):
+                fields = frontmatter(skill / "SKILL.md")
+                self.assertFalse({"model", "context", "agent", "effort"} & fields.keys())
+        self.assertIn("Do not switch to a subagent",
+                      (ROOT / "skills/learn/SKILL.md").read_text(encoding="utf-8"))
+
     def test_reflect_never_edits_the_installed_plugin(self):
         text = (ROOT / "skills/reflect/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("Never edit the installed", text)

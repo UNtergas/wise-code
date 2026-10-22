@@ -54,7 +54,7 @@ No allowlist exists, so the agent judges "high-trust". The verification pass bel
 
 ## Delegation
 
-Run the reading as ONE background agent (Agent tool), prompt includes the narrow question, done criterion, source rules, output path, and file format below.
+Run the reading as ONE background agent (Agent tool, `model: sonnet`), prompt includes the narrow question, done criterion, source rules, output path, and file format below.
 
 **Nesting guard — critical.** Known failure: delegated agent re-delegates, spawning duplicates (huge token cost, hidden results). So:
 - Background agent prompt MUST begin: "You are the research worker. Do the reading yourself. Do NOT spawn other agents or delegate."
@@ -63,6 +63,8 @@ Run the reading as ONE background agent (Agent tool), prompt includes the narrow
 - Don't spawn agent at all if user's global rules forbid delegation; do the work inline and say so. Never silently do nothing.
 
 Multiple independent narrow questions → one agent each, in parallel, never nested.
+
+**Model.** Reading and citing is legwork; Sonnet handles it, and the main session keeps its model and cache. Use `model: opus` only when the question needs long multi-source reasoning (reconciling conflicting specs). If the Agent tool takes no `model` input, omit it.
 
 ## Where the file goes
 

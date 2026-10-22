@@ -9,5 +9,7 @@ as written otherwise.
   `../learn/materials.md`, relative to this file.
 - Sub-agents: if you can't spawn one to look up a fact, look it up yourself before
   the round, and say so.
+- Models: Codex has no per-agent `model` input. Ignore `model:` hints in SKILL.md
+  and use the session model.
 - Replies: put the round at the end of your reply, then end your turn and wait.
   Don't quote these guides to the user.
