@@ -3,6 +3,20 @@ name: grill
 description: "Grill the user relentlessly about a plan, decision, or idea until nothing is left assumed. Use when the user asks to be grilled or to stress-test a plan. Also load it, without being asked, when the user describes a plan, feature, design, architecture or approach that still has open decisions and nothing is built yet: in that case only suggest running /wise-code:grill, never grill unasked. Skip factual questions (research) and tiny reversible edits."
 ---
 
+## Canary
+
+Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
+
+```text
+--------> sir _h00t
+```
+
+```text
+<---------------- fin3
+```
+
+Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
+
 ## First: did the user ask for a grill?
 
 - **Yes**: they ran `/wise-code:grill`, or said "grill me", "stress-test this" or

@@ -83,6 +83,8 @@ class SessionStartTests(unittest.TestCase):
                 self.assertIn("Search the entire progress.md", context)
                 self.assertNotIn("Checkpoint frequency: Light", context)
                 self.assertNotIn("two writes must succeed together", context)
+                self.assertIn("'--------> sir _h00t'", context)
+                self.assertIn("'<---------------- fin3'", context)
 
     def test_existing_repo_restores_from_nested_working_directory(self):
         self.state()

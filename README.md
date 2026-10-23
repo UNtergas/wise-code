@@ -35,7 +35,10 @@ Build and learn:
 - `/wise-code:grill-with-docs <plan>` — the same inside a repo, keeping
   `GLOSSARY.md` and ADRs in `docs/adr/` as decisions settle.
 - `/wise-code:research <question>` — answer an external question (API behavior,
-  spec, version claim) from primary sources in one cited Markdown file.
+  spec, version claim) from primary sources in one cited Markdown file. Each
+  Evidence line carries a short «verbatim span» from the page it links;
+  `skills/research/verify_quotes.py` checks every span against the live page
+  before the report goes out.
 
 In a project with an active learning profile, both grills ask for your answer
 before showing Claude's recommendation, and in grill-with-docs you write the ADRs.
@@ -61,6 +64,14 @@ Switch levels in chat at any time:
 - `level hint` / `level pseudo` / `level full` — change the default.
 - `pseudo for Rust`, `hint for FastAPI`, `pseudo for writing` — per-topic override.
 - `full code for this step` — one step only.
+
+## Canary
+
+Every WiseCode reply starts with the line `--------> sir _h00t` and ends with
+`<---------------- fin3` (stated in each skill and in the restore hook for
+active projects). A missing end line means the reply was cut off or the
+instructions were dropped. It marks a complete reply, not a true one; facts are
+guarded by research's span check.
 
 ## Principles
 

@@ -188,6 +188,35 @@ class LearnerFirstTests(unittest.TestCase):
                 self.assertTrue((ROOT / path).exists())
 
 
+class CanaryTests(unittest.TestCase):
+    """Every skill and the restore hook state the same exact reply markers."""
+
+    START = "--------> sir _h00t"
+    END = "<---------------- fin3"
+
+    def test_every_skill_states_both_markers_on_their_own_lines(self):
+        for skill in SKILLS:
+            with self.subTest(skill=skill.name):
+                lines = (skill / "SKILL.md").read_text(encoding="utf-8").splitlines()
+                self.assertIn("## Canary", lines)
+                self.assertIn(self.START, lines)
+                self.assertIn(self.END, lines)
+
+    def test_hook_uses_the_same_markers(self):
+        hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
+        self.assertIn(f'CANARY_START = "{self.START}"', hook)
+        self.assertIn(f'CANARY_END = "{self.END}"', hook)
+
+
+class ResearchSpanTests(unittest.TestCase):
+    def test_research_format_requires_a_span_and_runs_the_checker(self):
+        text = (ROOT / "skills/research/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("«{exact span copied from the page}» [", text)
+        self.assertIn("skills/research/verify_quotes.py", text)
+        self.assertIn("Copy, never recall", text)
+        self.assertTrue((ROOT / "skills/research/verify_quotes.py").is_file())
+
+
 class SinglePluginTests(unittest.TestCase):
     """The repository is exactly one plugin; claude.ai syncs it as a whole."""
 

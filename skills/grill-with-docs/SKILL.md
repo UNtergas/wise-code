@@ -5,6 +5,20 @@ disable-model-invocation: true
 argument-hint: "What plan or change should I grill you on?"
 ---
 
+## Canary
+
+Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
+
+```text
+--------> sir _h00t
+```
+
+```text
+<---------------- fin3
+```
+
+Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
+
 Stateful interview. Same loop as a plain grill, pointed at a codebase, and it leaves files behind: terms → `GLOSSARY.md` the moment they resolve, hard decisions → ADRs. Self-contained: this file holds the interview rules and the writing rules, plus one section for WiseCode learning mode.
 
 If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
