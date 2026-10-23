@@ -6,12 +6,27 @@ argument-hint: "What do you need to find out?"
 
 If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
 
+## Canary
+
+Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
+
+```text
+--------> sir _h00t
+```
+
+```text
+<---------------- fin3
+```
+
+Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
+
 User needs an external fact. Read the sources that own the answer, write one cited Markdown file, report back. Research = legwork delegated, not thinking outsourced. User still decides.
 
 ## Contract
 
 - Output is a **file**, never an answer in chat. Survives the session; can be reacted to, handed to another agent, or thrown away.
-- Every claim carries a link to the **primary source** that owns it.
+- Every claim carries a link to the **primary source** that owns it, plus one short **verbatim span** copied from that page.
+- A script checks each span against the live page before the report goes out. Citation without a matching span = unverified.
 - One file per run.
 - Runs in the background so user's own session stays clean.
 
@@ -54,7 +69,7 @@ No allowlist exists, so the agent judges "high-trust". The verification pass bel
 
 ## Delegation
 
-Run the reading as ONE background agent (Agent tool, `model: sonnet`), prompt includes the narrow question, done criterion, source rules, output path, and file format below.
+Run the reading as ONE background agent (Agent tool, `model: sonnet`), prompt includes the narrow question, done criterion, source rules, output path, file format and verbatim-span rules below.
 
 **Nesting guard — critical.** Known failure: delegated agent re-delegates, spawning duplicates (huge token cost, hidden results). So:
 - Background agent prompt MUST begin: "You are the research worker. Do the reading yourself. Do NOT spawn other agents or delegate."
@@ -86,7 +101,7 @@ Date: YYYY-MM-DD · Unblocks: {decision} · Status: answered | partial | unanswe
 {2-5 sentences. Direct answer to the question, each claim linked.}
 
 ## Evidence
-- **{Claim}** — {what source says, paraphrased}. [{Source title, version}]({url})
+- **{Claim}** — {what source says, paraphrased}. «{exact span copied from the page}» [{Source title, version}]({url})
 - ...
 
 ## Conflicts & gaps
@@ -98,14 +113,46 @@ Date: YYYY-MM-DD · Unblocks: {decision} · Status: answered | partial | unanswe
 
 Rules:
 - Answer first. Reader should decide from this section alone.
-- Paraphrase; quote only short exact strings (error messages, signatures, config keys).
+- Paraphrase the claim; the «span» is the only quote on the line.
+- Quote only short exact strings otherwise (error messages, signatures, config keys).
 - Link as deep as possible (anchor, line permalink at a commit), not site root.
 - No padding, no background tutorial, no recommendations. Facts only; recommendations = user's/grilling's job.
 
+## Verbatim spans
+
+Every Evidence bullet carries exactly one span, then its link: `«span» [title](https://…)`.
+
+- **Copy, never recall.** Span is copied character-for-character from the page text the worker fetched in this run. Typed from memory = fabricated, even if "close".
+- **≤ 15 words**, the smallest part of the page that states the claim. Must make the claim checkable on its own; a span of filler ("as shown below") proves nothing.
+- One span per bullet; a claim resting on two sources = two bullets.
+- Same URL as the link right after it, deep link included. Span from page A + link to page B = failure.
+- No span available (video, image, page the tool can't render) → no span, and move the claim to **Conflicts & gaps** as `UNVERIFIED (no verbatim span): claim, url`.
+- Span supports claim ≠ automatic. Matching words only prove the page says them; still check the claim doesn't overreach the span.
+
 ## Verification pass (before reporting)
 
+**Step 1 — mechanical span check.** Run:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/research/verify_quotes.py" <research-file>
+```
+
+(Outside Claude Code: path to `verify_quotes.py` in this skill folder.) It fetches each link, strips to visible text, normalizes whitespace/case/typographic quotes and dashes, and looks for each span.
+
+| Status | Meaning | Action |
+|---|---|---|
+| `FOUND` | span on the page | pass |
+| `MISSING` | page loaded, span absent | re-open page, copy real span, or downgrade claim to UNVERIFIED. Never edit the span to "fit" without re-reading the page |
+| `TOO_LONG` | > 15 words | shorten to the smallest part that states the claim |
+| `NO_SPAN` | Evidence bullet without `«span» [link](https://…)` | add span or move to Conflicts & gaps |
+| `UNREACHABLE` | fetch failed, non-text (PDF), JS-only page | open with your web fetch tool, check by hand, note `span checked manually` on the bullet |
+
+Exit 0 = all found; 1 = failures; 2 = only unreachable. Report is not ready until exit 0, or exit 2 with every UNREACHABLE checked by hand. Script can't run (no Python, no network) → say so in the report and check every span by hand.
+
+**Step 2 — judgement checks.** Do this yourself, don't trust the draft:
+
 Do this yourself, don't trust the draft:
-1. Pick 2-3 citations at random; open them; confirm the page actually states the claim.
+1. Pick 2-3 citations at random; open them; confirm the span means what the claim says (not taken out of context, not a different version).
 2. Any link landing on a summary/write-up *of* the thing rather than the thing → run failed for that claim; fix or downgrade to UNVERIFIED.
 3. Confirm every claim in **Answer** appears in **Evidence**.
 4. Confirm done criterion met; if not, Status = `partial`/`unanswered`.
@@ -116,6 +163,7 @@ High-stakes decision → verify all citations, not a sample.
 
 Short, in chat:
 - Status + one-line answer
+- Span check: `verify_quotes.py` result (e.g. `7/7 FOUND`, or which were checked by hand)
 - File path
 - Gaps / UNVERIFIED items that matter
 - One next step if real (e.g. feed file into grilling, attach to spec/ticket)
@@ -128,4 +176,5 @@ Nothing loads past research files automatically. File is useful only when user f
 - Exactly one background task ran.
 - One new file, in the repo's notes folder, path reported.
 - Every claim linked; random links land on official docs/spec/source, not write-ups.
+- `verify_quotes.py` exit 0 (or 2 with each UNREACHABLE checked by hand).
 - User can make the stuck decision from the file alone.
