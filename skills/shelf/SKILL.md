@@ -38,7 +38,9 @@ Two kinds of session:
 
 ## Step 1: Sync (once per session)
 
-Project mode keeps a sparse clone at `<state>/shelf-repo/`. Make sure `<state>/.gitignore` exists and lists `shelf-repo/`, so the project never commits the books.
+Project mode keeps a sparse clone at `<state>/shelf-repo/`. Make sure `<state>/.gitignore` exists and lists `shelf-repo/` (write it with the file tool), so the project never commits the books.
+
+Run each git command as its own call, with `git -C <path>` and absolute paths. No `cd`, no `&&` chains, no shell variables: permission checks block those and the learner gets prompts.
 
 - Clone missing →
   ```sh
@@ -108,8 +110,11 @@ Then:
 ```sh
 git -C <shelf> add .wise-code
 git -C <shelf> commit -m "shelf(<Project>): <C-NNNN> <book-slug> <section> <status>"
-git -C <shelf> pull --rebase --quiet && git -C <shelf> push --quiet
+git -C <shelf> pull --rebase --quiet
+git -C <shelf> push --quiet
 ```
+
+(One call per line; run `push` only if `pull` succeeded.)
 
 Rebase conflict → resolve it if it is only appended entries on both sides (keep both); otherwise abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next record.
 

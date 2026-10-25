@@ -252,7 +252,8 @@ class ShelfTests(unittest.TestCase):
     def test_every_cite_and_explanation_is_pushed(self):
         text = self.text()
         self.assertIn("## Step 5: Record and push (after every cite and every explanation)", text)
-        self.assertIn("pull --rebase --quiet && git -C <shelf> push --quiet", text)
+        self.assertIn("git -C <shelf> pull --rebase --quiet\ngit -C <shelf> push --quiet", text)
+        self.assertIn("No `cd`, no `&&` chains", text)
         self.assertIn("citations/<Project>.md", text)
 
     def test_quotes_are_checked_and_capped(self):
