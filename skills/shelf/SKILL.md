@@ -49,6 +49,12 @@ Run each git command as its own call, with `git -C <path>` and absolute paths. N
   ```
   If a tool exists to add a GitHub repo to this session (cloud sessions), use it before cloning.
 - Clone present → `git -C "<state>/shelf-repo" pull --rebase --quiet`, and re-run `sparse-checkout set` if `Folders` changed.
+- **Git LFS.** If the shelf's `.gitattributes` contains `filter=lfs`, the books are LFS files, and a plain clone leaves pointer files instead of PDFs (unless LFS is set up globally). After the clone, and after every pull or `sparse-checkout set`, run:
+  ```sh
+  git -C "<state>/shelf-repo" lfs install --local
+  git -C "<state>/shelf-repo" lfs pull --include="shared/**,<folder>/**"
+  ```
+  List one `<folder>/**` per mapped folder, comma-separated, so only in-scope books are downloaded (LFS bandwidth is metered). `git lfs` missing → say once "Shelf: books use Git LFS but git-lfs is not installed", with the setup guide link, then answer normally. LFS pull fails (quota, network) → say once "Shelf: Git LFS download failed", with git's error line.
 - A folder in `Folders` that is missing in the repo → say once: "Shelf: folder `<name>` not in shelf". Names must match exactly.
 - Clone fails (not found, no access, no network) → reply once this session with "Shelf: repo `<Repo>` not reachable", git's error line, and the setup guide link above, then answer the question normally. A failed pull with a clone present → use the clone as it is and say it may be stale. Don't retry on every question. Never fall back to a different repo or a public copy.
 
@@ -71,7 +77,7 @@ Index files live in the shelf at `.wise-code/shelf/index/<folder>/<book-slug>.md
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" <page> "<quote>"
 ```
 
-Exit 0 = found (it prints the page). 1 = missing → drop the quote, keep the page reference. 2 = unreadable (scanned PDF without text, no `pdftotext`) → say so, cite pages only.
+Exit 0 = found (it prints the page). 1 = missing → drop the quote, keep the page reference. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the LFS step in Step 1 and check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
 
 ## Step 3: Read first
 

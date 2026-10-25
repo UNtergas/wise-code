@@ -7,7 +7,8 @@ quote can cross a page break). Markdown and text files are searched whole; pass
 "-" as the page. Matching ignores case, whitespace, line-break hyphenation,
 typographic quotes and dashes, and common ligatures.
 
-Exit 0: found (prints the page). 1: not found. 2: the book can't be read.
+Exit 0: found (prints the page). 1: not found. 2: the book can't be read
+(LFS_POINTER when the file is a Git LFS pointer that was never downloaded).
 """
 
 from pathlib import Path
@@ -45,12 +46,26 @@ def pdf_page(path, page):
     return result.stdout.decode("utf-8", errors="replace")
 
 
+LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def is_lfs_pointer(path):
+    """A checkout without Git LFS leaves a small text pointer in place of the book."""
+    try:
+        with path.open("rb") as stream:
+            return stream.read(len(LFS_POINTER)) == LFS_POINTER
+    except OSError:
+        return False
+
+
 def check(path, page, quote, read_page=pdf_page):
-    """Return (status, page). status is FOUND, MISSING or UNREADABLE."""
+    """Return (status, page). status is FOUND, MISSING, LFS_POINTER or UNREADABLE."""
     path = Path(path)
     needle = normalize(quote)
     if not needle or not path.is_file():
         return "UNREADABLE", None
+    if is_lfs_pointer(path):
+        return "LFS_POINTER", None
     if path.suffix.lower() != ".pdf":
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
