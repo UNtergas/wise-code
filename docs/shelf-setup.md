@@ -27,8 +27,35 @@ wise-code-shelf/
 - Books outside any folder are ignored. Put general books in `shared/`.
 - Supported: `.pdf` with a text layer, `.md`, `.txt`. A scanned PDF needs OCR
   first (for example `ocrmypdf in.pdf out.pdf`). Convert EPUB to PDF or Markdown.
-- GitHub rejects files over 100 MB. Split big PDFs or use Git LFS.
+- GitHub warns on files over 50 MiB, rejects files over 100 MiB, and wants a repo
+  under 1 GB. Git keeps every version forever, so deleting a PDF later doesn't
+  shrink the repo. A few dozen normal books fit in plain Git; past that, use LFS.
 - Don't create `.wise-code/`. WiseCode creates it on the first citation.
+
+### Optional: Git LFS for big shelves
+
+With LFS, Git stores a small pointer and GitHub stores the PDF separately.
+WiseCode detects it from `.gitattributes` and downloads only the folders a
+project maps.
+
+```sh
+git lfs install
+git lfs track "*.pdf"
+git add .gitattributes shared/ job-tracking/
+git commit -m "Add books"
+git push
+```
+
+- Set this up **before** the first commit of PDFs. PDFs already committed
+  without LFS stay in the history; moving them needs `git lfs migrate import`,
+  which rewrites history.
+- Free and Pro plans include 10 GiB of LFS storage and 10 GiB of download a
+  month. Every clone downloads the mapped books again, and cloud sessions
+  start fresh each time, so watch the bandwidth. Over quota without a payment
+  method, LFS stops until next month, and WiseCode reports "Git LFS download failed".
+- Every machine running WiseCode needs `git-lfs` installed (`brew install git-lfs`,
+  `apt install git-lfs`). Without it the books arrive as pointer files and WiseCode
+  says "books use Git LFS but git-lfs is not installed".
 
 ## 3. Give Claude access
 
@@ -79,4 +106,6 @@ not access control: whoever can read the repo can read every folder.
 | shelf repo not reachable | Steps 1 and 3; check `Repo:` spelling |
 | folder `x` not in shelf | Folder name in `Folders` doesn't match the repo exactly |
 | quote unreadable | PDF has no text layer (OCR it) or `pdftotext` is missing (install poppler) |
+| books use Git LFS but git-lfs is not installed | Install `git-lfs` on that machine |
+| Git LFS download failed | LFS quota used up, or no network; check GitHub billing → Git LFS |
 | push pending | Another project pushed first; WiseCode retries at the next record |
