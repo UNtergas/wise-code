@@ -61,6 +61,16 @@ class CheckQuoteTests(unittest.TestCase):
         status = cq.check(self.pdf, 6, "anything", read_page=lambda p, n: "  \n")
         self.assertEqual(status, ("UNREADABLE", None))
 
+    def test_lfs_pointer_is_named_not_called_scanned(self):
+        pointer = Path(self.temp.name) / "lfs.pdf"
+        pointer.write_text("version https://git-lfs.github.com/spec/v1\n"
+                           "oid sha256:" + "a" * 64 + "\nsize 20482931\n", encoding="utf-8")
+        self.assertEqual(cq.check(pointer, 3, "anything", read_page=reader),
+                         ("LFS_POINTER", None))
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), str(pointer), "3", "x"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout.strip()), (2, "LFS_POINTER"))
+
     def test_markdown_book_is_searched_whole(self):
         book = Path(self.temp.name) / "notes.md"
         book.write_text("# Notes\n\nBackoff spreads   retries\nover time.\n", encoding="utf-8")

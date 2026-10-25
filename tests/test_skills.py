@@ -262,6 +262,14 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("at most 2", text)
         self.assertTrue((ROOT / "skills/shelf/check_quote.py").is_file())
 
+    def test_lfs_books_are_pulled_for_mapped_folders_only(self):
+        text = self.text()
+        self.assertIn("lfs install --local", text)
+        self.assertIn('lfs pull --include="shared/**,<folder>/**"', text)
+        self.assertIn("LFS_POINTER", text)
+        guide = (ROOT / "docs/shelf-setup.md").read_text(encoding="utf-8")
+        self.assertIn("git lfs track", guide)
+
     def test_reset_keeps_shelf(self):
         reset = (ROOT / "skills/reset/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("`shelf.md`", reset)
