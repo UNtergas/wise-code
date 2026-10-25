@@ -1,7 +1,7 @@
 {
   "name": "wise-code",
-  "version": "0.5.5",
-  "description": "Learning-first development with three assist levels (Hint, Pseudo, Full code): Teach, Quiz, Explore, Correct, Reflect, Sharpen, Critique, Grill, Grill with docs and Research, with per-project learning materials. Fork of VibeWise by Noah Kim; adapts pstack by Lauren Tan.",
+  "version": "0.6.0",
+  "description": "Learning-first development with three assist levels (Hint, Pseudo, Full code): Teach, Quiz, Explore, Correct, Reflect, Sharpen, Critique, Grill, Grill with docs, Research and Shelf (citations from your own books), with per-project learning materials. Fork of VibeWise by Noah Kim; adapts pstack by Lauren Tan.",
   "author": {
     "name": "Nguyen Anh Tuan"
   },

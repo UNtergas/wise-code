@@ -221,6 +221,38 @@ class SessionStartTests(unittest.TestCase):
         (alternate / ".wise-code").symlink_to(state, target_is_directory=True)
         self.assertIsNone(self.run_hook(cwd=alternate))
 
+    def test_shelf_config_alone_activates_shelf_and_canary_only(self):
+        state = self.project / ".wise-code"
+        state.mkdir()
+        (state / "shelf.md").write_text("# Shelf\nRepo: me/shelf\n", encoding="utf-8")
+        context = self.context()
+        self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
+        self.assertNotIn(str(ROOT / "skills/learn/SKILL.md"), context)
+        self.assertEqual(context.count("'--------> sir _h00t'"), 1)
+
+    def test_shelf_and_active_learning_both_restore_with_one_canary(self):
+        state = self.state()
+        (state / "shelf.md").write_text("# Shelf\nRepo: me/shelf\n", encoding="utf-8")
+        context = self.context()
+        self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
+        self.assertIn(str(ROOT / "skills/learn/SKILL.md"), context)
+        self.assertEqual(context.count("'<---------------- fin3'"), 1)
+
+    def test_paused_learning_still_restores_shelf_but_not_learn(self):
+        state = self.state(mode="paused")
+        (state / "shelf.md").write_text("# Shelf\n", encoding="utf-8")
+        context = self.context()
+        self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
+        self.assertNotIn(str(ROOT / "skills/learn/SKILL.md"), context)
+
+    def test_symlinked_shelf_config_is_ignored(self):
+        state = self.project / ".wise-code"
+        state.mkdir()
+        target = self.root / "elsewhere.md"
+        target.write_text("# Shelf\n", encoding="utf-8")
+        (state / "shelf.md").symlink_to(target)
+        self.assertIsNone(self.run_hook())
+
     def test_hook_never_changes_state(self):
         state = self.state()
         before = {p.name: p.read_bytes() for p in state.iterdir()}

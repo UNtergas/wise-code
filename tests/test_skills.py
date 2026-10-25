@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILLS = sorted(path for path in (ROOT / "skills").iterdir() if path.is_dir())
 # Skills Claude may start on its own from their description; every other skill
 # runs only when the learner invokes it.
-MODEL_INVOKED = {"grill", "research"}
+MODEL_INVOKED = {"grill", "research", "shelf"}
 FENCE = re.compile(r"^(```|~~~).*?^\1", re.MULTILINE | re.DOTALL)
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
@@ -32,7 +32,7 @@ class SkillLayoutTests(unittest.TestCase):
         names = {path.name for path in SKILLS}
         expected = {"learn", "level", "reset", "teach", "quiz",
                     "explore", "correct", "reflect", "sharpen", "critique",
-                    "grill", "grill-with-docs", "research"}
+                    "grill", "grill-with-docs", "research", "shelf"}
         self.assertTrue(expected <= names, expected - names)
 
     def test_each_skill_has_frontmatter_codex_notes_and_agent_policy(self):
@@ -125,6 +125,7 @@ class LearnerFirstTests(unittest.TestCase):
             "correct": "Ask the learner first",
             "sharpen": "Ask the learner to rewrite the task",
             "critique": "never rewrites the",
+            "shelf": "Read first: the learner reads the section before you explain it.",
         }
         for name, cue in cues.items():
             with self.subTest(skill=name):
@@ -158,7 +159,8 @@ class LearnerFirstTests(unittest.TestCase):
         # its model and prompt cache. Hints live in the body, not frontmatter,
         # because claude.ai skill uploads reject Claude Code-only keys.
         expected = {"research": "model: sonnet", "explore": "model: sonnet",
-                    "grill": "model: haiku", "teach": "model: sonnet"}
+                    "grill": "model: haiku", "teach": "model: sonnet",
+                    "shelf": "model: sonnet"}
         for skill, hint in expected.items():
             with self.subTest(skill=skill):
                 path = ROOT / f"skills/{skill}/SKILL.md"
@@ -215,6 +217,54 @@ class ResearchSpanTests(unittest.TestCase):
         self.assertIn("skills/research/verify_quotes.py", text)
         self.assertIn("Copy, never recall", text)
         self.assertTrue((ROOT / "skills/research/verify_quotes.py").is_file())
+
+
+class ShelfTests(unittest.TestCase):
+    """The shelf is opt-in, bounded to mapped folders, and pushes every record."""
+
+    def text(self):
+        return (ROOT / "skills/shelf/SKILL.md").read_text(encoding="utf-8")
+
+    def test_gate_comes_first_and_is_silent(self):
+        text = self.text()
+        self.assertLess(text.index("## Step 0: Gate"), text.index("## Step 1: Sync"))
+        gate = text.split("## Step 0: Gate")[1].split("\n## ")[0]
+        self.assertIn("**never create**", gate)
+        self.assertIn("Say nothing about the shelf", gate)
+        description = frontmatter(ROOT / "skills/shelf/SKILL.md")["description"]
+        self.assertIn("stop silently if it is missing", description)
+
+    def test_unreachable_shelf_links_the_setup_guide(self):
+        guide = ROOT / "docs/shelf-setup.md"
+        self.assertTrue(guide.is_file())
+        self.assertIn("https://github.com/UNtergas/wise-code/blob/main/docs/shelf-setup.md",
+                      self.text())
+        self.assertIn("not reachable", self.text())
+        self.assertIn("not reachable", guide.read_text(encoding="utf-8"))
+        self.assertIn("docs/shelf-setup.md", (ROOT / "README.md").read_text(encoding="utf-8"))
+
+    def test_scope_is_shared_plus_mapped_folders_via_sparse_clone(self):
+        text = self.text()
+        self.assertIn("`shared` is always in scope", text)
+        self.assertIn("sparse-checkout set .wise-code shared <Folders...>", text)
+        self.assertIn("lists `shelf-repo/`", text)
+
+    def test_every_cite_and_explanation_is_pushed(self):
+        text = self.text()
+        self.assertIn("## Step 5: Record and push (after every cite and every explanation)", text)
+        self.assertIn("pull --rebase --quiet && git -C <shelf> push --quiet", text)
+        self.assertIn("citations/<Project>.md", text)
+
+    def test_quotes_are_checked_and_capped(self):
+        text = self.text()
+        self.assertIn("skills/shelf/check_quote.py", text)
+        self.assertIn("at most 2", text)
+        self.assertTrue((ROOT / "skills/shelf/check_quote.py").is_file())
+
+    def test_reset_keeps_shelf(self):
+        reset = (ROOT / "skills/reset/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("`shelf.md`", reset)
+        self.assertIn("`shelf-repo/`", reset)
 
 
 class SinglePluginTests(unittest.TestCase):

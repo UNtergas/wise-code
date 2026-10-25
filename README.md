@@ -39,6 +39,10 @@ Build and learn:
   Evidence line carries a short «verbatim span» from the page it links;
   `skills/research/verify_quotes.py` checks every span against the live page
   before the report goes out.
+- `/wise-code:shelf [question]` — send you to the exact section of your own
+  books (a private shelf repo) for a concept question; you read, explain it back,
+  and the shelf records it. No question, run in the shelf repo: status report.
+  Needs setup: [docs/shelf-setup.md](docs/shelf-setup.md).
 
 In a project with an active learning profile, both grills ask for your answer
 before showing Claude's recommendation, and in grill-with-docs you write the ADRs.
@@ -46,7 +50,9 @@ Without a profile they behave as plain grills. When you describe a plan that
 still has open decisions and nothing is built yet, Claude adds one line naming
 them and suggesting `/wise-code:grill`; it grills only when you run the command
 or ask to be grilled. `research` starts on its own when you say "find out" or
-"check the docs". The other commands run only when you call them.
+"check the docs". `shelf` starts on its own for concept questions, but only in a
+project with `.wise-code/shelf.md`; elsewhere it stays silent. The other commands
+run only when you call them.
 
 Review and retain:
 
@@ -101,8 +107,14 @@ reads or writes another project's notes, a parent repository's, or a global fold
   reflections.md      your session reflections, in your words
   plugin-feedback.md  proposed fixes to WiseCode, to apply in this repository
   teach/              Teach workspace: mission, lessons, reference, learning records
+  shelf.md            shelf config (opt-in); see docs/shelf-setup.md
+  shelf-repo/         sparse clone of your shelf, gitignored
   backups/            created by /wise-code:reset
 ```
+
+The one opt-in exception: with `shelf.md`, the project reads its mapped folders of
+your shelf repo and pushes citation records there. Book records live in the
+shelf, project records in the project.
 
 Files appear lazily, when there is something to put in them. Formats are defined in
 `skills/learn/materials.md`. Add `.wise-code/` to the project's `.gitignore` if the

@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Shelf"
+  short_description: "Send the learner to the right section of their own books"
+policy:
+  allow_implicit_invocation: true

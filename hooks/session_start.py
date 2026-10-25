@@ -1,7 +1,8 @@
 """Restore learning context when Claude Code starts or resumes a session.
 
-Claude Code sends a JSON event on stdin. For a project with active learning notes,
-we print JSON instructions telling Claude which files to read. Otherwise we stay
+Claude Code sends a JSON event on stdin. For a project with active
+learning notes or a shelf config, we print JSON instructions telling Claude which
+files to read. Otherwise we stay
 silent. This hook does not teach, write notes, or parse conversation transcripts.
 The events that trigger it (including compaction) are configured in hooks.json.
 """
@@ -85,12 +86,42 @@ def restore(payload):
         return None
     # Installing the plugin alone doesn't enable learning in every repository.
     # First-time onboarding happens through the Learn skill, not this hook.
-    if not profile_is_active(state / "profile.md"):
+    learning = profile_is_active(state / "profile.md")
+    # The shelf is opt-in per project and works without a Learn profile.
+    shelf_config = state / "shelf.md"
+    shelf = shelf_config.is_file() and not shelf_config.is_symlink()
+    if not learning and not shelf:
         return None
+    parts = []
+    if learning:
+        parts.append(learning_context(state))
+    if shelf:
+        parts.append(
+            "WiseCode Shelf is on for this project "
+            f"({shelf_config}). For concept questions, load the Shelf skill:\n"
+            f"{PLUGIN_ROOT / 'skills/shelf/SKILL.md'}"
+        )
+    if not learning:
+        parts.append(canary_context())
+    # Claude Code adds additionalContext to the model's context. These are reading
+    # instructions for Claude; the hook itself hasn't loaded the map or progress.
+    return {"hookSpecificOutput": {
+        "hookEventName": "SessionStart", "additionalContext": "\n\n".join(parts)
+    }}
 
+
+def canary_context():
+    return (
+        f"Canary: start every chat reply with the exact line {CANARY_START!r} and end "
+        f"it with the exact line {CANARY_END!r}, as plain text. It marks a complete "
+        "reply, not a true one; files you write never carry it."
+    )
+
+
+def learning_context(state):
     # Bootstrap from source files instead of emitting partial notes or an incomplete
     # topic index. Output size is independent of the amount of learning history.
-    context = (
+    return (
         "WiseCode is active for this project. Before responding or coding, use Read "
         "to load the Learn guide and its referenced behavior instructions:\n"
         f"{PLUGIN_ROOT / 'skills/learn/SKILL.md'}\n\n"
@@ -105,15 +136,8 @@ def restore(payload):
         "If onboarding is incomplete, follow the guide and ask only unanswered "
         "questions; do not repeat completed onboarding. If the profile is now "
         "paused, keep it paused: this hook is not an explicit Learn invocation.\n"
-        f"Canary: start every chat reply with the exact line {CANARY_START!r} and end "
-        f"it with the exact line {CANARY_END!r}, as plain text. It marks a complete "
-        "reply, not a true one; files you write never carry it."
+        + canary_context()
     )
-    # Claude Code adds additionalContext to the model's context. These are reading
-    # instructions for Claude; the hook itself hasn't loaded the map or progress.
-    return {"hookSpecificOutput": {
-        "hookEventName": "SessionStart", "additionalContext": context
-    }}
 
 
 def main():
