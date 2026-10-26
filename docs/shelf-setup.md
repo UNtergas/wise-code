@@ -53,6 +53,10 @@ git push
   month. Every clone downloads the mapped books again, and cloud sessions
   start fresh each time, so watch the bandwidth. Over quota without a payment
   method, LFS stops until next month, and WiseCode reports "Git LFS download failed".
+- WiseCode asks once per session (project and shelf mode) when the shelf uses
+  LFS but `git-lfs` is missing, or when the shelf has a PDF of 50 MiB or more
+  without LFS. It shows the steps; you run the install and any history rewrite.
+  Choose "Don't ask again" to write `LFS prompt: off` to `shelf.md`.
 - Every machine running WiseCode needs `git-lfs` installed (`brew install git-lfs`,
   `apt install git-lfs`). Without it the books arrive as pointer files and WiseCode
   says "books use Git LFS but git-lfs is not installed".
