@@ -9,11 +9,11 @@ disable-model-invocation: true
 Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
 
 ```text
---------> sir _h00t
+=====>
 ```
 
 ```text
-<---------------- fin3
+<=====
 ```
 
 Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
@@ -80,3 +80,12 @@ finding), write an entry in `plugin-feedback.md`: what happened, the guide and
 section, and a small proposed edit (old text → new text). Never edit the installed
 plugin; the learner applies accepted edits in their WiseCode repository. Show the
 entries and say how many were added. If there were none, say so.
+
+## 5. Session recap
+
+Last, write the session recap as "Session end" in the
+[Learn guide](../learn/SKILL.md) describes: append an entry to
+`session-recap.md`, ending with `Start check: pending`, and show it in chat. Do it
+after the learner's reflection and your evidence check, never before: the recap
+would hand them the answers to step 2. The next new session opens with a start
+check built from its `Check points:`.

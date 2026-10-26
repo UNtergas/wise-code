@@ -9,11 +9,11 @@ disable-model-invocation: true
 Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
 
 ```text
---------> sir _h00t
+=====>
 ```
 
 ```text
-<---------------- fin3
+<=====
 ```
 
 Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
@@ -76,5 +76,51 @@ If no profile exists, read [onboarding.md](onboarding.md) and run onboarding.
 Use [state-templates.md](state-templates.md) when creating state. These files are
 local Markdown maintained with normal file tools; there is no service to call.
 
-After setup, continue the user's build task. If none was provided, ask what they
-want to build or change. Invoking this skill again should not reset anything.
+After setup, run the Start check below if one is due, then continue the user's
+build task. If none was provided, ask what they want to build or change. Invoking
+this skill again should not reset anything.
+
+## Start check
+
+At the first reply of a new session (startup or clear, not resume, compaction or
+fork), find `session-recap.md` with Glob. If any entry says `Start check: pending`,
+run the check before other work, even if the learner opened with a build request:
+say in one line that you will check the last session first, then do it.
+
+1. Build the questions from the `Check points:` of every pending entry (newest
+   first, at most 5 questions in all). Don't show the recap yet: it holds the
+   answers.
+2. QCM: 2 or 3 multiple-choice questions, 4 options each, one correct, distractors
+   that a real misunderstanding of this project would pick. Use AskUserQuestion,
+   one question per call, `multiSelect: false`, so the learner answers one at a
+   time; without it, list options A to D and wait.
+3. Q/A: 1 or 2 open questions the learner answers in their own words (a why, a
+   tradeoff, or "explain how X works in this project"). Ask one, wait, then the
+   next.
+4. After each answer: verdict (`correct`, `partial`, `wrong`) and one to three
+   lines of feedback grounded in the recap and the code. Append a qa-history entry
+   with source `start-check` right away, so an interrupted check keeps its
+   progress. A `wrong` or `partial` answer adds a question to `questions.md` (box
+   1, due today + 1) and, for a missed fact, offers an atomic card.
+5. End with the score, then show the recap's `Open:` items so the session starts
+   where the last one stopped. Rewrite each checked entry's line to
+   `Start check: done <date> · <score>`.
+
+If the learner says "skip", stop, mark the pending entries
+`Start check: skipped <date>`, and continue. Never answer the questions for the
+learner or reveal the correct option before they answer. The check runs once per
+recap: a `done` or `skipped` entry is never checked again.
+
+## Session end
+
+When the learner says they are stopping ("done for today", "wrap up", "end
+session", or runs `/wise-code:reflect`), write the session recap before the final
+reply. Gather evidence first: this conversation, this session's qa-history
+entries, changes to `progress.md`, and the Git log and diff since the session
+started. Append an entry to `session-recap.md` in the format from
+[materials.md](materials.md), ending with `Start check: pending`.
+
+Show the learner the recap in chat: what was finished, what they learned, what is
+still open. Keep it short; the file holds the full entry. Tell them in one line
+that the next session opens with a check on it. If they correct something,
+update the entry. Recap only what the evidence shows; never pad it.

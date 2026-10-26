@@ -83,8 +83,8 @@ class SessionStartTests(unittest.TestCase):
                 self.assertIn("Search the entire progress.md", context)
                 self.assertNotIn("Checkpoint frequency: Light", context)
                 self.assertNotIn("two writes must succeed together", context)
-                self.assertIn("'--------> sir _h00t'", context)
-                self.assertIn("'<---------------- fin3'", context)
+                self.assertIn("'=====>'", context)
+                self.assertIn("'<====='", context)
 
     def test_existing_repo_restores_from_nested_working_directory(self):
         self.state()
@@ -228,7 +228,7 @@ class SessionStartTests(unittest.TestCase):
         context = self.context()
         self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
         self.assertNotIn(str(ROOT / "skills/learn/SKILL.md"), context)
-        self.assertEqual(context.count("'--------> sir _h00t'"), 1)
+        self.assertEqual(context.count("'=====>'"), 1)
 
     def test_shelf_and_active_learning_both_restore_with_one_canary(self):
         state = self.state()
@@ -236,7 +236,7 @@ class SessionStartTests(unittest.TestCase):
         context = self.context()
         self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
         self.assertIn(str(ROOT / "skills/learn/SKILL.md"), context)
-        self.assertEqual(context.count("'<---------------- fin3'"), 1)
+        self.assertEqual(context.count("'<====='"), 1)
 
     def test_paused_learning_still_restores_shelf_but_not_learn(self):
         state = self.state(mode="paused")
@@ -272,6 +272,51 @@ class SessionStartTests(unittest.TestCase):
         self.assertIn("Restarting or compacting is not approval", context)
         self.assertNotIn("Use SQLite", context)
         self.assertNotIn("JSON storage", context)
+
+    def recap(self, state, status="pending"):
+        (state / "session-recap.md").write_text(
+            "# Session Recap\n\n## 2026-10-25 · retry queue\n"
+            "Check points:\n- Backoff doubles because the broker throttles bursts.\n"
+            f"Start check: {status}\n", encoding="utf-8"
+        )
+
+    def test_pending_recap_triggers_start_check_on_new_sessions_only(self):
+        self.recap(self.state())
+        for source, expected in (("startup", True), ("clear", True), ("resume", False),
+                                 ("compact", False), ("fork", False)):
+            with self.subTest(source=source):
+                context = self.context(source=source)
+                self.assertEqual("A start check is due" in context, expected)
+                self.assertNotIn("broker throttles", context)
+
+    def test_checked_or_skipped_recap_does_not_trigger(self):
+        for status in ("done 2026-10-26 · 3/4", "skipped 2026-10-26"):
+            with self.subTest(status=status):
+                state = self.project / ".wise-code"
+                if not state.exists():
+                    state = self.state()
+                self.recap(state, status)
+                self.assertNotIn("A start check is due", self.context())
+
+    def test_older_pending_entry_still_triggers(self):
+        state = self.state()
+        self.recap(state)
+        with (state / "session-recap.md").open("a") as stream:
+            stream.write("\n## 2026-10-26 · tests\nStart check: done 2026-10-26 · 2/2\n")
+        self.assertIn("A start check is due", self.context())
+
+    def test_start_check_needs_active_learning(self):
+        state = self.state(mode="paused")
+        self.recap(state)
+        (state / "shelf.md").write_text("repo: x\n", encoding="utf-8")
+        self.assertNotIn("A start check is due", self.context())
+
+    def test_symlinked_recap_is_ignored(self):
+        state = self.state()
+        target = self.root / "elsewhere.md"
+        target.write_text("Start check: pending\n", encoding="utf-8")
+        (state / "session-recap.md").symlink_to(target)
+        self.assertNotIn("A start check is due", self.context())
 
 
 if __name__ == "__main__":

@@ -9,11 +9,11 @@ argument-hint: "Concept question, or nothing for shelf status"
 Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
 
 ```text
---------> sir _h00t
+=====>
 ```
 
 ```text
-<---------------- fin3
+<=====
 ```
 
 Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
