@@ -288,10 +288,29 @@ class ShelfTests(unittest.TestCase):
     def test_lfs_books_are_pulled_for_mapped_folders_only(self):
         text = self.text()
         self.assertIn("lfs install --local", text)
-        self.assertIn('lfs pull --include="shared/**,<folder>/**"', text)
+        self.assertIn('--include="shared/**,<folder>/**"', text)
+        self.assertIn('git -C "<shelf>" lfs pull', text)
         self.assertIn("LFS_POINTER", text)
         guide = (ROOT / "docs/shelf-setup.md").read_text(encoding="utf-8")
         self.assertIn("git lfs track", guide)
+
+    def test_shelf_mode_syncs_and_pulls_every_folder(self):
+        text = self.text()
+        section = text[text.index("### Shelf mode"):text.index("### Git LFS step")]
+        self.assertIn('git -C "<shelf>" pull --rebase --quiet', section)
+        self.assertIn("without `--include`", section)
+        self.assertIn("never force or reset", section)
+
+    def test_lfs_install_prompt_covers_both_cases_and_never_installs(self):
+        text = self.text()
+        section = text[text.index("### Prompt to install LFS"):text.index("## Step 2")]
+        self.assertIn("**LFS needed, not installed:**", section)
+        self.assertIn("**Big PDFs without LFS:**", section)
+        self.assertIn('-size +50M', section)
+        self.assertIn("header `Git LFS`", section)
+        self.assertIn("LFS prompt: off", section)
+        self.assertIn("Don't run the install yourself", section)
+        self.assertIn("the learner runs that themselves, never you", section)
 
     def test_reset_keeps_shelf(self):
         reset = (ROOT / "skills/reset/SKILL.md").read_text(encoding="utf-8")

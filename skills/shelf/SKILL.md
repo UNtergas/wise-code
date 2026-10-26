@@ -38,9 +38,13 @@ Two kinds of session:
 
 ## Step 1: Sync (once per session)
 
-Project mode keeps a sparse clone at `<state>/shelf-repo/`. Make sure `<state>/.gitignore` exists and lists `shelf-repo/` (write it with the file tool), so the project never commits the books.
+`<shelf>` below is `<state>/shelf-repo` in project mode and the shelf repo's root in shelf mode.
 
 Run each git command as its own call, with `git -C <path>` and absolute paths. No `cd`, no `&&` chains, no shell variables: permission checks block those and the learner gets prompts.
+
+### Project mode
+
+Project mode keeps a sparse clone at `<state>/shelf-repo/`. Make sure `<state>/.gitignore` exists and lists `shelf-repo/` (write it with the file tool), so the project never commits the books.
 
 - Clone missing →
   ```sh
@@ -49,14 +53,39 @@ Run each git command as its own call, with `git -C <path>` and absolute paths. N
   ```
   If a tool exists to add a GitHub repo to this session (cloud sessions), use it before cloning.
 - Clone present → `git -C "<state>/shelf-repo" pull --rebase --quiet`, and re-run `sparse-checkout set` if `Folders` changed.
-- **Git LFS.** If the shelf's `.gitattributes` contains `filter=lfs`, the books are LFS files, and a plain clone leaves pointer files instead of PDFs (unless LFS is set up globally). After the clone, and after every pull or `sparse-checkout set`, run:
-  ```sh
-  git -C "<state>/shelf-repo" lfs install --local
-  git -C "<state>/shelf-repo" lfs pull --include="shared/**,<folder>/**"
-  ```
-  List one `<folder>/**` per mapped folder, comma-separated, so only in-scope books are downloaded (LFS bandwidth is metered). `git lfs` missing → say once "Shelf: books use Git LFS but git-lfs is not installed", with the setup guide link, then answer normally. LFS pull fails (quota, network) → say once "Shelf: Git LFS download failed", with git's error line.
+- **Git LFS:** if the shelf uses LFS, run the LFS step below with
+  `--include="shared/**,<folder>/**"`, one `<folder>/**` per mapped folder,
+  comma-separated, so only in-scope books are downloaded (LFS bandwidth is metered).
 - A folder in `Folders` that is missing in the repo → say once: "Shelf: folder `<name>` not in shelf". Names must match exactly.
 - Clone fails (not found, no access, no network) → reply once this session with "Shelf: repo `<Repo>` not reachable", git's error line, and the setup guide link above, then answer the question normally. A failed pull with a clone present → use the clone as it is and say it may be stale. Don't retry on every question. Never fall back to a different repo or a public copy.
+
+### Shelf mode
+
+No clone: the books are the working tree. Run `git -C "<shelf>" pull --rebase --quiet` so books added on another machine are present. A failed pull (no network, conflict) → use the files as they are and say once they may be stale; never force or reset. If the shelf uses LFS, run the LFS step below without `--include`: every folder is in scope.
+
+### Git LFS step (both modes)
+
+The shelf uses LFS when its `.gitattributes` contains `filter=lfs`. A clone made without git-lfs leaves small pointer files instead of PDFs. Check `git lfs version` first, then, after every clone, pull or `sparse-checkout set`:
+
+```sh
+git -C "<shelf>" lfs install --local
+git -C "<shelf>" lfs pull
+```
+
+(Project mode adds the `--include` above.) LFS pull fails (quota, network) → say once "Shelf: Git LFS download failed", with git's error line, then answer normally.
+
+### Prompt to install LFS (both modes)
+
+Ask the learner once per session, unless `<state>/shelf.md` says `LFS prompt: off`, in either case:
+
+- **LFS needed, not installed:** the shelf uses LFS and `git lfs version` fails. Say "Shelf: books use Git LFS but git-lfs is not installed".
+- **Big PDFs without LFS:** the shelf doesn't use LFS and has a PDF of 50 MiB or more. Find them with one call: `find "<shelf>" -name "*.pdf" -size +50M -not -path "*/.git/*"`. Say which files, and why: GitHub warns over 50 MiB, rejects a push over 100 MiB, and every version stays in history forever.
+
+Use AskUserQuestion: header `Git LFS`, one question, `multiSelect: false`, options **Show the steps**, **Not now**, **Don't ask again**. Without the picker, ask in text and wait.
+
+- **Show the steps** → give the install command for their OS (`brew install git-lfs`, `sudo apt install git-lfs`, `winget install GitHub.GitLFS`), then `git lfs install` once per machine. Don't run the install yourself: it changes their system and may need their password. For big PDFs, also give the shelf-setup steps (`git lfs track "*.pdf"`, commit `.gitattributes` before the PDFs). If big PDFs are already committed, explain that moving them needs `git lfs migrate import --include="*.pdf"` and a force push, which rewrites history; the learner runs that themselves, never you. Link the [setup guide](https://github.com/UNtergas/wise-code/blob/main/docs/shelf-setup.md#optional-git-lfs-for-big-shelves). When they say it's done, rerun the LFS step.
+- **Not now** → answer normally; ask again next session.
+- **Don't ask again** → add `LFS prompt: off` to `<state>/shelf.md` (create it with only that line in shelf mode if missing), then answer normally.
 
 Read only files under `shared/` and the mapped folders. This boundary keeps a project from reading every book. It is a rule, not access control; don't widen it, even if the files are on disk.
 
@@ -77,7 +106,7 @@ Index files live in the shelf at `.wise-code/shelf/index/<folder>/<book-slug>.md
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" <page> "<quote>"
 ```
 
-Exit 0 = found (it prints the page). 1 = missing → drop the quote, keep the page reference. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the LFS step in Step 1 and check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
+Exit 0 = found (it prints the page). 1 = missing → drop the quote, keep the page reference. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
 
 ## Step 3: Read first
 
