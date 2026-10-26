@@ -73,8 +73,8 @@ Switch levels in chat at any time:
 
 ## Canary
 
-Every WiseCode reply starts with the line `--------> sir _h00t` and ends with
-`<---------------- fin3` (stated in each skill and in the restore hook for
+Every WiseCode reply starts with the line `=====>` and ends with
+`<=====` (stated in each skill and in the restore hook for
 active projects). A missing end line means the reply was cut off or the
 instructions were dropped. It marks a complete reply, not a true one; facts are
 guarded by research's span check.
@@ -105,6 +105,7 @@ reads or writes another project's notes, a parent repository's, or a global fold
   cards.tsv           flashcards in Anki's import format
   guardrails.md       repeated mistakes and the check that now prevents each
   reflections.md      your session reflections, in your words
+  session-recap.md    what each session finished + its start-check status
   plugin-feedback.md  proposed fixes to WiseCode, to apply in this repository
   teach/              Teach workspace: mission, lessons, reference, learning records
   shelf.md            shelf config (opt-in); see docs/shelf-setup.md
@@ -134,6 +135,15 @@ during a project land in that project's `plugin-feedback.md`; you apply them her
 - **Anki cards**: one atomic fact per card. Import with File → Import → `cards.tsv`.
   Re-importing the whole file is safe: Anki matches the front, updates the note and
   keeps its review schedule. Each project gets its own deck, `wise-code::<project>`.
+- **Session recap + start check**: when you stop ("done for today", "wrap up",
+  or `/wise-code:reflect`), Claude appends an evidence-backed recap to
+  `session-recap.md`: finished, learned, decided, open, and 3–5 check points.
+  The next new session (startup or `/clear`, not resume or compaction) opens
+  with a start check before any other work: 2–3 multiple-choice questions and
+  1–2 open questions on those check points, recap hidden until you answer.
+  Answers go to qa-history as `start-check`; misses enter the question bank.
+  Say "skip" to skip. On claude.ai there is no SessionStart hook, so the check
+  runs when you invoke `/wise-code:learn`.
 - **Guardrails**: one row per repeated mistake: the evidence, the level that
   enforces it, and the proof that it fails on the old mistake.
 

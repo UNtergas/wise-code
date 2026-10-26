@@ -9,11 +9,11 @@ disable-model-invocation: true
 Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
 
 ```text
---------> sir _h00t
+=====>
 ```
 
 ```text
-<---------------- fin3
+<=====
 ```
 
 Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
@@ -24,7 +24,7 @@ Run this in the main conversation, only when explicitly invoked. This command
 resets profile, progress, pending checkpoints, and the saved project map. Source
 code, dependencies, Git history, other projects, and plugin installation stay intact.
 Learning materials (`qa-history.md`, `questions.md`, `cards.tsv`,
-`guardrails.md`, `reflections.md`, `plugin-feedback.md`), the Teach workspace
+`guardrails.md`, `reflections.md`, `session-recap.md`, `plugin-feedback.md`), the Teach workspace
 (`teach/`), and the shelf config and clone (`shelf.md`, `shelf-repo/`) also stay intact: they are history the learner may want to keep. If the learner wants a clean slate, tell them which of those files exist so
 they can delete them themselves; don't delete them here.
 

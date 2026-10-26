@@ -24,6 +24,7 @@ learner copies it themselves.
 | `cards.tsv` | Flashcards in Anki's import format | Learn, Teach, Quiz |
 | `guardrails.md` | Recurring mistakes and the check that now prevents each | Correct |
 | `reflections.md` | The learner's own session reflections, in their words | Reflect |
+| `session-recap.md` | What each session finished, and the start check that tests it | Learn, Reflect |
 | `plugin-feedback.md` | Proposed edits to WiseCode itself, from this project's sessions | Reflect |
 | `teach/` | Teach workspace (mission, lessons, records) | Teach |
 
@@ -62,6 +63,7 @@ Follow-up: none
   - `explore` — the learner's prediction about existing code, checked by Explore
   - `critique` — a writing issue found by Critique
   - `reflect` — a gap between the learner's reflection and the evidence
+  - `start-check` — a start-check question on the previous session's recap
   - `asked` — the learner asked a question; `A:` is the gist of your answer
 - `A:` is a gist of one to three lines, never a transcript. For `asked`, log only
   questions with lasting value (a concept, a why, a tradeoff), not lookups such
@@ -162,6 +164,37 @@ Learner: <their words, unedited>
 Evidence check: <one to three lines: what the evidence supports, what it doesn't>
 ```
 
+## session-recap.md
+
+Append-only, newest at the bottom. One entry per session, written when the
+session ends (see "Session end" in [SKILL.md](SKILL.md)). Every line is backed by
+evidence from the session: a commit, a qa-history entry, a progress change, or a
+decision the learner made. Nothing is recapped that didn't happen.
+
+```markdown
+# Session Recap
+
+## 2026-10-26 · <one-line session goal>
+Finished:
+- <step, feature or fix completed, with commit or file>
+Learned:
+- <concept the learner demonstrated, with the qa-history entry or review>
+Decided:
+- <design decision the learner made, and why, in their words>
+Open:
+- <pending checkpoint, unfinished step, or concept still needing reinforcement>
+Check points:
+- <fact or reasoning worth testing next session; 3 to 5 bullets>
+Start check: pending
+```
+
+- `Check points:` is the source for the next start check. Each bullet is one
+  testable idea tied to this project, not a generic definition.
+- `Start check:` is `pending` when written. The start check rewrites it to
+  `done 2026-10-27 · 3/4` (score) or `skipped 2026-10-27`. Never set it to done
+  without asking the questions.
+- A session that finished nothing and taught nothing gets no entry.
+
 ## plugin-feedback.md
 
 Proposed changes to WiseCode itself, collected in this project because the
@@ -195,8 +228,11 @@ Status: proposed
 - **Correct:** reads qa-history, progress and Git history for repeated mistakes;
   keeps `guardrails.md`.
 - **Reflect:** stores the learner's reflection in `reflections.md`, checks it
-  against qa-history and progress, and writes WiseCode feedback to
-  `plugin-feedback.md`.
+  against qa-history and progress, writes WiseCode feedback to
+  `plugin-feedback.md`, and writes the session recap.
+- **Learn (session end and start):** writes `session-recap.md` when the learner
+  stops; at the next new session, runs the start check from its `Check points:`
+  and logs every answer as `start-check`.
 - **Critique:** logs recurring writing issues to qa-history; they can feed
   Correct like any other repeated mistake.
 - **Grill, Grill with docs:** in learning mode, log the learner's reasoning on

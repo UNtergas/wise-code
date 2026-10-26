@@ -18,8 +18,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 
 # Reply markers: a missing end line shows a reply was cut off or instructions
 # were dropped. Every SKILL.md states the same two lines.
-CANARY_START = "--------> sir _h00t"
-CANARY_END = "<---------------- fin3"
+CANARY_START = "=====>"
+CANARY_END = "<====="
 
 
 def profile_is_active(path):
@@ -41,6 +41,29 @@ def profile_is_active(path):
         return False
     # Older profiles may lack an explicit mode. Preserve their restoration behavior.
     return has_content
+
+
+# Sessions that start a fresh conversation. Resume, compact and fork continue
+# one, so the previous session's start check has already run or been skipped.
+NEW_SESSION_SOURCES = {"startup", "clear"}
+
+
+def start_check_pending(path):
+    """True if the session recap has an entry still awaiting its start check.
+
+    Like profile_is_active, this only scans for a marker line; recap content is
+    never copied into hook output.
+    """
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                if re.fullmatch(r"Start check:\s*pending\s*", line, re.IGNORECASE):
+                    return True
+    except (OSError, UnicodeError):
+        return False
+    return False
 
 
 def git_root(cwd):
@@ -95,6 +118,9 @@ def restore(payload):
     parts = []
     if learning:
         parts.append(learning_context(state))
+        if (payload.get("source") in NEW_SESSION_SOURCES
+                and start_check_pending(state / "session-recap.md")):
+            parts.append(start_check_context(state))
     if shelf:
         parts.append(
             "WiseCode Shelf is on for this project "
@@ -115,6 +141,17 @@ def canary_context():
         f"Canary: start every chat reply with the exact line {CANARY_START!r} and end "
         f"it with the exact line {CANARY_END!r}, as plain text. It marks a complete "
         "reply, not a true one; files you write never carry it."
+    )
+
+
+def start_check_context(state):
+    return (
+        "A start check is due: session-recap.md in the state directory "
+        f"({state}) has an entry marked 'Start check: pending'. Before other work, "
+        "even if the learner opened with a task, run the Start check from the Learn "
+        "guide: multiple-choice (QCM) and open Q/A questions on the last session's "
+        "Check points, asked one at a time, without showing the recap first. The "
+        "learner may say skip."
     )
 
 

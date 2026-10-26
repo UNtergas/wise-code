@@ -193,8 +193,8 @@ class LearnerFirstTests(unittest.TestCase):
 class CanaryTests(unittest.TestCase):
     """Every skill and the restore hook state the same exact reply markers."""
 
-    START = "--------> sir _h00t"
-    END = "<---------------- fin3"
+    START = "=====>"
+    END = "<====="
 
     def test_every_skill_states_both_markers_on_their_own_lines(self):
         for skill in SKILLS:
@@ -208,6 +208,29 @@ class CanaryTests(unittest.TestCase):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
         self.assertIn(f'CANARY_START = "{self.START}"', hook)
         self.assertIn(f'CANARY_END = "{self.END}"', hook)
+
+
+class SessionRecapTests(unittest.TestCase):
+    """Sessions end with an evidence-backed recap; the next one opens with a check."""
+
+    def test_learn_defines_start_check_and_session_end(self):
+        text = (ROOT / "skills/learn/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("## Start check", text)
+        self.assertIn("## Session end", text)
+        self.assertIn("AskUserQuestion", text)
+        self.assertIn("Don't show the recap yet", text)
+        self.assertIn("Start check: pending", text)
+
+    def test_recap_format_and_source_are_documented(self):
+        text = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
+        self.assertIn("## session-recap.md", text)
+        self.assertIn("Check points:", text)
+        self.assertIn("`start-check`", text)
+
+    def test_reflect_recaps_only_after_the_learner_writes(self):
+        text = (ROOT / "skills/reflect/SKILL.md").read_text(encoding="utf-8")
+        self.assertLess(text.index("## 2. The learner writes first"),
+                        text.index("## 5. Session recap"))
 
 
 class ResearchSpanTests(unittest.TestCase):
