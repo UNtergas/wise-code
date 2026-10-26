@@ -83,8 +83,8 @@ class SessionStartTests(unittest.TestCase):
                 self.assertIn("Search the entire progress.md", context)
                 self.assertNotIn("Checkpoint frequency: Light", context)
                 self.assertNotIn("two writes must succeed together", context)
-                self.assertIn("'=====>'", context)
-                self.assertIn("'<====='", context)
+                self.assertIn("'=====> ah0y_sir'", context)
+                self.assertIn("'<===== f1n'", context)
 
     def test_existing_repo_restores_from_nested_working_directory(self):
         self.state()
@@ -228,7 +228,7 @@ class SessionStartTests(unittest.TestCase):
         context = self.context()
         self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
         self.assertNotIn(str(ROOT / "skills/learn/SKILL.md"), context)
-        self.assertEqual(context.count("'=====>'"), 1)
+        self.assertEqual(context.count("'=====> ah0y_sir'"), 1)
 
     def test_shelf_and_active_learning_both_restore_with_one_canary(self):
         state = self.state()
@@ -236,7 +236,7 @@ class SessionStartTests(unittest.TestCase):
         context = self.context()
         self.assertIn(str(ROOT / "skills/shelf/SKILL.md"), context)
         self.assertIn(str(ROOT / "skills/learn/SKILL.md"), context)
-        self.assertEqual(context.count("'<====='"), 1)
+        self.assertEqual(context.count("'<===== f1n'"), 1)
 
     def test_paused_learning_still_restores_shelf_but_not_learn(self):
         state = self.state(mode="paused")

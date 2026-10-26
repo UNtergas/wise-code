@@ -193,8 +193,8 @@ class LearnerFirstTests(unittest.TestCase):
 class CanaryTests(unittest.TestCase):
     """Every skill and the restore hook state the same exact reply markers."""
 
-    START = "=====>"
-    END = "<====="
+    START = "=====> ah0y_sir <name>"
+    END = "<===== f1n"
 
     def test_every_skill_states_both_markers_on_their_own_lines(self):
         for skill in SKILLS:
@@ -203,10 +203,12 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn("## Canary", lines)
                 self.assertIn(self.START, lines)
                 self.assertIn(self.END, lines)
+                self.assertIn("What's your name?", "\n".join(lines))
+                self.assertIn("never store it", "\n".join(lines))
 
     def test_hook_uses_the_same_markers(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
-        self.assertIn(f'CANARY_START = "{self.START}"', hook)
+        self.assertIn('CANARY_START = "=====> ah0y_sir"', hook)
         self.assertIn(f'CANARY_END = "{self.END}"', hook)
 
 
