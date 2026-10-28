@@ -18,8 +18,8 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 
 # Reply markers: a missing end line shows a reply was cut off or instructions
 # were dropped. Every SKILL.md states the same two lines.
-CANARY_START = "=====>"
-CANARY_END = "<====="
+CANARY_START = "=====> ah0y_sir"
+CANARY_END = "<===== f1n"
 
 
 def profile_is_active(path):
@@ -138,16 +138,21 @@ def restore(payload):
 
 def canary_context():
     return (
-        f"Canary: start every chat reply with the exact line {CANARY_START!r} and end "
-        f"it with the exact line {CANARY_END!r}, as plain text. It marks a complete "
-        "reply, not a true one; files you write never carry it."
+        f"Canary: start every chat reply with the exact line {CANARY_START!r} followed "
+        "by a space and the user's name, and end it with the exact line "
+        f"{CANARY_END!r}, as plain text. If no name has been given in this "
+        "conversation, the first reply starts with that line alone (no name), asks "
+        "\"What's your name?\" before anything else, and waits; ask again in every "
+        "new conversation and never store the name in files or notes. It marks a "
+        "complete reply, not a true one; files you write never carry it."
     )
 
 
 def start_check_context(state):
     return (
         "A start check is due: session-recap.md in the state directory "
-        f"({state}) has an entry marked 'Start check: pending'. Before other work, "
+        f"({state}) has an entry marked 'Start check: pending'. After asking the "
+        "user's name and before other work, "
         "even if the learner opened with a task, run the Start check from the Learn "
         "guide: multiple-choice (QCM) and open Q/A questions on the last session's "
         "Check points, asked one at a time, without showing the recap first. The "

@@ -73,9 +73,10 @@ Switch levels in chat at any time:
 
 ## Canary
 
-Every WiseCode reply starts with the line `=====>` and ends with
-`<=====` (stated in each skill and in the restore hook for
-active projects). A missing end line means the reply was cut off or the
+Every WiseCode reply starts with the line `=====> ah0y_sir <name>` and ends
+with `<===== f1n` (stated in each skill and in the restore hook for active
+projects). Each new conversation opens by asking your name (first line
+`=====> ah0y_sir` until you answer); the name is never stored. A missing end line means the reply was cut off or the
 instructions were dropped. It marks a complete reply, not a true one; facts are
 guarded by research's span check.
 

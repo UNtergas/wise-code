@@ -9,12 +9,14 @@ disable-model-invocation: true
 Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
 
 ```text
-=====>
+=====> ah0y_sir <name>
 ```
 
 ```text
-<=====
+<===== f1n
 ```
+
+`<name>` is the name the user gave in this conversation. At the first reply of a new conversation, if no name has been given yet, start with `=====> ah0y_sir`, ask "What's your name?" before anything else, and wait; use the name from then on. Ask again in each new conversation; never store it in files or notes.
 
 Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
 
@@ -84,7 +86,7 @@ this skill again should not reset anything.
 
 At the first reply of a new session (startup or clear, not resume, compaction or
 fork), find `session-recap.md` with Glob. If any entry says `Start check: pending`,
-run the check before other work, even if the learner opened with a build request:
+run the check right after the learner gives their name (see Canary) and before other work, even if the learner opened with a build request:
 say in one line that you will check the last session first, then do it.
 
 1. Build the questions from the `Check points:` of every pending entry (newest
