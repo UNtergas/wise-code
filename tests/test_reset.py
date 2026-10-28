@@ -240,7 +240,7 @@ class GraphResetTests(ResetCase):
     def graph_project(self):
         state, _ = self.notes()
         (state / "progress.md").unlink()
-        wise_path = ROOT / "bin" / "wise.py"
+        wise_path = ROOT / "scripts" / "wise.py"
         env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": "2026-10-28"}
 
         def wise(*args):

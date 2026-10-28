@@ -1,7 +1,7 @@
 # Learning graph
 
 Everything WiseCode records about a project's learning lives in one graph,
-read and written only through `bin/wise.py`. Settled in a grill on 2026-10-28;
+read and written only through `scripts/wise.py`. Settled in a grill on 2026-10-28;
 this file is the spec. Commands and writing conventions for Claude are in
 `skills/learn/materials.md`.
 

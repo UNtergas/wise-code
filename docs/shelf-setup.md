@@ -105,7 +105,7 @@ not access control: whoever can read the repo can read every folder.
   (books, citations per project, sections still unread, and each book's impact
   across projects), and `/wise-code:quiz` for the book questions.
 - Everything WiseCode records in the shelf lives in its learning graph,
-  `.wise-code/graph/`, written by `bin/wise.py` (Python 3.9+ needed on every
+  `.wise-code/graph/`, written by `scripts/wise.py` (Python 3.9+ needed on every
   machine). Its files merge with git's `union` driver, so two projects pushing
   citations never conflict.
 

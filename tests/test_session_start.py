@@ -326,7 +326,7 @@ class GraphHookTests(HookCase):
 
     def wise(self, *args, day="2026-10-28"):
         env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day}
-        result = subprocess.run([sys.executable, str(ROOT / "bin/wise.py"), "--root",
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/wise.py"), "--root",
                                  str(self.project), *args], text=True,
                                 capture_output=True, env=env, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)

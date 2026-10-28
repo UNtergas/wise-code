@@ -74,7 +74,7 @@ LEGACY_NOTES = ("progress.md", "qa-history.md", "questions.md", "cards.tsv",
 
 
 def wise_command(state):
-    return f'python3 "{PLUGIN_ROOT / "bin/wise.py"}" --root "{state.parent}"'
+    return f'python3 "{PLUGIN_ROOT / "scripts/wise.py"}" --root "{state.parent}"'
 
 
 def graph_start_check_pending(state):
@@ -85,14 +85,14 @@ def graph_start_check_pending(state):
     the hook must never stop a session from starting.
     """
     try:
-        sys.path.insert(0, str(PLUGIN_ROOT / "bin"))
+        sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
         import wise  # noqa: PLC0415 - loaded only when a graph exists
         graph = wise.Graph(state)
         return any(n.get("start_check") == "pending" for n in graph.of_type("session"))
     except Exception:  # noqa: BLE001 - any failure stays silent
         return False
     finally:
-        if sys.path and sys.path[0] == str(PLUGIN_ROOT / "bin"):
+        if sys.path and sys.path[0] == str(PLUGIN_ROOT / "scripts"):
             sys.path.pop(0)
 
 

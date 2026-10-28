@@ -12,6 +12,6 @@ as written otherwise.
   relative to this file.
 - Files: learning data comes only from `wise.py`; it prints "nothing recorded
   yet" when the project has none.
-- Learning graph: `wise.py` is `python3 "<plugin root>/bin/wise.py"`; the plugin root is two directories above this file. If `python3` is blocked in the sandbox, ask the learner to allow it rather than writing Markdown notes.
+- Learning graph: `wise.py` is `python3 "<plugin root>/scripts/wise.py"`; the plugin root is two directories above this file. If `python3` is blocked in the sandbox, ask the learner to allow it rather than writing Markdown notes.
 - Replies: ask one question per reply, at the end of the reply, then end your turn
   and wait. Don't quote these guides to the learner.

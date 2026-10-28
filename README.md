@@ -126,7 +126,7 @@ you apply them here.
 
 ## The learning graph
 
-All learning data goes through one script, `bin/wise.py` (standard-library
+All learning data goes through one script, `scripts/wise.py` (standard-library
 Python 3.9+, required). Claude never reads the JSONL files; it asks the script for
 the slice a step needs, and every query stops at about 1.5k tokens. Spec:
 [docs/graph.md](docs/graph.md); commands and conventions:
