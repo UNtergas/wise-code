@@ -40,6 +40,31 @@ example by adding `Bash(python3 *wise.py*)` to the project's `.claude/settings.j
 permissions; offer to add that rule yourself. Coding help continues meanwhile;
 only the learning writes wait.
 
+The refusal may also name `permissions.blockReadsOutsideWorkingDirectories`: the
+learner's Claude Code blocks commands that name files outside the working
+directories, and the plugin lives outside the project. The fix is one line in
+the **user** settings file `~/.claude/settings.json` (project settings don't count
+for this block): add the plugin folder to `permissions.additionalDirectories`.
+For an installed copy that is the marketplace folder, `…/plugins/cache/wise-code`,
+not the version folder below it, which changes with every update. The session
+hook usually spots this first and says so.
+
+- Explain it in one or two lines, show the exact JSON, and ask with
+  AskUserQuestion: header `Settings`, options **Add it**, **Show me only**, **Not now**.
+- **Add it** → Read the file, then Edit it: append the path to the existing
+  `additionalDirectories` list (create `permissions` or the list only if
+  missing), keep every other setting as it is, and check the result still parses
+  (`python3 -c "import json,sys; json.load(open(sys.argv[1]))" <file>`). Claude
+  Code asks the learner to approve the edit. It applies from the next session;
+  for this one, suggest `/add-dir <folder>`. If the file can't be read or edited,
+  fall back to **Show me only**.
+- **Show me only** → the JSON to add and the `/add-dir <folder>` command.
+- **Not now** → don't ask again this session. "Don't ask again" → add
+  `Settings prompt: off` to `profile.md`.
+- Never edit the settings file without **Add it**. When the block comes from
+  managed (organization) settings, explain that only their administrator can add
+  the folder.
+
 **Old notes.** A project with Markdown notes (`progress.md`, `qa-history.md`,
 `questions.md`, `cards.tsv`, `session-recap.md`, `guardrails.md`, `reflections.md`,
 `plugin-feedback.md`) and no graph is converted once with `wise.py import-md`
