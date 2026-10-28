@@ -122,9 +122,15 @@ is also a learning checkpoint, and the learner does the thinking and the writing
 3. **ADRs are theirs.** When a decision passes all three gates, say so and name
    the gates it passes. The learner writes the ADR; offer `/wise-code:critique`
    on the draft. Write it yourself only when they ask.
-4. **Record it.** Settled decisions go into `project-map.md` as chosen. Reasoning
-   that shows real understanding, or a real gap, gets a `checkpoint` entry in
-   `qa-history.md` per [materials.md](../learn/materials.md).
+4. **Record it.** Settled decisions go into `project-map.md` as chosen and into the
+   learning graph (`wise.py add decision … status=settled`). Reasoning that shows
+   real understanding, or a real gap, gets a `checkpoint` QA per
+   [materials.md](../learn/materials.md).
+5. **Link the docs.** `GLOSSARY.md` and the ADRs stay repo files for every reader;
+   the graph only points at them. For each resolved term the learner now uses
+   correctly, link its concept: `wise.py add concept name=<term> definition=…
+   glossary=GLOSSARY.md` (or `set <concept> glossary=GLOSSARY.md`). For each ADR
+   written: `wise.py add adr path=docs/adr/NNNN-slug.md title=… --covers <concept>`.
 
 With no profile, or `Learning mode: paused`, follow the rules above as written.
 

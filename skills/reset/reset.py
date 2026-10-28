@@ -12,8 +12,11 @@ import tempfile
 
 
 sys.dont_write_bytecode = True
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "hooks"))
+PLUGIN = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PLUGIN / "hooks"))
+sys.path.insert(0, str(PLUGIN / "bin"))
 from session_start import state_directory
+import wise
 
 
 FRESH = {
@@ -28,12 +31,23 @@ FRESH = {
 }
 
 
+GRAPH_FILES = ("graph/nodes.jsonl", "graph/edges.jsonl")
+
+
+def fresh_notes(state):
+    """Files to reset. With a learning graph, progress lives in the graph, so a
+    fresh progress.md would look like unimported legacy notes."""
+    if (state / GRAPH_FILES[0]).is_file():
+        return {k: v for k, v in FRESH.items() if k != "progress.md"}
+    return FRESH
+
+
 def snapshot(cwd):
     state = state_directory(cwd)
     if state is None:
         return None, {}, None
     notes = {}
-    for name in FRESH:
+    for name in [*fresh_notes(state), *GRAPH_FILES]:
         path = state / name
         try:
             mode = path.lstat().st_mode
@@ -45,7 +59,7 @@ def snapshot(cwd):
     # Include identity, missing files, and content so confirmation cannot drift
     # to another project or silently discard notes updated by another session.
     digest = hashlib.sha256(str(state).encode())
-    for name in FRESH:
+    for name in [*fresh_notes(state), *GRAPH_FILES]:
         data = notes.get(name)
         digest.update(json.dumps([name, None if data is None else data.hex()]).encode())
     return state, notes, digest.hexdigest()
@@ -61,9 +75,11 @@ def reset(cwd, confirmation=None):
         raise ValueError("Target or notes changed. Preview and confirm again; nothing reset.")
     if not notes:
         return {"status": "no_notes", "cwd": str(cwd)}
+    fresh = fresh_notes(state)
     result = {
         "status": "preview", "project": str(state.parent), "state": str(state),
-        "files": list(notes), "backup_parent": str(state / "backups"),
+        "files": list(notes), "graph": GRAPH_FILES[0] in notes,
+        "backup_parent": str(state / "backups"),
         "confirmation": fingerprint,
     }
     if confirmation is None:
@@ -78,14 +94,17 @@ def reset(cwd, confirmation=None):
     try:
         # Finish all backups and prepare replacements before touching active notes.
         for name, data in notes.items():
+            (backup / name).parent.mkdir(parents=True, exist_ok=True)
             (backup / name).write_bytes(data)
-        for name, text in FRESH.items():
+        for name, text in fresh.items():
             (backup / (".new-" + name)).write_text(text, encoding="utf-8")
         if snapshot(cwd)[2] != fingerprint:
             raise ValueError("Notes changed during backup; active notes were not reset.")
-        for name in FRESH:
+        for name in fresh:
             os.replace(backup / (".new-" + name), state / name)
-    except (OSError, ValueError) as error:
+        if GRAPH_FILES[0] in notes:
+            wise.reset_progress(wise.Graph(state))
+    except (OSError, ValueError, wise.WiseError) as error:
         raise ValueError(
             "Reset did not complete. Backup location: {}. "
             "Check active notes before continuing. {}".format(backup, error)

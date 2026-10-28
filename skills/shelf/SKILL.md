@@ -20,9 +20,9 @@ Every chat reply you send while this skill is active starts and ends with these 
 
 Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
 
-The learner keeps their books (PDF, Markdown, text) in a private GitHub repo, the **shelf**. When a question is something a book on the shelf explains, send them to the exact section to read, then check their explanation. The shelf repo records what was cited, read and understood, so a WiseCode session opened in the shelf repo can quiz the books later.
+The learner keeps their books (PDF, Markdown, text) in a private GitHub repo, the **shelf**. When a question is something a book on the shelf explains, send them to the exact section to read, then check their explanation. The shelf repo records what was cited, read and understood in its own learning graph, so a WiseCode session opened in the shelf repo can quiz the books later and see each book's impact across projects.
 
-If running in Codex rather than Claude Code, first read [codex.md](codex.md). File formats: [formats.md](formats.md). Setup guide for the learner: https://github.com/UNtergas/wise-code/blob/main/docs/shelf-setup.md
+If running in Codex rather than Claude Code, first read [codex.md](codex.md). Graph records: [formats.md](formats.md). All shelf records go through `wise.py --root "<shelf>"` (the script and its "Script blocked" fix: [../learn/materials.md](../learn/materials.md)); never read or edit the JSONL files. Setup guide for the learner: https://github.com/UNtergas/wise-code/blob/main/docs/shelf-setup.md
 
 ## Step 0: Gate (always, before anything else)
 
@@ -93,11 +93,11 @@ Read only files under `shared/` and the mapped folders. This boundary keeps a pr
 
 ## Step 2: Find the section (index first)
 
-Index files live in the shelf at `.wise-code/shelf/index/<folder>/<book-slug>.md`. They are built lazily and kept forever.
+The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book-slug>-<number>`), built lazily and kept forever. `wise.py --root "<shelf>" list book` lists indexed books.
 
-1. **L1 (outline)**: for any in-scope book with no index yet, build one: title, page count, chapters and sections with PDF page ranges. Use `pdfinfo`, the PDF outline, or `pdftotext -f 1 -l 20` for the table of contents; headings for Markdown and text. Several books missing → one background agent for all (`model: haiku`).
-2. Match the question against the index. Pick at most **2 sections** from at most 2 books.
-3. **L2 (section detail)**: if a matched chapter has no section detail yet, one background agent (`model: sonnet`) reads only those pages (`pdftotext -layout -f <a> -l <b>`) and returns: the section that answers the question, its pages, up to 2 verbatim quotes (≤ 25 words each, with page), and 3–6 key concepts per section of that chapter. Add the section detail to the index; mark the chapter `[L2]`.
+1. **L1 (outline)**: for any in-scope book with no `BK-` node yet, build one: title, page count, chapters and sections with PDF page ranges. Use `pdfinfo`, the PDF outline, or `pdftotext -f 1 -l 20` for the table of contents; headings for Markdown and text. Several books missing → one background agent for all (`model: haiku`). Write with `wise.py --root "<shelf>" add book slug=<book-slug> title="…" file=<folder>/<file> folder=<folder> pages=<n> l1=<date>`, then one `add section book=<book-slug> number=<1 or 1.2> title="…" pages=<a>-<b> printed=<x>-<y>` per chapter and section. Stable IDs: adding the same book or section again updates it.
+2. Match the question against the index: `wise.py --root "<shelf>" find <key words> --type section`, and `list section --where book=<slug> --limit 40` for one book's outline. Pick at most **2 sections** from at most 2 books.
+3. **L2 (section detail)**: if a matched chapter has no `l2` yet, one background agent (`model: sonnet`) reads only those pages (`pdftotext -layout -f <a> -l <b>`) and returns: the section that answers the question, its pages, up to 2 verbatim quotes (≤ 25 words each, with page), and 3–6 key concepts per section of that chapter. Store them: `set SEC-… concepts+="…" l2=<date>` for each section.
 4. No section matches → say in one line that the shelf has nothing on it. Then answer normally, searching the web when facts matter. Suggest `/wise-code:research` only when a decision waits on an external fact.
 
 **Agent rules.** The prompt starts: "You are the shelf worker. Do the reading yourself. Do NOT spawn other agents or delegate." Already a subagent → do it yourself. Copy quotes from the extracted text, never from memory.
@@ -136,36 +136,36 @@ Then record and push (Step 5).
 
 ## Step 5: Record and push (after every cite and every explanation)
 
-In the shelf (`<state>/shelf-repo/` in project mode, the repo itself in shelf mode):
-- `.wise-code/shelf/citations/<Project>.md`: add or update the citation entry.
-- `.wise-code/shelf/reading/<book-slug>.md`: after an explanation, add the dated line with verdict and evidence.
-- `.wise-code/questions.md` and `.wise-code/cards.tsv`: after `understood` or `partial`, add up to 2 questions and up to 2 cards about the section, formats from [../learn/materials.md](../learn/materials.md). `Source:` is `shelf C-NNNN <Project>`; card tags add `shelf` and the book slug. Book questions live here, not in the project.
-- `.wise-code/shelf/index/...`: any index you built.
+In the shelf graph (`wise.py --root "<shelf>"`, where `<shelf>` is `<state>/shelf-repo` in project mode and the repo itself in shelf mode). `<Project>` is `Project:` from `shelf.md` (required; missing → ask the learner for a stable name and add it); every record carries it, which is what makes a book's use across projects visible:
+- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`). The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
+- After the learner reads: `add read project=<Project> --on SEC-… --for CIT-…` (or `set CIT-… status=skipped-read` when they skipped reading).
+- After an explanation: `add explainback project=<Project> text="<gist of what they wrote>" verdict=<understood|partial|misread> --on SEC-… --for CIT-…` and `set CIT-… status=<verdict>`.
+- After `understood` or `partial`: up to 2 questions and up to 2 cards about the section, `--from SEC-…`, formats from [../learn/materials.md](../learn/materials.md). Book questions live in the shelf graph, not in the project.
+- Any index you built (Step 2).
 
 Then:
 
 ```sh
 git -C <shelf> add .wise-code
-git -C <shelf> commit -m "shelf(<Project>): <C-NNNN> <book-slug> <section> <status>"
+git -C <shelf> commit -m "shelf(<Project>): <CIT-id> <book-slug> <section> <status>"
 git -C <shelf> pull --rebase --quiet
 git -C <shelf> push --quiet
 ```
 
 (One call per line; run `push` only if `pull` succeeded.)
 
-Rebase conflict → resolve it if it is only appended entries on both sides (keep both); otherwise abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next record.
+The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next record.
 
-In the project: append one line to `<state>/qa-history.md` pointing to the citation (`shelf C-NNNN`), not a copy of it. If `<state>/progress.md` exists, Learn's rules decide whether the concept goes there.
+In the project: one `shelf` QA pointing to the citation, not a copy of it (`wise.py add qa source=shelf q="<question>" a="<CIT-id> <book> <section>" verdict=n/a --about <concept>`), and `set <concept> shelf+=SEC-…` so the concept points to the section. Learn's rules decide whether the concept's status changes.
 
 Tell the learner in one line what was recorded and whether it was pushed.
 
 ## Shelf mode extras
 
-Run in the shelf repo with no question (`/wise-code:shelf`): report, from the records,
-- books and how far each is indexed,
-- citations per project, with status counts,
-- sections still `sent` (never explained) or `partial`,
-- due questions → suggest `/wise-code:quiz`.
+Run in the shelf repo with no question (`/wise-code:shelf`): report, from the graph,
+- books, how far each is indexed, and their impact across projects: `wise.py impact` (one book: `wise.py impact <book-slug>`: projects, sections cited per project, understood vs not yet, concepts),
+- citations still `sent` (never explained) or `partial`: `wise.py list citation --where status=sent` (and `=partial`),
+- due questions (`wise.py due`) → suggest `/wise-code:quiz`.
 
 Report from the records only; don't invent progress. Learn, Teach and Quiz run in the shelf repo as in any project, with its `.wise-code/` as their state.
 

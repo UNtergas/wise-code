@@ -1,8 +1,9 @@
 # Shelf formats
 
-Plain Markdown, edited with normal file tools. Dates are `YYYY-MM-DD`. Page
-numbers are PDF page numbers (what `pdftotext -f` takes); write the printed page
-in brackets when it differs.
+Records live in the shelf repo's learning graph and go through `wise.py --root
+"<shelf>"` only (see [../learn/materials.md](../learn/materials.md)). Dates are
+`YYYY-MM-DD`. Page numbers are PDF page numbers (what `pdftotext -f` takes);
+`printed` holds the printed page range when it differs.
 
 ## Project config: `<state>/shelf.md`
 
@@ -17,10 +18,12 @@ Folders: job-tracking
 ```
 
 - `Repo`: exact `owner/name` of the private shelf repo.
-- `Project`: name used for this project's citation file. Exact; keep it stable.
+- `Project`: the project's stable name. Required: every shelf record carries it,
+  so it must survive renaming the folder or cloning on another machine.
 - `Folders`: comma-separated top-level folders of the shelf this project may
   read. Usually just the project's own folder. `shared` is always added.
 - Optional `Mode: shelf` marks the shelf repo itself when its `origin` can't be read.
+- Optional `LFS prompt: off` stops the Git LFS install prompt.
 
 ## Shelf repo layout
 
@@ -29,59 +32,38 @@ wise-code-shelf/
   shared/                  any project may read
   <folder>/                only projects listing <folder> may read
   .wise-code/
-    shelf/
-      index/<folder>/<book-slug>.md
-      reading/<book-slug>.md
-      citations/<Project>.md
-    questions.md           book questions, quizzed in the shelf repo
-    cards.tsv              book cards (deck named after the shelf repo folder)
+    graph/
+      nodes.jsonl          books, sections, citations, reads, explain-backs,
+      edges.jsonl          and the shelf's own questions, cards and Q/A
+      .gitattributes       *.jsonl merge=union
 ```
 
 Book slug: file name without extension, lowercase, spaces and underscores to `-`.
 Supported files: `.pdf` with a text layer, `.md`, `.txt`.
 
-## `index/<folder>/<book-slug>.md`
+## Nodes
 
-```md
-# Designing Data-Intensive Applications
-File: shared/ddia.pdf · Pages: 611 · L1: 2026-10-25
+| Type | ID | Fields | Edges |
+|---|---|---|---|
+| `book` | `BK-<book-slug>` (stable) | `slug`, `title`, `file`, `folder`, `pages`, `l1` (outline date), `projects` (every project that cited it, kept by the script) | |
+| `section` | `SEC-<book-slug>-<number>` (stable; `1` a chapter, `1.2` a section) | `book`, `number`, `title`, `pages` (`32-40`), `printed`, `concepts` (key concepts), `l2` (detail date) | `of` → book; `covers` → concept |
+| `citation` | `CIT-YYYYMMDD-xxxx` | `project`, `question`, `quote`, `page`, `status`: `sent` → `understood` \| `partial` \| `misread`, or `skipped-read` | `on` → section |
+| `read` | `RD-…` | `project`, `verdict`, `evidence` | `on` → section, `for` → citation |
+| `explainback` | `EB-…` | `project`, `text` (gist of the learner's explanation, never a transcript), `verdict` | `on` → section, `for` → citation |
 
-## Ch 1 Reliable, Scalable, and Maintainable Applications · pp. 25–46 [L2 2026-10-25]
-- 1.1 Reliability · pp. 28–32 [6–10]: fault vs failure; hardware faults; software errors; human errors
-- 1.2 Scalability · pp. 32–40 [10–18]: load parameters; percentiles; tail latency
+Stable book and section IDs mean every project names the same section the same
+way; adding one again updates it. The shelf's own questions and cards point to
+their section with `from`.
 
-## Ch 2 Data Models and Query Languages · pp. 49–90
-```
+## Queries
 
-A chapter without `[L2 …]` has only its heading and page range.
+- `wise.py --root "<shelf>" list book`, `list section --where book=<slug> --limit 40`
+- `find <words> --type section`: match a question against the index
+- `impact [<book-slug>]`: books ranked by use; per project: citations, sections,
+  understood vs not yet; for one book, the concepts its sections cover
+- `list citation --where status=sent` (or `partial`), `list citation --where project=<Project>`
+- `due`: book questions to quiz in the shelf repo
 
-## `citations/<Project>.md`
-
-One file per project, so two projects never edit the same file.
-
-```md
-# Citations · job-tracking
-
-## C-0001 · 2026-10-25 · ddia 1.2 Scalability · pp. 32–40
-Question: Why track p99 latency instead of the average for the job poller?
-Quote: «…» (p. 35)
-Status: understood
-Updated: 2026-10-25
-```
-
-Status: `sent` → `understood` | `partial` | `misread`, or `skipped-read`.
-Numbering: highest `C-` number in this file + 1.
-
-## `reading/<book-slug>.md`
-
-What the learner has read and shown they understood, across all projects.
-
-```md
-# Designing Data-Intensive Applications · reading
-
-## 1.2 Scalability · pp. 32–40
-- 2026-10-25 · job-tracking · C-0001 · understood · Explained why tail latency hits the slowest user requests; linked it to fan-out.
-- 2026-10-28 · shared · quiz · partial · Mixed up p50 and mean.
-```
-
-Evidence is a gist of what they wrote, never a transcript.
+The project side keeps only pointers: a concept's `shelf` list holds section IDs,
+and a `shelf` QA names the citation. `wise.py check --shelf <shelf folder>` warns
+about IDs the shelf no longer has.

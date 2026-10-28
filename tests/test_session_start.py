@@ -15,7 +15,7 @@ CONFIG = json.loads((ROOT / "hooks/hooks.json").read_text())
 REGISTRATION = CONFIG["hooks"]["SessionStart"][0]
 
 
-class SessionStartTests(unittest.TestCase):
+class HookCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wise-code-test-")
         self.addCleanup(self.temp.cleanup)
@@ -67,6 +67,8 @@ class SessionStartTests(unittest.TestCase):
         self.assertEqual(result["hookEventName"], "SessionStart")
         return result["additionalContext"]
 
+
+class SessionStartTests(HookCase):
     def test_fresh_project_is_inactive_and_hook_writes_nothing(self):
         self.assertIsNone(self.run_hook())
         self.assertEqual(list(self.project.iterdir()), [self.project / ".git"])
@@ -80,7 +82,7 @@ class SessionStartTests(unittest.TestCase):
                 self.assertIn(str(ROOT / "skills/learn/SKILL.md"), context)
                 self.assertIn(str(self.project / ".wise-code"), context)
                 self.assertIn("Read profile.md and project-map.md", context)
-                self.assertIn("Search the entire progress.md", context)
+                self.assertIn("decisions --pending", context)
                 self.assertNotIn("Checkpoint frequency: Light", context)
                 self.assertNotIn("two writes must succeed together", context)
                 self.assertIn("'=====> ah0y_sir'", context)
@@ -177,8 +179,7 @@ class SessionStartTests(unittest.TestCase):
         context = self.context(source="compact")
         self.assertLess(len(context), 10000)
         self.assertEqual(context, before)
-        self.assertIn("Search the entire progress.md", context)
-        self.assertIn("read their complete sections", context)
+        self.assertIn("decisions --pending", context)
         self.assertNotIn("Earlier learning", context)
         self.assertNotIn("SQLite", context)
 
@@ -266,7 +267,8 @@ class SessionStartTests(unittest.TestCase):
             stream.write("## Pending decision\nUse SQLite. Awaiting Implement or a question.\n"
                          "- Pending decision: JSON storage; waiting for Implement.\n")
         context = self.context(source="compact")
-        self.assertIn("Search the entire progress.md for pending decisions", context)
+        self.assertIn("decisions --pending lists every pending decision", context)
+        self.assertIn("never the JSONL files", context)
         self.assertIn("before coding", context)
         self.assertIn("await implementation approval", context)
         self.assertIn("Restarting or compacting is not approval", context)
@@ -317,6 +319,60 @@ class SessionStartTests(unittest.TestCase):
         target.write_text("Start check: pending\n", encoding="utf-8")
         (state / "session-recap.md").symlink_to(target)
         self.assertNotIn("A start check is due", self.context())
+
+
+class GraphHookTests(HookCase):
+    """The hook reads the learning graph through wise.py's own loader."""
+
+    def wise(self, *args, day="2026-10-28"):
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day}
+        result = subprocess.run([sys.executable, str(ROOT / "bin/wise.py"), "--root",
+                                 str(self.project), *args], text=True,
+                                capture_output=True, env=env, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def graph_state(self):
+        state = self.state()
+        (state / "progress.md").unlink()
+        self.wise("add", "concept", "name=Retries")
+        return state
+
+    def test_legacy_notes_without_graph_ask_for_import(self):
+        self.state()
+        context = self.context()
+        self.assertIn("old Markdown format (progress.md)", context)
+        self.assertIn("import-md", context)
+
+    def test_graph_project_gets_no_import_notice(self):
+        self.graph_state()
+        self.assertNotIn("import-md", self.context())
+
+    def test_pending_session_in_graph_triggers_start_check_on_new_sessions(self):
+        self.graph_state()
+        session = self.wise("add", "session", "goal=retry queue", "checkpoints+=Backoff doubles")
+        for source, expected in (("startup", True), ("clear", True), ("resume", False),
+                                 ("compact", False)):
+            with self.subTest(source=source):
+                context = self.context(source=source)
+                self.assertEqual("A start check is due" in context, expected)
+                self.assertNotIn("Backoff doubles", context)
+        self.wise("set", session, "start_check=done 2026-10-28 · 3/4")
+        self.assertNotIn("A start check is due", self.context())
+
+    def test_broken_graph_stays_silent_about_start_check(self):
+        state = self.graph_state()
+        (state / "graph" / "nodes.jsonl").write_text("{not json\n", encoding="utf-8")
+        context = self.context()
+        self.assertNotIn("A start check is due", context)
+        self.assertIn("decisions --pending", context)
+
+    def test_inbox_results_are_announced_on_new_sessions(self):
+        state = self.graph_state()
+        (state / "inbox").mkdir()
+        (state / "inbox" / "lesson-0001-results.json").write_text("{}", encoding="utf-8")
+        self.assertIn("import-lesson --inbox", self.context(source="startup"))
+        self.assertNotIn("import-lesson", self.context(source="compact"))
 
 
 if __name__ == "__main__":

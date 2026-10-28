@@ -10,5 +10,6 @@ as written otherwise.
 - Choices: AskUserQuestion doesn't exist here. If a native question tool such as
   `request_user_input` is available, use it with the same options; otherwise ask
   the same question in text. Then end your turn and wait for an explicit answer.
+- Learning graph: `wise.py` is `python3 "<plugin root>/bin/wise.py"`; the plugin root is two directories above this file. If `python3` is blocked in the sandbox, ask the learner to allow it rather than writing Markdown notes.
 - Replies: ask the confirmation once, at the end of your reply. Don't add a
   closing line after it or quote these guides to the user.

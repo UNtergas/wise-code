@@ -102,6 +102,11 @@ Implementation checkpoint, you write the agreed code, then an Implementation rep
      shared state, ask the learner two questions before calling it done: what
      else could this break, and which one fact makes it safe? Let them answer and
      prove that fact with a test or a run they write. You may run it to confirm.
+  5. With a code-graph tool (see "Code lookups" in [behavior.md](behavior.md)),
+     check the changed code's callers and dependencies against `project-map.md`.
+     A mismatch with the learner's map is a question ("your map says the poller
+     calls the store directly; what does `retry_loop` sit between?"), not an
+     edit to the map. Skip silently without a tool.
   5. Note what the learner did well only when it is concrete and factual.
 - Compiler errors are learning material. In Hint, help the learner read the error
   ("what does E0502 say is borrowed, and where?") instead of explaining the fix.

@@ -99,6 +99,12 @@ about abstractions.
 
 ## 5. Compare with the prediction
 
+With a code-graph tool (see "Code lookups" in
+[behavior.md](../learn/behavior.md)), also compare the relevant part of
+`project-map.md`, the learner's own model, with the call graph, and name each
+relation the map has wrong or missing as a question for them. Never edit the map
+yourself. Without a tool, skip this silently.
+
 Say plainly which parts of the prediction matched the code and which didn't, and
 why the difference matters. Don't grade, praise, or soften. Then ask one question
 that applies the new model to the learner's own next step ("Where would your
@@ -107,6 +113,7 @@ that applies the new model to the learner's own next step ("Where would your
 ## 6. Record
 
 If the state directory exists, follow [materials.md](../learn/materials.md):
-append a qa-history entry with source `explore` (the prediction as `Q:`/`A:` gist,
-`Verdict:` how well it matched). When the prediction was wrong in a way that will
+add a QA with source `explore` (`wise.py add qa source=explore q="<the question>"
+a="<prediction gist, and what the code showed>" verdict=<how well it matched>
+--about <concept>`). When the prediction was wrong in a way that will
 matter again, propose one question for the bank and say so in one line.

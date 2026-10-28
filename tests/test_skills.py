@@ -94,17 +94,26 @@ class SharedPluginTests(unittest.TestCase):
 
     def test_materials_guide_defines_every_material(self):
         text = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
-        for heading in ("## qa-history.md", "## questions.md", "## cards.tsv",
-                        "## guardrails.md", "## reflections.md", "## plugin-feedback.md"):
+        for heading in ("## Concepts", "## QA", "## Questions", "## Cards", "## Sessions",
+                        "## Decisions", "## Guardrails", "## Reflections", "## Feedback",
+                        "## Learning records", "## Three tiers"):
             self.assertIn(heading, text)
         self.assertIn("#separator:Tab", text)
         self.assertIn("#tags column:3", text)
+        self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/bin/wise.py"', text)
+        self.assertIn("Never open, grep or edit the JSONL files", text)
+        self.assertIn("**Script blocked.**", text)
+        self.assertIn("Bash(python3 *wise.py*)", text)
 
     def test_reset_keeps_every_material(self):
-        materials = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
         reset = (ROOT / "skills/reset/SKILL.md").read_text(encoding="utf-8")
-        for name in re.findall(r"^## ([\w-]+\.(?:md|tsv))$", materials, re.MULTILINE):
-            with self.subTest(material=name):
+        for kept in ("Q/A, questions, cards, sessions, settled decisions, guardrails",
+                     "reflections, plugin feedback, learning records"):
+            self.assertIn(kept, reset)
+        self.assertIn("concept's `status` and every `pending`", reset)
+        for name in ("qa-history.md", "questions.md", "cards.tsv", "guardrails.md",
+                     "reflections.md", "session-recap.md", "plugin-feedback.md"):
+            with self.subTest(legacy=name):
                 self.assertIn(f"`{name}`", reset)
 
 
@@ -176,8 +185,8 @@ class LearnerFirstTests(unittest.TestCase):
 
     def test_reflect_never_edits_the_installed_plugin(self):
         text = (ROOT / "skills/reflect/SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("Never edit the installed", text)
-        self.assertIn("plugin-feedback.md", text)
+        self.assertIn("Never\nedit the installed", text)
+        self.assertIn("wise.py add feedback", text)
 
     def test_borrowed_material_is_attributed(self):
         notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
@@ -222,11 +231,14 @@ class SessionRecapTests(unittest.TestCase):
         self.assertIn("AskUserQuestion", text)
         self.assertIn("Don't show the recap yet", text)
         self.assertIn("Start check: pending", text)
+        self.assertIn("wise.py session --pending", text)
+        self.assertIn("wise.py add session", text)
+        self.assertIn("import-lesson --inbox", text)
 
     def test_recap_format_and_source_are_documented(self):
         text = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
-        self.assertIn("## session-recap.md", text)
-        self.assertIn("Check points:", text)
+        self.assertIn("## Sessions", text)
+        self.assertIn("checkpoints+=", text)
         self.assertIn("`start-check`", text)
 
     def test_reflect_recaps_only_after_the_learner_writes(self):
@@ -279,7 +291,9 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("## Step 5: Record and push (after every cite and every explanation)", text)
         self.assertIn("git -C <shelf> pull --rebase --quiet\ngit -C <shelf> push --quiet", text)
         self.assertIn("No `cd`, no `&&` chains", text)
-        self.assertIn("citations/<Project>.md", text)
+        self.assertIn('wise.py --root "<shelf>"', text)
+        self.assertIn("add citation project=<Project>", text)
+        self.assertIn("merge with git's `union` driver", text)
 
     def test_quotes_are_checked_and_capped(self):
         text = self.text()
@@ -318,6 +332,58 @@ class ShelfTests(unittest.TestCase):
         reset = (ROOT / "skills/reset/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("`shelf.md`", reset)
         self.assertIn("`shelf-repo/`", reset)
+
+
+class GraphMigrationTests(unittest.TestCase):
+    """Every skill records through wise.py; none writes the old Markdown notes."""
+
+    LEGACY_WRITES = re.compile(
+        r"(append|add|write|store|update)[^.\n]{0,40}`(qa-history|questions|progress|"
+        r"guardrails|reflections|plugin-feedback|session-recap)\.md`", re.IGNORECASE)
+
+    def test_no_skill_writes_legacy_notes(self):
+        for path in sorted(ROOT.glob("skills/*/*.md")):
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                self.assertIsNone(self.LEGACY_WRITES.search(path.read_text(encoding="utf-8")))
+
+    def test_recording_skills_use_the_script(self):
+        for name in ("learn", "quiz", "correct", "reflect", "explore", "critique", "grill",
+                     "grill-with-docs", "research", "teach", "shelf"):
+            with self.subTest(skill=name):
+                text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("wise.py", text)
+                codex = (ROOT / "skills" / name / "codex.md").read_text(encoding="utf-8")
+                self.assertIn("bin/wise.py", codex)
+
+    def test_research_indexes_only_existing_state(self):
+        text = (ROOT / "skills/research/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("(never create one here)", text)
+        self.assertIn("add research path=", text)
+
+    def test_lesson_results_template_matches_the_importer(self):
+        script = (ROOT / "skills/teach/templates/results.js").read_text(encoding="utf-8")
+        for key in ("lesson:", "result_id:", "date:", "answers:", "q:", "answer:",
+                    "correct:", "expected:", "Download results"):
+            self.assertIn(key, script)
+        teach = (ROOT / "skills/teach/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("templates/results.js", teach)
+        self.assertIn("import-lesson", teach)
+
+    def test_code_graph_is_used_never_built(self):
+        behavior = (ROOT / "skills/learn/behavior.md").read_text(encoding="utf-8")
+        self.assertIn("## Code lookups", behavior)
+        self.assertIn("never builds or indexes a code graph", behavior)
+        for path in ("skills/explore/SKILL.md", "skills/learn/assist-levels.md"):
+            with self.subTest(path=path):
+                text = (ROOT / path).read_text(encoding="utf-8")
+                self.assertIn("project-map.md", text)
+                self.assertIn("Skip", text.replace("skip", "Skip"))
+
+    def test_hook_reads_the_graph_through_the_script(self):
+        hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
+        self.assertIn("import wise", hook)
+        self.assertIn("decisions --pending", hook)
+        self.assertNotIn("Search the entire progress.md", hook)
 
 
 class SinglePluginTests(unittest.TestCase):

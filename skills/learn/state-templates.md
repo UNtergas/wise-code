@@ -1,8 +1,8 @@
 # Local state templates
 
-Create only these three files in the chosen project's `.wise-code/` at setup. Use the directory selected by SKILL.md.
-Learning materials and the Teach workspace are created later, once there is content
-for them; see [materials.md](materials.md).
+Create only these two files in the chosen project's `.wise-code/` at setup. Use the directory selected by SKILL.md.
+Learning progress, materials and the Teach workspace live in the learning graph,
+written with `wise.py` once there is content; see [materials.md](materials.md).
 Replace bracketed values with actual evidence or “Not specified.” Keep the two
 status lines unformatted and near the top; the restoration hook reads them.
 Do not replace existing state with a fresh template.
@@ -35,38 +35,28 @@ Question style: Open-ended
 Assist level: Hint
 Level overrides: None
 
-## Strong Concepts
-No demonstrated understanding recorded yet.
-
-## Developing Concepts
-None recorded yet.
-
-## Revisit
-None recorded yet.
 ```
 
-## progress.md
+Concept understanding (demonstrated, developing, to revisit) is not kept here: it
+is each concept's `status` in the graph (`wise.py weak`, `wise.py list concept`).
 
-```markdown
-# Learning Progress
+## Progress (in the graph)
 
-No learning events recorded yet.
-```
+There is no `progress.md`. As learning occurs, add or update a concept
+(`wise.py add concept` / `set <slug> status=… notes+=…`): `introduced`,
+`demonstrated`, or `reinforce`. Record reasoning evidence, not quotations of a
+whole exchange; the dated evidence behind it is QA. Product preferences establish
+requirements; they aren't evidence of engineering understanding. Keep
+learner-proposed reasoning distinct from concepts the AI explained.
 
-As learning occurs, add a `## Topic` with concise bullets under Introduced,
-Demonstrated understanding, and Needs reinforcement. Record reasoning evidence,
-not quotations of a whole exchange. Product preferences establish requirements;
-they aren't evidence of engineering understanding. Keep learner-proposed reasoning
-distinct from concepts the AI explained. Consolidate repeated entries. Keep each
-topic independently readable so it can be loaded without the whole file.
-While waiting on a checkpoint, keep a short section headed exactly
-`## Pending decision`, not in a topic, with the proposed approach and what reply is
-awaited. Include the checkpoint's decision name and stage: awaiting reasoning,
-choice confirmation, or implementation approval. Remove it once resolved: record
-the outcome in the map as chosen or implemented, labeling approved additions as
-the AI's, and any reasoning evidence in its topic. Don't move the pending text
-into a topic; update entries the outcome supersedes. Record confirmed choices in
-the map without claiming they are implemented. Keep any proposed coding scope explicit.
+While waiting on a checkpoint, keep one `pending` decision
+(`wise.py add decision title=… proposal=… stage=…`) with the proposed approach and
+what reply is awaited. Its `stage` is `awaiting-reasoning`,
+`choice-confirmation`, or `implementation-approval`. Settle it once resolved
+(`set <id> status=settled outcome=… stage=`): record the outcome in the map as
+chosen or implemented, labeling approved additions as the AI's, and any reasoning
+evidence on its concept. Record confirmed choices in the map without claiming
+they are implemented. Keep any proposed coding scope explicit.
 Confirmation covers only the proposal presented. Don't append unmentioned fields,
 behaviors, rejected alternatives, or reasons to the chosen design. Mark unresolved
 details unknown and the AI's suggestions proposed; never attribute them to the learner.

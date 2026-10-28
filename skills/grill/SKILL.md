@@ -76,7 +76,9 @@ also a learning checkpoint, so change three things:
    line ("and what makes that better than B?"). A bare pick is a choice, not
    evidence of understanding.
 3. **Record it.** Settled decisions go into `project-map.md` as chosen, in the
-   learner's words. Reasoning that shows real understanding, or a real gap, gets a
-   `checkpoint` entry in `qa-history.md` per [materials.md](../learn/materials.md).
+   learner's words, and into the learning graph (`wise.py add decision title=…
+   status=settled outcome=… by=learner --about <concept>`). Reasoning that shows
+   real understanding, or a real gap, gets a `checkpoint` QA per
+   [materials.md](../learn/materials.md).
 
 With no profile, or `Learning mode: paused`, grill as written above.

@@ -89,6 +89,11 @@ Repo decides, not the skill.
 1. Look for an existing notes convention (`docs/`, `notes/`, `research/`, `.notes/`, ADR dir). Follow it.
 2. None → pick a sensible spot (`./research/`), tell user where.
 3. Name: `YYYY-MM-DD-slug.md`.
+4. Project has a `.wise-code/` folder (never create one here) → register the file
+   in its learning graph, so it can be found later without reading it:
+   `python3 "${CLAUDE_PLUGIN_ROOT}/bin/wise.py" add research path=<repo-relative path>
+   title="<question>" question="<question>"` (add `--covers <concept>` when a
+   concept fits). The file stays the store.
 
 Don't commit unless user asks. Research files record what was true on one day; stale ones are worse than none. Suggest delete/archive when decision made.
 
