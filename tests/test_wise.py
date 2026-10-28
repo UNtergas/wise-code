@@ -387,5 +387,88 @@ class TokenBudgetTests(unittest.TestCase):
                 self.assertLess(new, old)
 
 
+class ConfusionTests(WiseTestCase):
+    """Confidence, confusions, repair by transfer, and the capped skip gate."""
+
+    def setUp(self):
+        super().setUp()
+        self.run_wise("add", "concept", "name=Ownership")
+        self.run_wise("add", "concept", "name=Borrowing")
+        self.run_wise("link", "borrowing", "prereq", "ownership")
+
+    def qa(self, concept, verdict, q="Q?", confidence=None, day="2026-10-28"):
+        args = ["add", "qa", "source=checkpoint", f"q={q}", "a=A", f"verdict={verdict}",
+                "--about", concept]
+        if confidence:
+            args.append(f"confidence={confidence}")
+        return self.out(*args, day=day).strip()
+
+    def test_what_counts_as_a_confusion(self):
+        # A correct answer from the day before can't repair today's misses.
+        self.qa("ownership", "correct", q="d", confidence="high", day="2026-10-27")
+        wrong_low = self.qa("ownership", "wrong", q="a", confidence="low")
+        partial_high = self.qa("ownership", "partial", q="b", confidence="high")
+        self.qa("ownership", "partial", q="c", confidence="mid")
+        out = self.out("confusions")
+        self.assertIn(wrong_low, out)
+        self.assertIn(partial_high, out)
+        self.assertEqual(out.count("QA-"), 2)
+        self.assertIn("gate: repair first", out)
+
+    def test_bad_confidence_is_rejected(self):
+        bad = self.run_wise("add", "qa", "source=quiz", "q=x", "a=y", "confidence=sure",
+                            check=False)
+        self.assertEqual(bad.returncode, 2)
+
+    def test_only_a_different_later_question_repairs(self):
+        miss = self.qa("ownership", "wrong", q="Why does the move invalidate x?")
+        self.qa("ownership", "correct", q="Why does the move invalidate x?")
+        self.assertIn(miss, self.out("confusions"))  # same question: recall, not transfer
+        self.qa("ownership", "correct", q="Where would the poller lose ownership here?")
+        self.assertIn("no open confusions", self.out("confusions"))
+        self.assertIn("gate: clear", self.out("confusions"))
+
+    def test_correct_answer_before_the_miss_does_not_repair(self):
+        self.qa("ownership", "correct", q="Earlier question", day="2026-10-27")
+        miss = self.qa("ownership", "wrong", q="Later miss", day="2026-10-28")
+        self.assertIn(miss, self.out("confusions"))
+
+    def test_gate_covers_prerequisites(self):
+        miss = self.qa("ownership", "wrong", q="move")
+        self.assertIn("no open confusions", self.out("confusions", "--concept", "borrowing"))
+        out = self.out("confusions", "--concept", "borrowing", "--with-prereqs")
+        self.assertIn(miss, out)
+
+    def test_skips_are_capped_until_one_is_repaired(self):
+        misses = [self.qa("ownership", "wrong", q=f"miss {n}") for n in range(3)]
+        for miss in misses[:2]:
+            self.assertIn("skipped", self.out("skip-repair", miss))
+        third = self.run_wise("skip-repair", misses[2], check=False)
+        self.assertEqual(third.returncode, 1)
+        self.assertIn("Repair one of them first", third.stdout)
+        self.assertIn("blocked", self.out("confusions"))
+        # Repairing frees capacity (all three share the concept, so one fresh
+        # correct answer repairs every earlier miss on it).
+        self.qa("ownership", "correct", q="fresh transfer question")
+        self.assertIn("no open confusions", self.out("confusions"))
+        self.assertIn("skips open 0/2", self.out("confusions"))
+
+    def test_answer_records_confidence_and_flags_a_confusion(self):
+        qid = self.out("add", "question", "q=Why move?", "a=Ownership.", "--tests",
+                       "ownership").strip()
+        out = self.out("answer", qid, "wrong", "--confidence", "high", "--answer", "copy")
+        self.assertIn("confusion:", out)
+        self.assertIn("(high)", self.out("history"))
+
+    def test_calibration_counts_and_lists_sure_misses(self):
+        self.qa("ownership", "correct", q="a", confidence="high")
+        sure_miss = self.qa("ownership", "wrong", q="b", confidence="high")
+        self.qa("ownership", "wrong", q="c", confidence="low")
+        out = self.out("calibration")
+        self.assertIn("high: 2 answers · 50% correct", out)
+        self.assertIn("low: 1 answers · 0% correct", out)
+        self.assertIn(f"sure but missed: {sure_miss}", out)
+
+
 if __name__ == "__main__":
     unittest.main()

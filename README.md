@@ -179,6 +179,13 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   Answers become `start-check` Q/A; misses enter the question bank.
   Say "skip" to skip. On claude.ai there is no SessionStart hook, so the check
   runs when you invoke `/wise-code:learn`.
+- **Confidence and repair**: answer checkpoint, quiz and repair questions with a
+  confidence prefix (`high: …`, `mid: …`, `low: …`). A wrong answer, or a partial
+  one you were sure of, is a confusion. Before the next build step on that
+  concept (or one that depends on it), Claude asks you one fresh question about
+  your code; a correct answer to a *different* question repairs it. You can say
+  "skip repair", but only 2 skips may stay open; past that, repair first.
+  `wise.py calibration` shows how well your confidence predicts your answers.
 - **Guardrails**: one row per repeated mistake: the evidence, the level that
   enforces it, and the proof that it fails on the old mistake.
 
