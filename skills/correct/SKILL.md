@@ -38,7 +38,7 @@ If you are running in Codex rather than Claude Code, first read [codex.md](codex
 Locate the state directory as the [Learn guide](../learn/SKILL.md) describes. If
 there is none, say there is no history to mine and suggest `/wise-code:learn`;
 don't create state. Read [principles.md](../learn/principles.md) and the
-`guardrails.md` format in [materials.md](../learn/materials.md).
+Guardrails section of [materials.md](../learn/materials.md).
 
 ## 2. Ask the learner first
 
@@ -49,11 +49,13 @@ answer is a hypothesis to test against the evidence, not the result.
 
 Evidence, in this project only:
 
-- `qa-history.md`: `wrong` and `partial` verdicts, `review` and `critique` entries
-- `progress.md`: Needs reinforcement items
+- `wise.py mistakes --repeated`: concepts with repeated `wrong` and `partial`
+  verdicts, their QA ids, and which are already guarded; `wise.py show <id>` for a
+  QA's full text; `wise.py history --source review` and `--source critique`
+- `wise.py weak`: concepts marked `reinforce`
 - Git history: reverts, "fix" commits that undo a recent change, the same file
   fixed for the same reason twice
-- existing `guardrails.md` rows, so you don't propose a class twice
+- existing guardrails (`wise.py list guardrail`), so you don't propose a class twice
 
 Group findings into classes by cause, not by symptom ("byte index used as a char
 index", not "panic in tokenizer"). A class counts once it has happened at least
@@ -90,7 +92,8 @@ mistake doesn't stay in the code.
 
 ## 6. Record
 
-Add or update the class's row in `guardrails.md`: evidence, level, what enforces
-it, and the proof date. Leave `Proven: no` until step 5 is done. Note the
-learner's reasoning about the level in `progress.md` under the relevant topic.
+Add or update the class's guardrail: `wise.py add guardrail mistake=… level=…
+enforced_by=… --evidence <QA id> --evidence <QA id>`, then `set <id> proven="<date>:
+<how it failed>"` after step 5; it stays `proven=no` until then. Note the
+learner's reasoning about the level on the concept (`set <concept> notes+=…`).
 One class per session is a good pace; offer to continue with the next.

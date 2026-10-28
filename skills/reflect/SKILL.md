@@ -33,8 +33,8 @@ If you are running in Codex rather than Claude Code, first read [codex.md](codex
 
 Locate the state directory as the [Learn guide](../learn/SKILL.md) describes. If
 there is none, say there is nothing to reflect against and suggest
-`/wise-code:learn`; don't create state. Read the formats for `reflections.md` and
-`plugin-feedback.md` in [materials.md](../learn/materials.md).
+`/wise-code:learn`; don't create state. Read the Reflections, Feedback and Sessions
+sections of [materials.md](../learn/materials.md).
 
 ## 2. The learner writes first
 
@@ -49,8 +49,9 @@ fine; don't push for more.
 
 ## 3. Check against the evidence
 
-Evidence: this conversation, this session's qa-history entries, changes to
-`progress.md`, Code review findings, and the Git diff since the session started.
+Evidence: this conversation, this session's QA (`wise.py history --since <date>
+--full`), concept changes (`wise.py weak`, `wise.py concept <slug>`), Code review
+findings, and the Git diff since the session started.
 If the conversation was compacted and the learner agrees, you may read this
 session's transcript; read only this project's transcript folder.
 
@@ -63,11 +64,11 @@ Reply in three short parts:
   mention. One or two items at most.
 
 Correct a misconception in the reflection directly, citing the evidence. Don't
-praise or grade. Append a `reflect` qa-history entry only for a corrected
-misconception or a "Not yet shown" item.
+praise or grade. Add a `reflect` QA only for a corrected misconception or a "Not
+yet shown" item.
 
-Store the reflection in `reflections.md`: the learner's text unchanged, plus a one
-to three line evidence check. If the project keeps its own TIL or journal file,
+Store the reflection: `wise.py add reflection text="<the learner's text, unchanged>"
+evidence_check="<one to three lines>"`. If the project keeps its own TIL or journal file,
 offer to copy the learner's words there; don't rewrite them.
 
 ## 4. WiseCode feedback
@@ -78,16 +79,17 @@ too many questions, a hint that gave the answer away, noisy materials. Also ask 
 learner: "Did WiseCode get in the way anywhere?"
 
 For each real finding (a one-off slip that the rules already cover is not a
-finding), write an entry in `plugin-feedback.md`: what happened, the guide and
-section, and a small proposed edit (old text → new text). Never edit the installed
+finding), add plugin feedback: `wise.py add feedback what=… guide=… rule=…
+proposed_edit="<old text> → <new text>"` (the project's plugin feedback). Never
+edit the installed
 plugin; the learner applies accepted edits in their WiseCode repository. Show the
 entries and say how many were added. If there were none, say so.
 
 ## 5. Session recap
 
 Last, write the session recap as "Session end" in the
-[Learn guide](../learn/SKILL.md) describes: append an entry to
-`session-recap.md`, ending with `Start check: pending`, and show it in chat. Do it
+[Learn guide](../learn/SKILL.md) describes: `wise.py add session …` (it starts as
+`Start check: pending`), and show it in chat. Do it
 after the learner's reflection and your evidence check, never before: the recap
 would hand them the answers to step 2. The next new session opens with a start
 check built from its `Check points:`.

@@ -19,8 +19,8 @@ about it, and decide. Adapted from pstack by Lauren Tan (MIT); see
   their reasoning. Behavior.md still applies: explain tradeoffs, don't treat
   familiar patterns as mandatory.
 - **Evidence.** When the learner applies a principle unprompted, or explains why one
-  doesn't fit here, record it under the relevant topic in `progress.md` as
-  demonstrated reasoning. Questions about principles go in the question bank in
+  doesn't fit here, record it on the relevant concept in the learning graph
+  (`notes+=`, see [materials.md](materials.md)) as demonstrated reasoning. Questions about principles go in the question bank in
   this project's terms ("Why does `parse_span` return a `Result` while `apply_rule`
   doesn't?"), never as definitions to recite.
 - **At Full code**, name the principles that shaped the implementation in the

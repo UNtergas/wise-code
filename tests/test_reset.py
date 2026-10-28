@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -17,7 +18,7 @@ reset_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reset_module)
 
 
-class ResetTests(unittest.TestCase):
+class ResetCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="wise-code-reset-")
         self.addCleanup(self.temp.cleanup)
@@ -48,6 +49,8 @@ class ResetTests(unittest.TestCase):
     def assert_originals(self, state, originals):
         self.assertEqual(originals, {name: (state / name).read_bytes() for name in originals})
 
+
+class ResetTests(ResetCase):
     def test_preview_and_cancel_leave_notes_untouched(self):
         state, originals = self.notes()
         result = subprocess.run(
@@ -229,6 +232,55 @@ class ResetTests(unittest.TestCase):
         backups = list((state / "backups").iterdir())
         self.assertEqual(len(backups), 1)
         self.assert_originals(backups[0], originals)
+
+
+class GraphResetTests(ResetCase):
+    """With a learning graph, reset clears concept status and pending decisions."""
+
+    def graph_project(self):
+        state, _ = self.notes()
+        (state / "progress.md").unlink()
+        wise_path = ROOT / "bin" / "wise.py"
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": "2026-10-28"}
+
+        def wise(*args):
+            result = subprocess.run([sys.executable, str(wise_path), "--root",
+                                     str(self.project), *args], text=True,
+                                    capture_output=True, env=env, check=True)
+            return result.stdout.strip()
+        wise("add", "concept", "name=Retries", "status=reinforce")
+        wise("add", "decision", "title=Use SQLite", "stage=implementation-approval")
+        wise("add", "decision", "title=Use JSON", "status=settled")
+        wise("add", "qa", "q=Why?", "a=Because.", "source=asked", "--about", "retries")
+        return state
+
+    def test_graph_reset_keeps_materials_and_never_recreates_progress(self):
+        state = self.graph_project()
+        before = (state / "graph/nodes.jsonl").read_bytes()
+        preview = self.preview()
+        self.assertTrue(preview["graph"])
+        self.assertIn("graph/nodes.jsonl", preview["files"])
+        result = reset_module.reset(self.project, preview["confirmation"])
+        self.assertEqual(result["status"], "reset")
+        self.assertFalse((state / "progress.md").exists())
+        nodes = [json.loads(line) for line in
+                 (state / "graph/nodes.jsonl").read_text(encoding="utf-8").splitlines()]
+        kinds = sorted(n["type"] for n in nodes)
+        self.assertEqual(kinds, ["concept", "decision", "qa"])
+        self.assertNotIn("status", [n for n in nodes if n["type"] == "concept"][0])
+        self.assertEqual([n["title"] for n in nodes if n["type"] == "decision"], ["Use JSON"])
+        self.assertEqual((Path(result["backup"]) / "graph/nodes.jsonl").read_bytes(), before)
+
+    def test_graph_change_after_preview_blocks_reset(self):
+        state = self.graph_project()
+        preview = self.preview()
+        with (state / "graph/nodes.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write("")
+        (state / "graph/nodes.jsonl").write_text(
+            (state / "graph/nodes.jsonl").read_text(encoding="utf-8").replace("Retries", "Retry"),
+            encoding="utf-8")
+        with self.assertRaises(ValueError):
+            reset_module.reset(self.project, preview["confirmation"])
 
 
 if __name__ == "__main__":

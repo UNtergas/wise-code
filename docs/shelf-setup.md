@@ -83,6 +83,8 @@ Project: job-tracking
 Folders: job-tracking
 ```
 
+- `Project` is this project's stable name. Every shelf record carries it, so the
+  shelf can show which projects use each book. Keep it the same on every machine.
 - `Folders` lists the shelf folders this project may read, comma-separated.
   `shared` is always included.
 - WiseCode clones only those folders to `.wise-code/shelf-repo/` (sparse clone)
@@ -100,8 +102,12 @@ not access control: whoever can read the repo can read every folder.
   and a short checked quote. Read it, then explain it back.
 - "Just tell me" skips the reading; that citation gets no understanding credit.
 - Open the shelf repo itself and run `/wise-code:shelf` for a status report
-  (books, citations per project, sections still unread), and `/wise-code:quiz`
-  for the book questions.
+  (books, citations per project, sections still unread, and each book's impact
+  across projects), and `/wise-code:quiz` for the book questions.
+- Everything WiseCode records in the shelf lives in its learning graph,
+  `.wise-code/graph/`, written by `bin/wise.py` (Python 3.9+ needed on every
+  machine). Its files merge with git's `union` driver, so two projects pushing
+  citations never conflict.
 
 ## Troubleshooting
 

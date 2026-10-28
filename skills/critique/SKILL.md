@@ -82,7 +82,7 @@ resolved, or after the learner says it's good enough.
 
 ## 5. Record
 
-If the state directory exists, follow [materials.md](../learn/materials.md): log a
-`critique` qa-history entry for a writing issue that already appeared in an earlier
+If the state directory exists, follow [materials.md](../learn/materials.md): add a
+`critique` QA (`wise.py add qa source=critique …`) for a writing issue that already appeared in an earlier
 `critique` entry, or a grammar rule the learner got wrong. Repeated ones are input
 for `/wise-code:correct`.

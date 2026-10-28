@@ -25,10 +25,16 @@ Missing end line → the reply was cut off or the instructions were dropped; the
 Run this in the main conversation, only when explicitly invoked. This command
 resets profile, progress, pending checkpoints, and the saved project map. Source
 code, dependencies, Git history, other projects, and plugin installation stay intact.
-Learning materials (`qa-history.md`, `questions.md`, `cards.tsv`,
-`guardrails.md`, `reflections.md`, `session-recap.md`, `plugin-feedback.md`), the Teach workspace
-(`teach/`), and the shelf config and clone (`shelf.md`, `shelf-repo/`) also stay intact: they are history the learner may want to keep. If the learner wants a clean slate, tell them which of those files exist so
-they can delete them themselves; don't delete them here.
+In the learning graph, progress means each concept's `status` and every `pending`
+decision: those are cleared, after a backup of the whole graph. Everything else in
+the graph stays: Q/A, questions, cards, sessions, settled decisions, guardrails,
+reflections, plugin feedback, learning records, and the indexed lessons and files.
+Projects not yet imported keep their Markdown materials (`qa-history.md`,
+`questions.md`, `cards.tsv`, `guardrails.md`, `reflections.md`, `session-recap.md`,
+`plugin-feedback.md`) intact. The Teach workspace (`teach/`) and the shelf config
+and clone (`shelf.md`, `shelf-repo/`) also stay intact: they are history the
+learner may want to keep. If the learner wants a clean slate, tell them what
+exists so they can delete it themselves; don't delete it here.
 
 If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
 
@@ -44,7 +50,8 @@ If you are running in Codex rather than Claude Code, first read [codex.md](codex
    no notes, explain there's nothing to reset and suggest `/wise-code:learn`.
    On any error, stop and explain; don't improvise deletion commands.
 
-2. Show the returned absolute project and state paths, which notes will reset,
+2. Show the returned absolute project and state paths, which notes will reset
+   (with `graph: true`, also that concept status and pending decisions are cleared),
    that originals will be saved under that state's `backups/` directory, and that
    learning materials and `teach/` are kept.
    Use AskUserQuestion: header `Reset`, one question, `multiSelect: false`, options

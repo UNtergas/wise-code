@@ -38,32 +38,32 @@ Same lookup as Learn ([../learn/SKILL.md](../learn/SKILL.md), "Locate state"):
 
 ## Workspace
 
-| Path | Purpose |
+| Where | Purpose |
 |---|---|
-| `MISSION.md` | _Why_ user is learning. Grounds every decision. |
-| `RESOURCES.md` | Curated trusted sources (knowledge + communities). |
-| `GLOSSARY.md` | Canonical terminology. All lessons/records adhere. |
-| `NOTES.md` | Scratchpad: user teaching preferences, working notes. |
-| `./lessons/NNNN-slug.html` | Primary teaching unit. One tight topic each. |
-| `./reference/*.html` | Compressed essence of lessons: cheat sheets, syntax, algorithms, poses. Print well. |
-| `./learning-records/NNNN-slug.md` | ADR-like records of what user has learned. Drive ZPD. |
-| `./assets/*` | Reusable components (stylesheet, quiz widgets, simulators, diagram helpers). |
+| `MISSION.md` | _Why_ user is learning. Grounds every decision. File; indexed as `mission`. |
+| `RESOURCES.md` | Curated trusted sources (knowledge + communities). File; each entry indexed as `resource`. |
+| Glossary (graph) | Canonical terminology: concept `definition`, `aliases`, `avoid`. All lessons/records adhere. Read with `wise.py render glossary`. |
+| `NOTES.md` | Scratchpad: user teaching preferences, working notes. File. |
+| `./lessons/NNNN-slug.html` | Primary teaching unit. One tight topic each. File; indexed as `lesson`. |
+| `./reference/*.html` | Compressed essence of lessons: cheat sheets, syntax, algorithms, poses. Print well. File; indexed as `reference`. |
+| Learning records (graph) | ADR-like records of what user has learned (type `record`). Drive ZPD. Read with `wise.py list record`. |
+| `./assets/*` | Reusable components (stylesheet, results script, quiz widgets, simulators, diagram helpers). |
 
-Numbering: scan dir for highest number, +1.
+Numbering (lessons): scan dir for highest number, +1.
 
-Shared learning materials (`qa-history.md`, `questions.md`, `cards.tsv`) sit one level up in `<state>/`, shared w/ Learn and Quiz. Formats: [../learn/materials.md](../learn/materials.md).
+The learning graph sits one level up in `<state>/graph/`, shared w/ Learn and Quiz, read and written only through `wise.py` (commands, the "Script blocked" fix, and every format: [../learn/materials.md](../learn/materials.md)). Every new lesson, reference, mission or resource gets indexed right after it is written: `wise.py add lesson path=.wise-code/teach/lessons/0007-slug.html title="…" --covers <concept>` (same for `reference`, `mission`; `resource` takes `title=`, `url=`, `kind=knowledge|community`, `path=.wise-code/teach/RESOURCES.md`). `wise.py index` catches any missed.
 
 ## Session flow
 
-1. Read `MISSION.md`, `NOTES.md`, `GLOSSARY.md`, `learning-records/`, `assets/`. If `<state>/profile.md` or `<state>/progress.md` exist, read them (read-only) — concepts already demonstrated there count when judging ZPD. Don't edit Learn's files.
+1. Read `MISSION.md`, `NOTES.md`, `assets/`; query `wise.py render glossary`, `wise.py list record --limit 20`, `wise.py weak`. If `<state>/profile.md` exists, read it (read-only) — concepts demonstrated in the graph (`wise.py list concept --where status=demonstrated`) count when judging ZPD. Don't edit Learn's files. Lesson results waiting in `<state>/inbox/` → `wise.py import-lesson --inbox` first.
 2. No/vague mission → interview user on _why_ before anything else.
 3. `RESOURCES.md` thin → find high-trust resources first. Never trust parametric knowledge. Hand the search to one background agent (Agent tool, `model: sonnet`) briefed with the mission and the source rules of [../research/SKILL.md](../research/SKILL.md); vet its candidates yourself before they enter `RESOURCES.md`.
 4. Pick next lesson: user's explicit req, else most mission-relevant thing in zone of proximal development (ZPD — challenged "just enough"), judged from learning records.
 5. Build lesson from existing assets; add new reusable components to `./assets/`.
 6. Create/update reference docs alongside.
 7. Open lesson via CLI if possible.
-8. After evidence of learning: write learning records, promote glossary terms.
-9. Before ending: update shared materials per [../learn/materials.md](../learn/materials.md) — qa-history entries for exercises answered in chat + learner questions worth keeping; up to 3 questions per new learning record into `questions.md`; atomic facts into `cards.tsv`. One line telling user what was added. Suggest `/wise-code:quiz` when questions are due.
+8. After evidence of learning: write learning records (`wise.py add record …`), promote glossary terms (concept `definition`).
+9. Before ending: update shared materials per [../learn/materials.md](../learn/materials.md) — `lesson` QA for exercises answered in chat + learner questions worth keeping (`asked`); up to 3 questions per new learning record (`wise.py add question … --tests <concept> --from <record id>`); atomic facts as cards. One line telling user what was added. Suggest `/wise-code:quiz` when questions are due.
 
 ## Philosophy
 
@@ -98,11 +98,11 @@ Single self-contained HTML file in `./lessons/`.
 
 **Quizzes**: every answer option same word count (and char count if possible). Vary correct-answer position. No clues via formatting or order.
 
-**Evidence**: in-browser quiz results never reach agent. Ask user how it went, or re-ask key questions in chat, before writing learning records or verdicts.
+**Evidence**: in-browser quiz results reach the agent only as a file. Every lesson with a quiz loads `../assets/results.js` (copied from [templates/results.js](templates/results.js); edit the copy, never the plugin template), names itself (`WiseResults.lesson("0007-slug")`), records each first answer (`WiseResults.record(id, question, answer, correct, expected)`) and has a `<div id="wise-results"></div>`, where a **Download results** button appears. The learner saves the `.json` into `<state>/inbox/` (imported at the next session start) or tells you where it is: `wise.py import-lesson <path>`. Each answer becomes a `lesson` QA; wrong ones enter the question bank; a result is never imported twice. No file → ask how it went, or re-ask key questions in chat, before writing learning records or verdicts.
 
 ## Assets
 
-Reuse is default. Before authoring a lesson, read `./assets/` and build from what's there. Anything a second lesson could reuse → component in `./assets/`, linked, never inlined. First component every workspace earns: shared stylesheet linked by all lessons, so they read as one course. Start it by copying [templates/lesson.css](templates/lesson.css) into `./assets/lesson.css`; edit the copy, never the plugin template. Library grows w/ workspace.
+Reuse is default. Before authoring a lesson, read `./assets/` and build from what's there. Anything a second lesson could reuse → component in `./assets/`, linked, never inlined. First component every workspace earns: shared stylesheet linked by all lessons, so they read as one course. Start it by copying [templates/lesson.css](templates/lesson.css) into `./assets/lesson.css`, and [templates/results.js](templates/results.js) into `./assets/results.js`; edit the copies, never the plugin templates. Library grows w/ workspace.
 
 ## Reference docs
 
@@ -164,48 +164,43 @@ Rules:
 - Prune ruthlessly: wrong/shallow/off-mission → remove. Five sharp > thirty mediocre.
 - Record community opt-out here.
 
-## `GLOSSARY.md` format
+## Glossary (in the graph)
 
-```md
-# {Topic} Glossary
+A term is a concept with a `definition`; the learner reads the whole glossary with `wise.py render glossary`.
 
-{1-2 sentence topic description.}
-
-## Terms
-
-**Progressive overload**:
-Systematically increasing demand on a muscle over time, via load, volume, or intensity.
-_Avoid_: Pushing harder, levelling up
+```sh
+wise.py add concept name="Progressive overload" \
+  definition="Systematically increasing demand on a muscle over time, via load, volume, or intensity." \
+  avoid+="Pushing harder" avoid+="levelling up"
+wise.py set progressive-overload definition="…"     # revise in place
 ```
 
 Rules:
 - Add term only once user can use it correctly. Record of compressed knowledge, not a dictionary to learn from.
-- Opinionated: pick best word, list alternatives under `_Avoid_`.
+- Opinionated: pick best word, list alternatives in `avoid`. An existing concept close to the term → `add` refuses and shows it; set its `definition` instead.
 - Definitions 1-2 sentences: what term IS, not what it does.
 - Use glossary terms inside other definitions.
-- Group under subheadings when clusters emerge.
-- Flag ambiguities: "In this workspace, 'set' always means a working set."
+- Flag ambiguities in the definition: "In this workspace, 'set' always means a working set."
 - Revise in place as understanding deepens. Once created, every lesson adheres.
 
 ## Learning record format
 
-```md
-# {Short title of what was learned/established}
-
-{1-3 sentences: what is now known and why it changes what to teach next.}
+```sh
+wise.py add record title="<Short title of what was learned/established>" \
+  body="<1-3 sentences: what is now known and why it changes what to teach next.>" \
+  --about <concept>
 ```
 
 That's the whole format. Optional only when valuable:
-- **Status** frontmatter: `active | superseded by LR-NNNN`
-- **Evidence**: how user demonstrated it (answer, exercise, cited experience)
-- **Implications**: what it unlocks/rules out, if non-obvious
+- `evidence=`: how user demonstrated it (answer, exercise, cited experience)
+- `implications=`: what it unlocks/rules out, if non-obvious
 
 Write one when:
 1. User showed genuine understanding of something non-trivial (evidence, not exposure) — sets new floor.
 2. User disclosed prior knowledge — record it and claimed depth, so it's not re-taught.
 3. Misconception corrected — high value, predicts related stumbles.
-4. Mission shifted — link `MISSION.md` and update it.
+4. Mission shifted — update `MISSION.md` and write a record about the shift.
 
-Don't write for: material merely covered (coverage ≠ learning), anything already in `GLOSSARY.md`, session activity logs (records are decision-grade insights, not a journal — Q/A goes to `qa-history.md`).
+Don't write for: material merely covered (coverage ≠ learning), anything already a glossary definition, session activity logs (records are decision-grade insights, not a journal — Q/A goes to QA).
 
-Supersession: contradicted record → mark `Status: superseded by LR-NNNN`, never delete. Evolution of understanding is signal.
+Supersession: contradicted record → `wise.py link <new> supersedes <old>` and `wise.py set <old> status=superseded`, never delete. Evolution of understanding is signal.
