@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 ## Canary
 
-Every chat reply you send while this skill is active starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them):
+Once this skill has loaded in a conversation, every chat reply you send from then on, until the conversation ends, starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them). It stays on after this skill finishes, through other skills and ordinary tasks; never drop it because the work changed.
 
 ```text
 =====> ah0y_sir <name>
@@ -19,7 +19,7 @@ Every chat reply you send while this skill is active starts and ends with these 
 
 `<name>` is the name the user gave in this conversation. At the first reply of a new conversation, if no name has been given yet, start with `=====> ah0y_sir`, ask "What's your name?" before anything else, and wait; use the name from then on. Ask again in each new conversation; never store it in files or notes.
 
-Missing end line → the reply was cut off or the instructions were dropped; the learner should treat it as incomplete. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
+Missing start or end line → the reply was cut off or the instructions were dropped (for example after a long context or a compaction); the learner should treat it as a sign that quality may be slipping. The canary marks complete, on-instruction replies only. It says nothing about whether facts are true. Files you write (notes, research files, code) never carry it; background agents' internal reports don't need it.
 
 # Set the WiseCode assist level
 

@@ -193,7 +193,9 @@ def canary_context():
         f"{CANARY_END!r}, as plain text. If no name has been given in this "
         "conversation, the first reply starts with that line alone (no name), asks "
         "\"What's your name?\" before anything else, and waits; ask again in every "
-        "new conversation and never store the name in files or notes. It marks a "
+        "new conversation and never store the name in files or notes. Keep it on "
+        "every reply until the conversation ends, whatever the task or skill; a "
+        "missing line tells the user the instructions were dropped. It marks a "
         "complete reply, not a true one; files you write never carry it."
     )
 
