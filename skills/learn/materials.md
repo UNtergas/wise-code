@@ -112,6 +112,9 @@ wise.py add qa source=checkpoint q="Why store spans as UTF-8 offsets?" \
   questions with lasting value (a concept, a why, a tradeoff), not lookups.
 - `verdict`: `correct`, `partial`, `wrong`, or `n/a` (for `asked`). Judge the
   answer before corrections; `hints=N` records hints used.
+- `confidence`: `low`, `mid` or `high`, **only as the learner stated it**: they
+  prefix their answer (`high: the move invalidates x`). Never infer or fill it in;
+  no prefix → leave it out. See "Confusions and repair".
 - `followup`: what changed (`QB-…` added, concept marked `reinforce`).
 - `wise.py history [--concept X] [--since DATE] [--source S] [--full]` reads it.
 
@@ -135,11 +138,41 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
   project's terms, never as "define <principle>".
 - The script schedules (Leitner: box 1 → 1 day, 2 → 3, 3 → 7, 4 → 21, 5 → 60).
   New questions start in box 1, due tomorrow. `wise.py answer <id> correct|partial|wrong
-  --answer "<gist>" [--source start-check] [--hints N]` logs the QA and
+  --answer "<gist>" [--confidence low|mid|high] [--source start-check] [--hints N]` logs the QA and
   reschedules: correct moves up one box, partial stays, wrong returns to box 1.
   Only Quiz and the start check reschedule; others only add questions or fix a
   wrong reference answer (`set <id> a="…"`).
 - `wise.py due [--topic X] [--limit N] [--early]` lists what is due, interleaved.
+
+## Confusions and repair
+
+A wrong idea built into the code is expensive to unlearn, so a confusion is
+repaired before the project builds on it.
+
+- **Confidence.** On Build and Design checkpoint questions, quiz and open
+  start-check questions, and repair questions, end the question with one short reminder:
+  "Prefix your answer with your confidence: `high:`, `mid:` or `low:`." Record
+  what the learner wrote (`confidence=` on `add qa`, `--confidence` on `answer`).
+- **Confusion** (derived, never stored): a `wrong` answer at any confidence, or a
+  `partial` answer given with `high` confidence.
+- **Repaired** (derived): a later `correct` answer on the same concept to a
+  *different* question. Repeating the fixed answer to the missed question proves
+  recall, not understanding, so it doesn't count.
+- `wise.py confusions [--concept X --with-prereqs]` lists the open ones (the
+  learner's wrong answer included) and ends with the gate:
+  `gate: clear`, `gate: repair first (learner may skip)`, or
+  `gate: blocked: repair before building (skip capacity used)`.
+- **Repair.** Name the confusion and cite the learner's wrong answer, then ask one
+  fresh question that applies the idea to this project's code, at the current
+  assist level. No lecture first unless they ask. Record their answer as
+  `source=repair` with `--about <concept>`: correct repairs it; otherwise explain
+  what is still off (at the assist level) and ask another fresh question.
+- **Skip.** The learner may say "skip repair": `wise.py skip-repair <QA id>`. At
+  most 2 skipped confusions may stay open; a third skip is refused, and the gate
+  is blocked until the learner repairs one. Say so plainly, citing the open ones.
+- `wise.py calibration [--since DATE]`: accuracy per confidence level, and the
+  "sure but missed" answers, the strongest sign of a misconception. Bring it up at
+  reflections and when the learner asks how they're doing.
 
 ## Cards
 
@@ -260,7 +293,9 @@ wise.py link LR-new supersedes LR-old
 ## How each mode uses them
 
 - **Learn:** after a Build or Design checkpoint answer, or a Code review, that
-  shows real reasoning or a real gap, add a QA. When a concept gains
+  shows real reasoning or a real gap, add a QA (with the learner's stated
+  confidence). Before building on a concept, check its confusions (the repair
+  gate). When a concept gains
   `demonstrated` or `reinforce`, propose up to three questions and any atomic
   cards. Keep the pending decision current; write the session recap at the end;
   run the start check at the next new session.

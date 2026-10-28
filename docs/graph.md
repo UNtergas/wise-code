@@ -76,6 +76,21 @@ Readable views of tier 1 come from `wise.py render`; `cards.tsv` is an export.
 | `evidence` | guardrail | QA |
 | `of`, `on`, `for` | section → book; citation, read, explain-back → section; read, explain-back → citation |
 
+## Confidence and repair
+
+QA carries `confidence` (`low`, `mid`, `high`) only as the learner stated it, by
+prefixing the answer. Confusions and repairs are derived on read, never stored:
+
+- **Confusion**: `wrong` at any confidence, or `partial` at `high`.
+- **Repaired**: a later `correct` answer on the same concept to a different
+  question (by `answers` edge and normalized question text).
+- **Gate** (`wise.py confusions --concept X --with-prereqs`): `clear`, `repair
+  first`, or `blocked` once `SKIP_CAPACITY` (2) skipped confusions are open.
+  `skip-repair` stamps `skipped` on the QA and is refused at capacity.
+- `calibration`: accuracy per confidence level and the high-confidence misses.
+
+QA also gets an `at` timestamp so records within one day are ordered.
+
 ## Lesson results
 
 Lessons are static HTML, so a quiz inside one can't write to the repo. The

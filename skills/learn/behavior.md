@@ -60,6 +60,15 @@ understanding. Skip mastered explanations, not new engineering decisions.
 
 ## Agree, implement, explain
 
+**Repair gate.** Before a Design or Implementation checkpoint (or the hint or
+pseudocode for a step at Hint or Pseudo), run `wise.py confusions --concept
+<each concept the step builds on> --with-prereqs`. An open confusion is repaired
+first, as in "Confusions and repair" in [materials.md](materials.md): one fresh
+question about this project's code, answered by the learner. They may say "skip
+repair" (it's recorded); when the gate says `blocked`, skips are used up and the
+step waits until one confusion is repaired. Say which confusion and why in one or
+two lines; don't lecture.
+
 Use the checkpoint that matches the next step:
 
 - **Build checkpoint:** ask how the learner would approach the problem. Follow up

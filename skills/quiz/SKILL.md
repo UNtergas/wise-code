@@ -44,8 +44,9 @@ If you are running in Codex rather than Claude Code, first read [codex.md](codex
    learner agrees, then stop. "nothing due" → say when the next one is due and
    offer an early round (`--early`); early answers are scheduled from today.
    Script refused → "Script blocked" in materials.md.
-3. Ask one question at a time, in chat, and wait for the answer. Don't show the
-   reference answer, options, or hints first. Give a hint only when asked; a hinted
+3. Ask one question at a time, in chat, and wait for the answer. End it with the
+   reminder "Prefix your answer with your confidence: `high:`, `mid:` or `low:`."
+   Don't show the reference answer, options, or hints first. Give a hint only when asked; a hinted
    answer is at best `partial`. If the learner says "skip", leave that question's
    schedule unchanged.
 4. After each answer, give a verdict (`correct`, `partial`, `wrong`) and one to
@@ -53,13 +54,16 @@ If you are running in Codex rather than Claude Code, first read [codex.md](codex
    code. Equivalent reasoning in the learner's own words is correct; don't demand
    the reference wording. If the reference answer turns out to be wrong, say so,
    fix it (`wise.py set <id> a="…"`), and don't count the answer against the learner.
-5. Record it: `wise.py answer <id> <verdict> --answer "<gist>" [--hints N]`. That
+5. Record it: `wise.py answer <id> <verdict> --answer "<gist>" [--confidence <as
+   prefixed>] [--hints N]`. When it prints `confusion:`, say so in one line: the
+   next build step on that concept starts with a repair. That
    logs a `quiz` QA and reschedules the question by the Leitner rules. Run it after
    each answer, not at the end, so an interrupted quiz keeps its progress.
 6. If a `wrong` answer reveals a gap in a concept the graph tracks, mark it
    (`wise.py set <concept> status=reinforce notes+="…"`). Don't create concepts
    or touch pending decisions.
-7. End with one line: score, which topics were weak, and the next due date. Offer
+7. End with one line: score, which topics were weak, any high-confidence misses,
+   and the next due date. Offer
    to add atomic cards (`wise.py add card … --tests <concept>`) for facts the
    learner missed.
 

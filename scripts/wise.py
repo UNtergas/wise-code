@@ -37,7 +37,11 @@ BOXES = {1: 1, 2: 3, 3: 7, 4: 21, 5: 60}
 
 VERDICTS = ("correct", "partial", "wrong", "n/a")
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
-              "reflect", "asked", "start-check", "shelf")
+              "reflect", "asked", "start-check", "shelf", "repair")
+CONFIDENCE = ("low", "mid", "high")
+# Confusions skipped with "skip repair" that may stay open at once. One more
+# skip is refused: the learner repairs one first.
+SKIP_CAPACITY = 2
 READ_VERDICTS = ("understood", "partial", "misread", "skipped-read")
 
 # Field kinds: "str", "list", "int", "date", or a tuple of allowed values.
@@ -51,7 +55,8 @@ TYPES = {
     "qa": {"prefix": "QA", "required": ["q", "a", "source"], "fields": {
         "date": "date", "source": QA_SOURCES, "q": "str", "a": "str",
         "verdict": VERDICTS, "hints": "int", "followup": "str",
-        "result": "str", "project": "str"}},
+        "result": "str", "project": "str", "confidence": CONFIDENCE,
+        "skipped": "date"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
         "legacy": "str"}},
@@ -113,7 +118,7 @@ TYPES = {
         "verdict": READ_VERDICTS}},
 }
 
-META = ("id", "type", "created", "updated", "rev")
+META = ("id", "type", "created", "updated", "rev", "at")
 TIER2 = ("lesson", "reference", "research", "adr", "mission", "resource")
 SHELF_RECORDS = ("citation", "read", "explainback")
 ANY = tuple(TYPES)
@@ -172,6 +177,11 @@ def slugify(text):
 def short(text, width=90):
     text = " ".join(str(text).split())
     return text if len(text) <= width else text[: width - 1] + "…"
+
+
+def stamp_now():
+    """Date (pinned in tests) plus wall-clock time: orders records within a day."""
+    return f"{iso(today())}T{dt.datetime.now().time().isoformat()}"
 
 
 def new_id(prefix, existing):
@@ -493,8 +503,9 @@ def summary(graph, node):
         status = node.get("status", "-")
         return f"{i} · concept · {status} · {short(node.get('name', ''), 60)}"
     if kind == "qa":
+        confidence = f" ({node['confidence']})" if node.get("confidence") else ""
         return (f"{i} · {node.get('date', '')} · {node.get('source')} · "
-                f"{node.get('verdict', '-')} · {concept_of(i, 'about') or '-'} · "
+                f"{node.get('verdict', '-')}{confidence} · {concept_of(i, 'about') or '-'} · "
                 f"Q: {short(node.get('q', ''), 80)}")
     if kind == "question":
         return (f"{i} · {concept_of(i, 'tests') or '-'} · due {node.get('due', '-')} · "
@@ -595,6 +606,8 @@ def cmd_add(graph, args):
     if kind in SHELF_RECORDS and kind == "citation":
         node.setdefault("status", "sent")
     node["created"] = node.get("created", iso(today()))
+    if kind == "qa":
+        node["at"] = stamp_now()
     apply_fields(node, sets, appends, removes)
     problems = validate_node(node)
     if problems:
@@ -721,16 +734,169 @@ def cmd_answer(graph, args):
         graph.touch(question)
     qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": iso(today()),
           "created": iso(today()), "source": args.source, "q": question["q"],
-          "a": args.answer or "(answered in chat)", "verdict": args.verdict}
+          "a": args.answer or "(answered in chat)", "verdict": args.verdict,
+          "at": stamp_now()}
     if args.hints:
         qa["hints"] = args.hints
+    if args.confidence:
+        qa["confidence"] = args.confidence
     graph.nodes[qa["id"]] = qa
     graph.dirty = True
     graph.link(qa["id"], "answers", qid)
     for concept in graph.out(qid, "tests"):
         graph.link(qa["id"], "about", concept)
     graph.save()
-    print(f"{qa['id']} · {qid} now box {question['box']} · due {question['due']}")
+    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}")
+    if is_confusion(qa):
+        print(f"confusion: {qa['id']} · repair before building on "
+              f"{', '.join(graph.out(qid, 'tests')) or 'this concept'}")
+    return 0
+
+
+# ---------------------------------------------------------------- confusions and repair
+
+def is_confusion(qa):
+    """A wrong answer, or a partial one given with high confidence."""
+    verdict = qa.get("verdict")
+    return verdict == "wrong" or (verdict == "partial" and qa.get("confidence") == "high")
+
+
+def order(qa):
+    return (qa.get("date", ""), qa.get("at", ""), qa["id"])
+
+
+def same_question(graph, a, b):
+    asked_a, asked_b = set(graph.out(a["id"], "answers")), set(graph.out(b["id"], "answers"))
+    if asked_a & asked_b:
+        return True
+    norm = lambda text: " ".join(str(text).lower().split())  # noqa: E731
+    return norm(a.get("q", "")) == norm(b.get("q", ""))
+
+
+def repaired_by(graph, miss, concept):
+    """The later correct answer, to a different question, that repairs a confusion."""
+    for node in graph.of_type("qa"):
+        if node.get("verdict") != "correct" or concept not in graph.out(node["id"], "about"):
+            continue
+        later = order(node) > order(miss) if (node.get("at") and miss.get("at")) \
+            else node.get("date", "") > miss.get("date", "")
+        if later and not same_question(graph, node, miss):
+            return node["id"]
+    return None
+
+
+def with_prereqs(graph, concepts):
+    seen, stack = [], list(concepts)
+    while stack:
+        concept = stack.pop()
+        if concept in seen:
+            continue
+        seen.append(concept)
+        stack.extend(graph.out(concept, "prereq"))
+    return seen
+
+
+def open_confusions(graph, concepts=None):
+    """Unrepaired confusions as (qa node, concept), oldest first."""
+    found = []
+    for node in graph.of_type("qa"):
+        if not is_confusion(node):
+            continue
+        for concept in graph.out(node["id"], "about"):
+            if concepts is not None and concept not in concepts:
+                continue
+            if not repaired_by(graph, node, concept):
+                found.append((node, concept))
+    found.sort(key=lambda item: order(item[0]))
+    return found
+
+
+def skips_open(graph):
+    return sorted({qa["id"] for qa, _ in open_confusions(graph) if qa.get("skipped")})
+
+
+def gate_line(graph, pending):
+    skips = skips_open(graph)
+    unskipped = [qa for qa, _ in pending if not qa.get("skipped")]
+    if not unskipped:
+        state = "clear"
+    elif len(skips) >= SKIP_CAPACITY:
+        state = "blocked: repair before building (skip capacity used)"
+    else:
+        state = "repair first (learner may skip)"
+    return f"gate: {state} · skips open {len(skips)}/{SKIP_CAPACITY}"
+
+
+def cmd_confusions(graph, args):
+    concepts = None
+    if args.concept:
+        concepts = [graph.resolve(c) for c in args.concept]
+        if args.with_prereqs:
+            concepts = with_prereqs(graph, concepts)
+    pending = open_confusions(graph, concepts)
+    printer = Printer("pass --concept")
+    for qa, concept in pending[: args.limit]:
+        flags = []
+        if qa.get("confidence"):
+            flags.append(f"confidence {qa['confidence']}")
+        if qa.get("skipped"):
+            flags.append(f"skipped {qa['skipped']}")
+        printer.line(f"{qa['id']} · {concept} · {qa.get('date', '')} · {qa.get('verdict')}"
+                     f"{' · ' + ' · '.join(flags) if flags else ''} · Q: {short(qa.get('q', ''), 80)}")
+        printer.line(f"  their answer: {short(qa.get('a', ''), 120)}")
+    printer.done(max(0, len(pending) - args.limit))
+    if not pending:
+        print("no open confusions")
+    print(gate_line(graph, pending))
+    return 0
+
+
+def cmd_skip_repair(graph, args):
+    qa_id = graph.resolve(args.id)
+    qa = graph.nodes[qa_id]
+    if qa["type"] != "qa" or not is_confusion(qa):
+        raise WiseError(f"{qa_id} is not a confusion")
+    open_ids = {node["id"] for node, _ in open_confusions(graph)}
+    if qa_id not in open_ids:
+        raise WiseError(f"{qa_id} is already repaired")
+    if qa.get("skipped"):
+        print(f"{qa_id} already skipped on {qa['skipped']}")
+        return 0
+    skips = skips_open(graph)
+    if len(skips) >= SKIP_CAPACITY:
+        print(f"refused: {len(skips)}/{SKIP_CAPACITY} skipped confusions still open "
+              f"({', '.join(skips)}). Repair one of them first.")
+        return 1
+    qa["skipped"] = iso(today())
+    graph.touch(qa)
+    graph.save()
+    print(f"skipped {qa_id} · skips open {len(skips) + 1}/{SKIP_CAPACITY}")
+    return 0
+
+
+def cmd_calibration(graph, args):
+    """How well confidence predicts correctness; high-confidence misses first."""
+    table = {c: {"correct": 0, "partial": 0, "wrong": 0} for c in CONFIDENCE}
+    misses = []
+    for node in graph.of_type("qa"):
+        confidence, verdict = node.get("confidence"), node.get("verdict")
+        if args.since and node.get("date", "") < args.since:
+            continue
+        if confidence in table and verdict in table[confidence]:
+            table[confidence][verdict] += 1
+            if confidence == "high" and verdict in ("wrong", "partial"):
+                misses.append(node)
+    for confidence in reversed(CONFIDENCE):
+        row = table[confidence]
+        total = sum(row.values())
+        rate = f"{100 * row['correct'] // total}% correct" if total else "no answers"
+        print(f"{confidence}: {total} answers · {rate} · partial {row['partial']} · "
+              f"wrong {row['wrong']}")
+    misses.sort(key=order, reverse=True)
+    printer = Printer("pass --since")
+    for node in misses[: args.limit]:
+        printer.line(f"  sure but missed: {summary(graph, node)}")
+    printer.done(max(0, len(misses) - args.limit))
     return 0
 
 
@@ -1211,7 +1377,8 @@ def import_lesson_file(graph, path):
               "created": iso(today()), "source": "lesson",
               "q": str(answer.get("q", "")).strip() or "(lesson question)",
               "a": str(answer.get("answer", "")).strip() or "(no answer)",
-              "verdict": "correct" if correct else "wrong", "result": result_id}
+              "verdict": "correct" if correct else "wrong", "result": result_id,
+              "at": stamp_now()}
         graph.nodes[qa["id"]] = qa
         for concept in concepts:
             graph.edges.add((qa["id"], "about", concept))
@@ -1658,6 +1825,7 @@ def build_parser():
     p.add_argument("id")
     p.add_argument("verdict")
     p.add_argument("--answer", help="gist of the learner's answer")
+    p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
     p.add_argument("--hints", type=int, default=0)
     p.add_argument("--schedule", action="store_true", help="reschedule for any source")
@@ -1694,6 +1862,19 @@ def build_parser():
     p.add_argument("--min", type=int, default=2)
     p.add_argument("--days", type=int, default=None)
     p.set_defaults(func=cmd_mistakes, write=False)
+
+    p = limited(sub.add_parser("confusions", help="unrepaired confusions and the repair gate"))
+    p.add_argument("--concept", action="append", help="repeatable; default: all concepts")
+    p.add_argument("--with-prereqs", action="store_true")
+    p.set_defaults(func=cmd_confusions, write=False)
+
+    p = sub.add_parser("skip-repair", help="skip repairing one confusion (capped)")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_skip_repair, write=True)
+
+    p = limited(sub.add_parser("calibration", help="confidence vs correctness"))
+    p.add_argument("--since")
+    p.set_defaults(func=cmd_calibration, write=False)
 
     p = limited(sub.add_parser("history", help="Q/A history, newest first"))
     p.add_argument("--concept")

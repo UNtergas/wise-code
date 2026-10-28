@@ -70,6 +70,8 @@ If `profile.md` exists, read it and `project-map.md`. Then query the learning gr
 - Old Markdown notes and no `graph/` → run `wise.py import-md` first and say so
   in one line.
 - `wise.py decisions --pending`: every pending decision with its stage.
+- `wise.py confusions`: open confusions; the repair gate applies before building
+  on them (see "Repair gate" in [behavior.md](behavior.md)).
 - `wise.py weak` and `wise.py concept <slug>` for the concepts the task touches;
   `wise.py list record --concept <slug>` for Teach's learning records. Concepts
   recorded as understood aren't re-taught.
@@ -111,7 +113,9 @@ session first, then do it. Then import any lesson results waiting in
 4. After each answer: verdict (`correct`, `partial`, `wrong`) and one to three
    lines of feedback grounded in the recap and the code. Record it right away, so
    an interrupted check keeps its progress: `wise.py add qa source=start-check
-   q=… a=… verdict=… --about <concept>`. A `wrong` or `partial` answer adds a
+   q=… a=… verdict=… confidence=<as prefixed> --about <concept>`. Each open
+   question ends with the confidence-prefix reminder (materials.md, "Confusions
+   and repair"); multiple-choice answers from the picker carry no confidence. A `wrong` or `partial` answer adds a
    question (`wise.py add question … --tests <concept>`; box 1, due tomorrow) and,
    for a missed fact, offers an atomic card.
 5. End with the score, then show the session's `open` items so this session starts

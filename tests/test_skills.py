@@ -380,6 +380,20 @@ class GraphMigrationTests(unittest.TestCase):
                 self.assertIn("project-map.md", text)
                 self.assertIn("Skip", text.replace("skip", "Skip"))
 
+    def test_confidence_and_repair_gate_are_wired_in(self):
+        materials = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
+        self.assertIn("## Confusions and repair", materials)
+        self.assertIn("Never infer or fill it in", materials)
+        self.assertIn("wise.py skip-repair", materials)
+        self.assertIn("*different* question", materials)
+        behavior = (ROOT / "skills/learn/behavior.md").read_text(encoding="utf-8")
+        self.assertIn("**Repair gate.**", behavior)
+        self.assertIn("confusions --concept", behavior)
+        quiz = (ROOT / "skills/quiz/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("--confidence", quiz)
+        self.assertIn("`high:`", quiz)
+        self.assertIn("wise.py confusions", (ROOT / "skills/learn/SKILL.md").read_text(encoding="utf-8"))
+
     def test_hook_reads_the_graph_through_the_script(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
         self.assertIn("import wise", hook)

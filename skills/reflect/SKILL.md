@@ -50,7 +50,8 @@ fine; don't push for more.
 ## 3. Check against the evidence
 
 Evidence: this conversation, this session's QA (`wise.py history --since <date>
---full`), concept changes (`wise.py weak`, `wise.py concept <slug>`), Code review
+--full`), confidence vs results (`wise.py calibration --since <date>`), open
+confusions (`wise.py confusions`), concept changes (`wise.py weak`, `wise.py concept <slug>`), Code review
 findings, and the Git diff since the session started.
 If the conversation was compacted and the learner agrees, you may read this
 session's transcript; read only this project's transcript folder.
