@@ -76,9 +76,15 @@ Switch levels in chat at any time:
 Every WiseCode reply starts with the line `=====> ah0y_sir <name>` and ends
 with `<===== f1n` (stated in each skill and in the restore hook for active
 projects). Each new conversation opens by asking your name (first line
-`=====> ah0y_sir` until you answer); the name is never stored. A missing end line means the reply was cut off or the
-instructions were dropped. It marks a complete reply, not a true one; facts are
-guarded by research's span check.
+`=====> ah0y_sir` until you answer); the name is never stored.
+
+It starts at the first reply of a session in a project with an active profile or
+a shelf (the hook), or when any wise-code skill first loads, and then stays on
+for every reply until the conversation ends, whatever the task. A missing start
+or end line means the reply was cut off or the instructions were dropped, usually
+after a long context or a compaction: a sign that quality may be slipping. It
+marks a complete, on-instruction reply, not a true one; facts are guarded by
+research's span check.
 
 ## Principles
 

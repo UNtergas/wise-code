@@ -215,11 +215,15 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn(self.END, lines)
                 self.assertIn("What's your name?", "\n".join(lines))
                 self.assertIn("never store it", "\n".join(lines))
+                self.assertIn("until the conversation ends", "\n".join(lines))
+                self.assertIn("It stays on after this skill finishes", "\n".join(lines))
+                self.assertNotIn("while this skill is active", "\n".join(lines))
 
     def test_hook_uses_the_same_markers(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
         self.assertIn('CANARY_START = "=====> ah0y_sir"', hook)
         self.assertIn(f'CANARY_END = "{self.END}"', hook)
+        self.assertIn("until the conversation ends", hook)
 
 
 class SessionRecapTests(unittest.TestCase):
