@@ -14,7 +14,7 @@ import tempfile
 sys.dont_write_bytecode = True
 PLUGIN = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PLUGIN / "hooks"))
-sys.path.insert(0, str(PLUGIN / "bin"))
+sys.path.insert(0, str(PLUGIN / "scripts"))
 from session_start import state_directory
 import wise
 

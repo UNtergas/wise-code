@@ -91,7 +91,7 @@ Repo decides, not the skill.
 3. Name: `YYYY-MM-DD-slug.md`.
 4. Project has a `.wise-code/` folder (never create one here) → register the file
    in its learning graph, so it can be found later without reading it:
-   `python3 "${CLAUDE_PLUGIN_ROOT}/bin/wise.py" add research path=<repo-relative path>
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/wise.py" add research path=<repo-relative path>
    title="<question>" question="<question>"` (add `--covers <concept>` when a
    concept fits). The file stays the store.
 

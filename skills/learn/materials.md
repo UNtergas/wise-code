@@ -23,7 +23,7 @@ with file tools: a whole-file read is exactly the cost the graph removes, and a
 hand edit skips validation. In these guides, `wise.py <command>` means:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/bin/wise.py" <command>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/wise.py" <command>
 ```
 
 run from the project folder (it finds `.wise-code/` itself, the same way as

@@ -10,8 +10,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "bin" / "wise.py"
-sys.path.insert(0, str(ROOT / "bin"))
+SCRIPT = ROOT / "scripts" / "wise.py"
+sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import fixture  # noqa: E402

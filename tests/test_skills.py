@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import re
+import subprocess
 import unittest
 
 
@@ -100,7 +101,7 @@ class SharedPluginTests(unittest.TestCase):
             self.assertIn(heading, text)
         self.assertIn("#separator:Tab", text)
         self.assertIn("#tags column:3", text)
-        self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/bin/wise.py"', text)
+        self.assertIn('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/wise.py"', text)
         self.assertIn("Never open, grep or edit the JSONL files", text)
         self.assertIn("**Script blocked.**", text)
         self.assertIn("Bash(python3 *wise.py*)", text)
@@ -353,7 +354,7 @@ class GraphMigrationTests(unittest.TestCase):
                 text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
                 self.assertIn("wise.py", text)
                 codex = (ROOT / "skills" / name / "codex.md").read_text(encoding="utf-8")
-                self.assertIn("bin/wise.py", codex)
+                self.assertIn("scripts/wise.py", codex)
 
     def test_research_indexes_only_existing_state(self):
         text = (ROOT / "skills/research/SKILL.md").read_text(encoding="utf-8")
@@ -396,6 +397,19 @@ class SinglePluginTests(unittest.TestCase):
         codex = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
         self.assertEqual([(e["name"], e["source"]["path"]) for e in codex["plugins"]],
                          [("wise-code", "./")])
+
+    def test_no_bin_folder_or_executable_files(self):
+        # claude.ai's marketplace sync failed once bin/wise.py (executable, and a
+        # bin/ folder goes on PATH) appeared, while Claude Code accepted it.
+        # Scripts run as `python3 <file>`, so none needs the executable bit.
+        self.assertFalse((ROOT / "bin").exists())
+        listing = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-s"],
+                                 capture_output=True, text=True)
+        if listing.returncode != 0:
+            self.skipTest("not a git checkout")
+        executable = [line.split("\t")[1] for line in listing.stdout.splitlines()
+                      if not line.startswith("100644")]
+        self.assertEqual(executable, [])
 
     def test_no_nested_plugin_manifest(self):
         # claude.ai sync fails with "plugin.json must be at .claude-plugin/plugin.json
