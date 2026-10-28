@@ -106,7 +106,3 @@ server when the session has one, otherwise Read and Grep. With one, Explore and
 Code review compare it with `project-map.md` and turn mismatches into questions.
 Concepts keep plain `file:symbol` strings in `code`; `check` warns when a file
 is gone.
-
-## Out of scope
-
-The AWS-prep job graph (separate repo, later).
