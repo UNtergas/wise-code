@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,7 +45,7 @@ class HookCase(unittest.TestCase):
         )
         return directory
 
-    def run_hook(self, cwd=None, source="startup", raw=None):
+    def run_hook(self, cwd=None, source="startup", raw=None, plugin_root=ROOT):
         payload = raw if raw is not None else json.dumps({
             "hook_event_name": "SessionStart", "source": source,
             "cwd": str(cwd or self.project),
@@ -55,7 +57,7 @@ class HookCase(unittest.TestCase):
             # developer's credentials or unrelated environment configuration.
             env={
                 "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
-                "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                "CLAUDE_PLUGIN_ROOT": str(plugin_root),
                 # A fake home keeps the developer's own Claude settings out of tests.
                 "HOME": str(self.root / "home"),
             }, cwd=self.root,
@@ -345,6 +347,31 @@ class GraphHookTests(HookCase):
         context = self.context()
         self.assertIn("old Markdown format (progress.md)", context)
         self.assertIn("import-md", context)
+
+    def test_import_command_in_the_notice_runs_as_written(self):
+        # Claude copies the command from the notice; a stray argument made it exit 2.
+        self.state()
+        match = re.search(r"`(python3 [^`]*wise\.py[^`]*import-md)`", self.context())
+        self.assertIsNotNone(match, "the notice should quote the import command")
+        command = shlex.split(match.group(1))
+        command[0] = sys.executable
+        result = subprocess.run(command, text=True, capture_output=True, timeout=30,
+                                env={"PATH": os.environ.get("PATH", "")})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.project / ".wise-code/graph/nodes.jsonl").is_file())
+
+    def test_wise_exiting_at_import_stays_silent(self):
+        # wise.py calls sys.exit on Python < 3.9 while it is imported; SystemExit is
+        # not an Exception, so the hook has to catch it explicitly.
+        self.graph_state()
+        plugin = self.root / "plugin"
+        (plugin / "scripts").mkdir(parents=True)
+        shutil.copytree(ROOT / "hooks", plugin / "hooks")
+        (plugin / "scripts/wise.py").write_text("import sys\nsys.exit(3)\n",
+                                                encoding="utf-8")
+        output = self.run_hook(plugin_root=plugin)  # asserts exit 0 and empty stderr
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertNotIn("A start check is due", context)
 
     def test_graph_project_gets_no_import_notice(self):
         self.graph_state()
