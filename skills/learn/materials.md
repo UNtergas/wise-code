@@ -180,9 +180,11 @@ repaired before the project builds on it.
   what the learner wrote (`confidence=` on `add qa`, `--confidence` on `answer`).
 - **Confusion** (derived, never stored): a `wrong` answer at any confidence, or a
   `partial` answer given with `high` confidence.
-- **Repaired** (derived): a later `correct` answer on the same concept to a
-  *different* question. Repeating the fixed answer to the missed question proves
-  recall, not understanding, so it doesn't count.
+- **Repaired** (derived): a later `correct` answer, linked to the confusion with
+  `--repairs <QA id>`, on the same concept, to a *different* question. Repeating
+  the fixed answer to the missed question proves recall, not understanding, so it
+  doesn't count. A correct answer elsewhere on the concept doesn't count either:
+  it may test another idea and leave the misconception in place.
 - `wise.py confusions [--concept X --with-prereqs]` lists the open ones (the
   learner's wrong answer included) and ends with the gate:
   `gate: clear`, `gate: repair first (learner may skip)`, or
@@ -190,8 +192,10 @@ repaired before the project builds on it.
 - **Repair.** Name the confusion and cite the learner's wrong answer, then ask one
   fresh question that applies the idea to this project's code, at the current
   assist level. No lecture first unless they ask. Record their answer as
-  `source=repair` with `--about <concept>`: correct repairs it; otherwise explain
-  what is still off (at the assist level) and ask another fresh question.
+  `source=repair` with `--about <concept> --repairs <QA id of the confusion>`
+  (repeat `--repairs` only when the question truly tests the idea behind each
+  miss): correct repairs it; otherwise explain what is still off (at the assist
+  level) and ask another fresh question, linked the same way.
 - **Skip.** The learner may say "skip repair": `wise.py skip-repair <QA id>`. At
   most 2 skipped confusions may stay open; a third skip is refused, and the gate
   is blocked until the learner repairs one. Say so plainly, citing the open ones.

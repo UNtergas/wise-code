@@ -74,6 +74,7 @@ Readable views of tier 1 come from `wise.py render`; `cards.tsv` is an export.
 | `supersedes` | record | record |
 | `from` | question, card | QA, record, lesson, citation, section |
 | `evidence` | guardrail | QA |
+| `repairs` | QA (the repair answer) | QA (the confusion it targets) |
 | `of`, `on`, `for` | section → book; citation, read, explain-back → section; read, explain-back → citation |
 
 ## Confidence and repair
@@ -82,8 +83,12 @@ QA carries `confidence` (`low`, `mid`, `high`) only as the learner stated it, by
 prefixing the answer. Confusions and repairs are derived on read, never stored:
 
 - **Confusion**: `wrong` at any confidence, or `partial` at `high`.
-- **Repaired**: a later `correct` answer on the same concept to a different
-  question (by `answers` edge and normalized question text).
+- **Repaired**: a later `correct` answer that `repairs` this confusion, is
+  `about` the same concept, and asks a different question (by `answers` edge and
+  normalized question text). A correct answer that only shares the concept does
+  not count: it may test another idea. One repair answer may link several
+  confusions when it tests the idea they share. `repairs` must point at a
+  confusion, or the link is refused.
 - **Gate** (`wise.py confusions --concept X --with-prereqs`): `clear`, `repair
   first`, or `blocked` once `SKIP_CAPACITY` (2) skipped confusions are open.
   `skip-repair` stamps `skipped` on the QA and is refused at capacity.

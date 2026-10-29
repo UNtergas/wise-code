@@ -138,6 +138,7 @@ RELS = {
     "on": (SHELF_RECORDS, ("section",)),
     "for": (("explainback", "read"), ("citation",)),
     "evidence": (("guardrail",), ("qa",)),
+    "repairs": (("qa",), ("qa",)),
     "from": (("question", "card"), ("qa", "record", "lesson", "citation",
                                     "section")),
 }
@@ -331,6 +332,9 @@ class Graph:
                             f"({'/'.join(allowed_from)} → {'/'.join(allowed_to)})")
         if source == target:
             raise WiseError("a node can't link to itself")
+        if rel == "repairs" and not is_confusion(self.nodes[target]):
+            raise WiseError(f"repairs: {target} is not a confusion "
+                            "(wrong, or partial at high confidence)")
         if (source, rel, target) not in self.edges:
             self.edges.add((source, rel, target))
             self.dirty = True
@@ -774,9 +778,15 @@ def same_question(graph, a, b):
 
 
 def repaired_by(graph, miss, concept):
-    """The later correct answer, to a different question, that repairs a confusion."""
-    for node in graph.of_type("qa"):
-        if node.get("verdict") != "correct" or concept not in graph.out(node["id"], "about"):
+    """The later correct answer, to a different question, that repairs a confusion.
+
+    Only an answer linked to this miss with `repairs` counts. A correct answer that
+    merely shares the concept may test a different idea, so it says nothing about
+    whether this misconception is gone.
+    """
+    for node_id in graph.into(miss["id"], "repairs"):
+        node = graph.nodes[node_id]
+        if node.get("verdict") != "correct" or concept not in graph.out(node_id, "about"):
             continue
         later = order(node) > order(miss) if (node.get("at") and miss.get("at")) \
             else node.get("date", "") > miss.get("date", "")
@@ -1223,7 +1233,8 @@ def render_markdown(graph, kind):
             topic = ",".join(graph.out(node["id"], "about"))
             lines += [f"\n## {node.get('date', '')} · {topic} · {node.get('source')}",
                       f"Q: {node['q']}", f"A: {node['a']}",
-                      f"Verdict: {node.get('verdict', 'n/a')}"]
+                      f"Verdict: {node.get('verdict', 'n/a')}"
+                      + (f" · Confidence: {node['confidence']}" if node.get("confidence") else "")]
     elif kind == "recap":
         lines.append("# Session Recap (rendered)")
         for node in sorted(graph.of_type("session"), key=lambda n: n.get("date", "")):
