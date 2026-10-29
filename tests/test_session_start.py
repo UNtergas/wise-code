@@ -56,6 +56,8 @@ class HookCase(unittest.TestCase):
             env={
                 "PATH": os.pathsep.join((str(Path(sys.executable).parent), os.defpath)),
                 "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                # A fake home keeps the developer's own Claude settings out of tests.
+                "HOME": str(self.root / "home"),
             }, cwd=self.root,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -373,6 +375,75 @@ class GraphHookTests(HookCase):
         (state / "inbox" / "lesson-0001-results.json").write_text("{}", encoding="utf-8")
         self.assertIn("import-lesson --inbox", self.context(source="startup"))
         self.assertNotIn("import-lesson", self.context(source="compact"))
+
+
+class SettingsGuideTests(HookCase):
+    """The hook notices when Claude Code's read block would refuse wise-code's scripts."""
+
+    def user_settings(self, permissions):
+        path = self.root / "home" / ".claude" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"permissions": permissions}), encoding="utf-8")
+        return path
+
+    def test_no_settings_or_no_block_stays_silent(self):
+        self.state()
+        self.assertNotIn("additionalDirectories", self.context())
+        self.user_settings({"allow": ["Bash(ls)"]})
+        self.assertNotIn("additionalDirectories", self.context())
+
+    def test_block_without_exception_asks_once_per_new_session(self):
+        self.state()
+        settings = self.user_settings({"blockReadsOutsideWorkingDirectories": True})
+        context = self.context(source="startup")
+        self.assertIn("permissions.additionalDirectories", context)
+        self.assertIn(str(ROOT), context)
+        self.assertIn(str(settings), context)
+        self.assertIn("**Add it**", context)
+        self.assertIn("Never edit the file without Add it", context)
+        self.assertNotIn("additionalDirectories", self.context(source="compact"))
+
+    def test_exception_already_present_stays_silent(self):
+        self.state()
+        for entry in (str(ROOT), str(ROOT.parent)):
+            with self.subTest(entry=entry):
+                self.user_settings({"blockReadsOutsideWorkingDirectories": True,
+                                    "additionalDirectories": [entry]})
+                self.assertNotIn("additionalDirectories", self.context())
+
+    def test_profile_can_turn_the_prompt_off(self):
+        state = self.state()
+        self.user_settings({"blockReadsOutsideWorkingDirectories": True})
+        with (state / "profile.md").open("a", encoding="utf-8") as stream:
+            stream.write("Settings prompt: off\n")
+        self.assertNotIn("additionalDirectories", self.context())
+
+    def test_shelf_only_project_is_guided_too(self):
+        state = self.project / ".wise-code"
+        state.mkdir()
+        (state / "shelf.md").write_text("Repo: a/b\nProject: p\n", encoding="utf-8")
+        self.user_settings({"blockReadsOutsideWorkingDirectories": True})
+        self.assertIn("additionalDirectories", self.context())
+
+    def test_broken_settings_file_stays_silent(self):
+        self.state()
+        path = self.root / "home" / ".claude" / "settings.json"
+        path.parent.mkdir(parents=True)
+        path.write_text("{not json", encoding="utf-8")
+        self.assertNotIn("additionalDirectories", self.context())
+
+    def test_installed_copy_asks_for_the_marketplace_folder(self):
+        sys.path.insert(0, str(ROOT / "hooks"))
+        import session_start
+        original = session_start.PLUGIN_ROOT
+        try:
+            session_start.PLUGIN_ROOT = Path("/home/u/.claude/plugins/cache/wise-code/wise-code/0.8.1")
+            self.assertEqual(session_start.plugin_folder(),
+                             Path("/home/u/.claude/plugins/cache/wise-code"))
+            session_start.PLUGIN_ROOT = Path("/home/u/src/wise-code")
+            self.assertEqual(session_start.plugin_folder(), Path("/home/u/src/wise-code"))
+        finally:
+            session_start.PLUGIN_ROOT = original
 
 
 if __name__ == "__main__":

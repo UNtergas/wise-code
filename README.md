@@ -148,6 +148,12 @@ the slice a step needs, and every query stops at about 1.5k tokens. Spec:
   `wise.py import-md` (the hook reminds Claude); originals go to `backups/`.
 - **No Python, or the command blocked:** Claude stops learning writes and shows
   the fix (install Python, or allow `Bash(python3 *wise.py*)`). Coding help goes on.
+- **`blockReadsOutsideWorkingDirectories` on:** the plugin lives outside your
+  project, so its scripts would be refused. At session start the hook notices
+  and Claude offers to add the plugin folder to `permissions.additionalDirectories`
+  in `~/.claude/settings.json` (**Add it** / **Show me only** / **Not now**); it
+  never edits the file without your yes. `Settings prompt: off` in `profile.md`
+  stops the offer.
 - **Code:** WiseCode doesn't index your code. If a code-graph MCP server is
   installed, Explore and Code review use it (and compare it with your
   `project-map.md`); otherwise Read and Grep.

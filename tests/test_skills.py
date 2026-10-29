@@ -398,6 +398,14 @@ class GraphMigrationTests(unittest.TestCase):
         self.assertIn("`high:`", quiz)
         self.assertIn("wise.py confusions", (ROOT / "skills/learn/SKILL.md").read_text(encoding="utf-8"))
 
+    def test_read_block_guide_asks_before_editing_user_settings(self):
+        materials = (ROOT / "skills/learn/materials.md").read_text(encoding="utf-8")
+        for text in ("blockReadsOutsideWorkingDirectories", "additionalDirectories",
+                     "**Add it**", "**Show me only**", "**Not now**",
+                     "Never edit the settings file without **Add it**",
+                     "Settings prompt: off", "/add-dir"):
+            self.assertIn(text, materials)
+
     def test_hook_reads_the_graph_through_the_script(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
         self.assertIn("import wise", hook)

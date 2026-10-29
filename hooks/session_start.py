@@ -8,6 +8,7 @@ The events that trigger it (including compaction) are configured in hooks.json.
 """
 
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -106,6 +107,107 @@ def legacy_notes(state):
             if (state / name).is_file() and not (state / name).is_symlink()]
 
 
+# Managed settings live outside the user's reach; when they set the read block,
+# the learner can't add the exception, so Claude only explains.
+MANAGED_SETTINGS = (
+    Path("/etc/claude-code/managed-settings.json"),
+    Path("/Library/Application Support/ClaudeCode/managed-settings.json"),
+)
+
+
+def read_json(path):
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, UnicodeError, ValueError):
+        return None
+
+
+def blocks_reads(settings):
+    permissions = settings.get("permissions") if settings else None
+    return isinstance(permissions, dict) and \
+        permissions.get("blockReadsOutsideWorkingDirectories") is True
+
+
+def plugin_folder():
+    """The folder to allow: stable across updates, so not the version folder.
+
+    An installed copy sits at cache/<marketplace>/<plugin>/<version>/; allowing
+    cache/<marketplace> survives every update. A plugin loaded in place (a local
+    clone) is allowed as it is.
+    """
+    root = PLUGIN_ROOT
+    if len(root.parents) >= 3 and root.parents[2].name == "cache":
+        return root.parents[1]
+    return root
+
+
+def covers(directories, target, home):
+    for entry in directories if isinstance(directories, list) else []:
+        if not isinstance(entry, str) or not entry.strip():
+            continue
+        path = Path(entry.replace("~", str(home), 1) if entry.startswith("~") else entry)
+        try:
+            path = path.resolve()
+        except OSError:
+            continue
+        if path == target or path in target.parents:
+            return True
+    return False
+
+
+def prompt_is_off(state):
+    profile = state / "profile.md"
+    try:
+        if profile.is_symlink() or not profile.is_file():
+            return False
+        with profile.open(encoding="utf-8") as stream:
+            return any(re.fullmatch(r"Settings prompt:\s*off\s*", line, re.IGNORECASE)
+                       for line in stream)
+    except (OSError, UnicodeError):
+        return False
+
+
+def settings_context(state):
+    """Explain once per session when Claude Code would block wise-code's scripts."""
+    home = Path(os.environ.get("HOME") or Path.home())
+    target = PLUGIN_ROOT.resolve()
+    folder = plugin_folder()
+    managed = next((read_json(p) for p in MANAGED_SETTINGS if read_json(p)), None)
+    if blocks_reads(managed):
+        if covers(managed.get("permissions", {}).get("additionalDirectories"), target, home):
+            return None
+        return (
+            "Claude Code's managed settings block reads outside the working "
+            "directories (permissions.blockReadsOutsideWorkingDirectories), so "
+            f"wise-code's scripts under {folder} will be refused. The learner can't "
+            "change managed settings: tell them in two lines, and that their "
+            f"administrator can add {folder} to permissions.additionalDirectories. "
+            "Until then, follow \"Script blocked\" in materials.md.")
+    user_path = home / ".claude" / "settings.json"
+    user = read_json(user_path)
+    if not blocks_reads(user) or prompt_is_off(state):
+        return None
+    if covers(user.get("permissions", {}).get("additionalDirectories"), target, home):
+        return None
+    return (
+        "Claude Code blocks reads outside the working directories for this user "
+        f"(permissions.blockReadsOutsideWorkingDirectories in {user_path}), so every "
+        "wise-code script call (python3 .../scripts/wise.py and the others) will be "
+        f"refused. The fix is to add {folder} to permissions.additionalDirectories in "
+        "that user settings file (project settings don't count for this block). "
+        "Once this session, before the first wise.py call, say so in one or two lines, "
+        "show the exact JSON to add, and ask with AskUserQuestion (header `Settings`, "
+        "options **Add it**, **Show me only**, **Not now**). Add it → follow "
+        "\"Script blocked\" in materials.md: merge the path into the existing list "
+        "with Read and Edit (the learner approves Claude Code's permission prompt), "
+        "keep every other setting, and confirm the file still parses. Show me only → "
+        "show the JSON and the /add-dir command for this session. Not now → don't ask "
+        "again this session. Never edit the file without Add it.")
+
+
 def git_root(cwd):
     """Find the nearest repository or worktree root (a .git directory or file)."""
     for directory in (cwd, *cwd.parents):
@@ -177,6 +279,10 @@ def restore(payload):
             f"({shelf_config}). For concept questions, load the Shelf skill:\n"
             f"{PLUGIN_ROOT / 'skills/shelf/SKILL.md'}"
         )
+    if payload.get("source") in NEW_SESSION_SOURCES:
+        settings = settings_context(state)
+        if settings:
+            parts.append(settings)
     if not learning:
         parts.append(canary_context())
     # Claude Code adds additionalContext to the model's context. These are reading
