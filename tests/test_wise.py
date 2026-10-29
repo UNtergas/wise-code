@@ -396,12 +396,18 @@ class ConfusionTests(WiseTestCase):
         self.run_wise("add", "concept", "name=Borrowing")
         self.run_wise("link", "borrowing", "prereq", "ownership")
 
-    def qa(self, concept, verdict, q="Q?", confidence=None, day="2026-10-28"):
-        args = ["add", "qa", "source=checkpoint", f"q={q}", "a=A", f"verdict={verdict}",
+    def qa(self, concept, verdict, q="Q?", confidence=None, day="2026-10-28",
+           repairs=(), source="checkpoint"):
+        args = ["add", "qa", f"source={source}", f"q={q}", "a=A", f"verdict={verdict}",
                 "--about", concept]
         if confidence:
             args.append(f"confidence={confidence}")
+        for miss in repairs:
+            args += ["--repairs", miss]
         return self.out(*args, day=day).strip()
+
+    def repair(self, concept, *misses, q="Fresh transfer question?", verdict="correct"):
+        return self.qa(concept, verdict, q=q, repairs=misses, source="repair")
 
     def test_what_counts_as_a_confusion(self):
         # A correct answer from the day before can't repair today's misses.
@@ -422,11 +428,46 @@ class ConfusionTests(WiseTestCase):
 
     def test_only_a_different_later_question_repairs(self):
         miss = self.qa("ownership", "wrong", q="Why does the move invalidate x?")
-        self.qa("ownership", "correct", q="Why does the move invalidate x?")
+        self.repair("ownership", miss, q="Why does the move invalidate x?")
         self.assertIn(miss, self.out("confusions"))  # same question: recall, not transfer
-        self.qa("ownership", "correct", q="Where would the poller lose ownership here?")
+        self.repair("ownership", miss, q="Where would the poller lose ownership here?")
         self.assertIn("no open confusions", self.out("confusions"))
         self.assertIn("gate: clear", self.out("confusions"))
+
+    def test_an_unlinked_correct_answer_on_the_concept_does_not_repair(self):
+        # The demo that found the bug: a miss about char indexing was cleared by an
+        # unrelated correct answer about len(), only because both share a concept.
+        miss = self.qa("ownership", "wrong", q="Why can't you index a String by char?",
+                       confidence="high")
+        self.qa("ownership", "correct", q="What does s.len() return?", source="quiz")
+        self.assertIn(miss, self.out("confusions"))
+        self.assertIn("gate: repair first", self.out("confusions"))
+
+    def test_a_wrong_repair_attempt_does_not_repair(self):
+        miss = self.qa("ownership", "wrong", q="move")
+        self.repair("ownership", miss, verdict="wrong")
+        out = self.out("confusions")
+        self.assertIn(miss, out)
+        self.assertEqual(out.count("QA-"), 2)  # the failed attempt is a confusion too
+
+    def test_repair_clears_only_the_misses_it_links(self):
+        first = self.qa("ownership", "wrong", q="first miss")
+        second = self.qa("ownership", "wrong", q="second miss")
+        self.repair("ownership", first)
+        out = self.out("confusions")
+        self.assertNotIn(first, out)
+        self.assertIn(second, out)
+
+    def test_repairs_must_point_at_a_confusion(self):
+        fine = self.qa("ownership", "correct", q="fine")
+        bad = self.run_wise("add", "qa", "source=repair", "q=x", "a=y", "verdict=correct",
+                            "--about", "ownership", "--repairs", fine, check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("is not a confusion", bad.stderr)
+
+    def test_render_qa_shows_confidence(self):
+        self.qa("ownership", "wrong", q="move", confidence="high")
+        self.assertIn("Verdict: wrong · Confidence: high", self.out("render", "qa"))
 
     def test_correct_answer_before_the_miss_does_not_repair(self):
         self.qa("ownership", "correct", q="Earlier question", day="2026-10-27")
@@ -447,9 +488,9 @@ class ConfusionTests(WiseTestCase):
         self.assertEqual(third.returncode, 1)
         self.assertIn("Repair one of them first", third.stdout)
         self.assertIn("blocked", self.out("confusions"))
-        # Repairing frees capacity (all three share the concept, so one fresh
-        # correct answer repairs every earlier miss on it).
-        self.qa("ownership", "correct", q="fresh transfer question")
+        # Repairing frees capacity. One fresh question may target several misses
+        # when it tests the idea they share; each one it repairs is linked.
+        self.repair("ownership", *misses)
         self.assertIn("no open confusions", self.out("confusions"))
         self.assertIn("skips open 0/2", self.out("confusions"))
 

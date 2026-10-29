@@ -195,7 +195,9 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   confidence prefix (`high: …`, `mid: …`, `low: …`). A wrong answer, or a partial
   one you were sure of, is a confusion. Before the next build step on that
   concept (or one that depends on it), Claude asks you one fresh question about
-  your code; a correct answer to a *different* question repairs it. You can say
+  your code that targets that confusion; a correct answer to it (a *different*
+  question from the one you missed) repairs it. Getting some other question on
+  the same concept right doesn't. You can say
   "skip repair", but only 2 skips may stay open; past that, repair first.
   `wise.py calibration` shows how well your confidence predicts your answers.
 - **Guardrails**: one row per repeated mistake: the evidence, the level that

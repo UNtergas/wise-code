@@ -390,6 +390,7 @@ class GraphMigrationTests(unittest.TestCase):
         self.assertIn("Never infer or fill it in", materials)
         self.assertIn("wise.py skip-repair", materials)
         self.assertIn("*different* question", materials)
+        self.assertIn("--repairs <QA id", materials)
         behavior = (ROOT / "skills/learn/behavior.md").read_text(encoding="utf-8")
         self.assertIn("**Repair gate.**", behavior)
         self.assertIn("confusions --concept", behavior)
