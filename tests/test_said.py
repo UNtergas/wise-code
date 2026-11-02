@@ -105,6 +105,29 @@ class SaidTests(unittest.TestCase):
                                                "by=learner", f"said={said}",
                                                check=False).returncode, 2)
 
+    def test_blank_or_separator_only_quotes_are_refused(self):
+        # Review: these passed the gate and check-said then marked them ok.
+        for said in (" ", "…", " … ", " …  … "):
+            with self.subTest(said=said):
+                for by in ("learner", "ai"):
+                    bad = self.run_wise("add", "decision", "title=T", "status=settled",
+                                        f"by={by}", f"said={said}", check=False)
+                    self.assertEqual(bad.returncode, 2)
+        self.assertEqual(wise.said_status([], ["anything"]), "missing")
+
+    def test_a_learners_own_ellipsis_stays_inside_the_quote(self):
+        self.assertEqual(wise.said_parts("well… go with SQLite then"),
+                         ["well… go with SQLite then"])
+        self.assertEqual(wise.said_parts("go with SQLite … keeps backups trivial"),
+                         ["go with SQLite", "keeps backups trivial"])
+        self.decision("well… go with SQLite then")
+
+    def test_a_failed_set_writes_nothing(self):
+        session = self.out("add", "session", "goal=G").strip()
+        bad = self.run_wise("set", session, "goal=", "finished+=leaked", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertNotIn("finished", self.node(session))
+
     def test_said_check_is_set_only_by_the_checker(self):
         did = self.decision("go with SQLite, one file")
         self.assertEqual(self.node(did)["said_check"], "unchecked")

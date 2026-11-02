@@ -423,7 +423,8 @@ def validate_node(node):
 
 
 def said_parts(text):
-    return [part.strip() for part in str(text).split(SAID_SEP.strip()) if part.strip()]
+    # The spaced separator only: a learner's own "well… so" stays one part.
+    return [part.strip() for part in str(text).split(SAID_SEP) if part.strip()]
 
 
 def attribution_problems(node):
@@ -433,15 +434,18 @@ def attribution_problems(node):
     rule still validate. The fix is always to quote the learner's message.
     """
     kind, said = node["type"], node.get("said", "")
+    parts = said_parts(said)
+    if said and not parts:
+        return [f"{node['id']}: said is empty; quote the learner's words or leave it out"]
     needs = ((kind == "decision" and node.get("status") == "settled"
               and node.get("by") in ("learner", "both"))
              or (kind == "qa" and node.get("source") in LEARNER_QA_SOURCES))
-    if needs and not said:
+    if needs and not parts:
         what = "a settled learner decision" if kind == "decision" else f"a {node.get('source')} QA"
         return [f"{node['id']}: {what} needs said=\"<the learner's exact words>\"; "
                 f"copy a span from their message, parts joined with '{SAID_SEP.strip()}'"]
     problems = []
-    for part in said_parts(said) if said else []:
+    for part in parts:
         words = len(part.split())
         if words < SAID_MIN_WORDS:
             problems.append(f"{node['id']}: said part {part!r} has {words} word(s); "
@@ -718,14 +722,13 @@ def cmd_set(graph, args):
         raise WiseError("id and type can't change; use merge or delete + add")
     if "said_check" in sets:
         raise WiseError("said_check is set only by check-said")
-    before = dict(node)
+    before = node.get("text" if node["type"] == "reflection" else "said")
     apply_fields(node, sets, appends, removes)
     problems = validate_node(node) + attribution_problems(node)
     if problems:
-        node.clear()
-        node.update(before)
+        # Nothing is saved: the error exits before graph.save().
         raise WiseError("; ".join(problems))
-    mark_said(node, before.get("text" if node["type"] == "reflection" else "said"))
+    mark_said(node, before)
     graph.touch(node)
     for rel, target in links:
         graph.link(node_id, rel, target)
@@ -1486,6 +1489,8 @@ def learner_messages(folders):
 
 
 def said_status(spans, messages):
+    if not spans:
+        return "missing"
     for part in spans:
         wanted = fold(part)
         if not any(wanted in message for message in messages):
