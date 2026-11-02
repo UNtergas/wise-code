@@ -443,7 +443,7 @@ def attribution_problems(node):
     if needs and not parts:
         what = "a settled learner decision" if kind == "decision" else f"a {node.get('source')} QA"
         return [f"{node['id']}: {what} needs said=\"<the learner's exact words>\"; "
-                f"copy a span from their message, parts joined with '{SAID_SEP.strip()}'"]
+                f"copy a span from their message, parts joined with '{SAID_SEP}'"]
     problems = []
     for part in parts:
         words = len(part.split())
@@ -722,13 +722,15 @@ def cmd_set(graph, args):
         raise WiseError("id and type can't change; use merge or delete + add")
     if "said_check" in sets:
         raise WiseError("said_check is set only by check-said")
-    before = node.get("text" if node["type"] == "reflection" else "said")
+    previous_said = node.get("text" if node["type"] == "reflection" else "said")
     apply_fields(node, sets, appends, removes)
     problems = validate_node(node) + attribution_problems(node)
     if problems:
-        # Nothing is saved: the error exits before graph.save().
+        # Nothing is saved: the error exits before graph.save(). The node is
+        # already changed in memory, so a caller that catches WiseError and
+        # keeps using this graph must reload it.
         raise WiseError("; ".join(problems))
-    mark_said(node, before)
+    mark_said(node, previous_said)
     graph.touch(node)
     for rel, target in links:
         graph.link(node_id, rel, target)

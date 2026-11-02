@@ -115,6 +115,13 @@ class SaidTests(unittest.TestCase):
                     self.assertEqual(bad.returncode, 2)
         self.assertEqual(wise.said_status([], ["anything"]), "missing")
 
+    def test_the_refusal_names_the_separator_the_parser_splits_on(self):
+        # Review: the hint said '…' while the parser splits on ' … '.
+        bad = self.run_wise("add", "decision", "title=T", "status=settled", "by=learner",
+                            check=False)
+        self.assertIn(f"parts joined with '{wise.SAID_SEP}'", bad.stderr)
+        self.assertEqual(len(wise.said_parts(f"go with SQLite{wise.SAID_SEP}keeps backups")), 2)
+
     def test_a_learners_own_ellipsis_stays_inside_the_quote(self):
         self.assertEqual(wise.said_parts("well… go with SQLite then"),
                          ["well… go with SQLite then"])
