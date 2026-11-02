@@ -23,6 +23,9 @@ the learning behavior; follow SKILL.md and its guides as written.
 - Restoration: Codex has no WiseCode session hook. Learning mode resumes when the
   learner invokes `$wise-code:learn`. If context was compacted and you're unsure
   whether a decision is pending, run `wise.py decisions --pending` before acting.
+- Quotes: `wise.py check-said` reads only Claude Code transcripts, so in Codex
+  it marks quotes `unverified`. Still record `said` and read it back to the
+  learner; the read-back is the check here.
 - Learning graph: `wise.py` is `python3 "<plugin root>/scripts/wise.py"`; the plugin root is two directories above this file. If `python3` is blocked in the sandbox, ask the learner to allow it rather than writing Markdown notes.
 - Replies: present each checkpoint or question once, at the end of your reply,
   with its options beneath it. Don't restate it in a separate message, add a

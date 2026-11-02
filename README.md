@@ -142,6 +142,10 @@ the slice a step needs, and every query stops at about 1.5k tokens. Spec:
   slugs with aliases, and near-duplicates are refused. Two machines, or two
   projects writing to the shelf, merge with git's `union` driver and no
   conflicts.
+- **Your words, quoted:** a decision you made or reasoning you gave is stored
+  with a verbatim span of your message (`said`). `wise.py check-said` matches it
+  against this project's session transcripts, so Claude can't later "remember"
+  you saying something you didn't. Anything else is labeled as Claude's note.
 - **Read it yourself:** `wise.py render all --out <folder>` writes Markdown views;
   `wise.py edit <id>` changes one node in your editor; `wise.py check` validates.
 - **Old notes:** a project with the earlier Markdown files is converted once with

@@ -53,7 +53,7 @@ While waiting on a checkpoint, keep one `pending` decision
 (`wise.py add decision title=… proposal=… stage=…`) with the proposed approach and
 what reply is awaited. Its `stage` is `awaiting-reasoning`,
 `choice-confirmation`, or `implementation-approval`. Settle it once resolved
-(`set <id> status=settled outcome=… stage=`): record the outcome in the map as
+(`set <id> status=settled outcome=… said="<their words>" stage=`): record the outcome in the map as
 chosen or implemented, labeling approved additions as the AI's, and any reasoning
 evidence on its concept. Record confirmed choices in the map without claiming
 they are implemented. Keep any proposed coding scope explicit.

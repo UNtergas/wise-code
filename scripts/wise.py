@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 
 if sys.version_info < (3, 9):  # pragma: no cover - checked by the caller's interpreter
     sys.stderr.write("wise.py needs Python 3.9 or newer\n")
@@ -43,6 +44,14 @@ CONFIDENCE = ("low", "mid", "high")
 # skip is refused: the learner repairs one first.
 SKIP_CAPACITY = 2
 READ_VERDICTS = ("understood", "partial", "misread", "skipped-read")
+# Attribution: a record that says what the learner thought carries `said`, a
+# verbatim span of their own message. `check-said` matches it against this
+# project's session transcripts. Parts of one span are joined with " … ".
+SAID_CHECKS = ("unchecked", "ok", "missing", "unverified")
+SAID_SEP = " … "
+SAID_MIN_WORDS, SAID_MAX_WORDS = 3, 40
+# QA sources where `a` is the learner's reasoning, so `said` is required.
+LEARNER_QA_SOURCES = ("checkpoint", "explore", "reflect", "repair")
 
 # Field kinds: "str", "list", "int", "date", or a tuple of allowed values.
 # "prefix" is the ID prefix; None means the ID is a slug the caller provides.
@@ -56,7 +65,7 @@ TYPES = {
         "date": "date", "source": QA_SOURCES, "q": "str", "a": "str",
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "project": "str", "confidence": CONFIDENCE,
-        "skipped": "date"}},
+        "skipped": "date", "said": "str", "said_check": SAID_CHECKS}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
         "legacy": "str"}},
@@ -70,13 +79,15 @@ TYPES = {
         "date": "date", "title": "str", "status": ("pending", "settled"),
         "stage": ("awaiting-reasoning", "choice-confirmation",
                   "implementation-approval"),
-        "proposal": "str", "outcome": "str", "by": ("learner", "ai", "both")}},
+        "proposal": "str", "outcome": "str", "by": ("learner", "ai", "both"),
+        "said": "str", "said_check": SAID_CHECKS}},
     "guardrail": {"prefix": "G", "required": ["mistake"], "fields": {
         "mistake": "str", "evidence": "list",
         "level": ("design", "types", "lint", "test", "note"),
         "enforced_by": "str", "proven": "str", "retired": "str"}},
     "reflection": {"prefix": "R", "required": ["text"], "fields": {
-        "date": "date", "text": "str", "evidence_check": "str"}},
+        "date": "date", "text": "str", "evidence_check": "str",
+        "said_check": SAID_CHECKS}},
     "feedback": {"prefix": "FB", "required": ["what"], "fields": {
         "date": "date", "what": "str", "guide": "str", "rule": "str",
         "proposed_edit": "str",
@@ -411,6 +422,44 @@ def validate_node(node):
     return problems
 
 
+def said_parts(text):
+    return [part.strip() for part in str(text).split(SAID_SEP.strip()) if part.strip()]
+
+
+def attribution_problems(node):
+    """Write-time rule: what the learner said is quoted, not paraphrased.
+
+    Checked on add, set and answer, not on load, so graphs written before the
+    rule still validate. The fix is always to quote the learner's message.
+    """
+    kind, said = node["type"], node.get("said", "")
+    needs = ((kind == "decision" and node.get("status") == "settled"
+              and node.get("by") in ("learner", "both"))
+             or (kind == "qa" and node.get("source") in LEARNER_QA_SOURCES))
+    if needs and not said:
+        what = "a settled learner decision" if kind == "decision" else f"a {node.get('source')} QA"
+        return [f"{node['id']}: {what} needs said=\"<the learner's exact words>\"; "
+                f"copy a span from their message, parts joined with '{SAID_SEP.strip()}'"]
+    problems = []
+    for part in said_parts(said) if said else []:
+        words = len(part.split())
+        if words < SAID_MIN_WORDS:
+            problems.append(f"{node['id']}: said part {part!r} has {words} word(s); "
+                            f"quote at least {SAID_MIN_WORDS} so it identifies one message")
+        elif words > SAID_MAX_WORDS:
+            problems.append(f"{node['id']}: said part has {words} words; quote at most "
+                            f"{SAID_MAX_WORDS}, the words that carry the decision")
+    return problems
+
+
+def mark_said(node, before):
+    """A new or changed quote has not been checked yet."""
+    field = "text" if node["type"] == "reflection" else "said"
+    if node["type"] in ("qa", "decision", "reflection") and node.get(field) \
+            and node.get(field) != before:
+        node["said_check"] = "unchecked"
+
+
 def similar_concept(graph, slug, names):
     """Return an existing concept that looks like the same idea, or None."""
     wanted = {slug, *(slugify(n) for n in names)}
@@ -549,6 +598,17 @@ def summary(graph, node):
     return f"{i} · {kind}"
 
 
+def said_lines(node, with_note=True):
+    """How a record may be recalled: a quote with its check, or a labeled note."""
+    lines = []
+    if with_note and node.get("outcome"):
+        lines.append(f"  outcome (AI note, not the learner's words): {short(node['outcome'], 200)}")
+    if node.get("said"):
+        check = node.get("said_check", "unchecked")
+        lines.append(f"  learner said «{short(node['said'], 240)}» · check {check}")
+    return lines
+
+
 # ---------------------------------------------------------------- commands: writes
 
 def cmd_add(graph, args):
@@ -558,6 +618,8 @@ def cmd_add(graph, args):
     fields = [f for f in args.fields if f != "--force"]
     args.force = args.force or len(fields) != len(args.fields)
     sets, appends, removes, links = parse_assignments(fields)
+    if "said_check" in sets:
+        raise WiseError("said_check is set only by check-said")
     spec = TYPES[kind]
     node = {"type": kind}
 
@@ -613,9 +675,10 @@ def cmd_add(graph, args):
     if kind == "qa":
         node["at"] = stamp_now()
     apply_fields(node, sets, appends, removes)
-    problems = validate_node(node)
+    problems = validate_node(node) + attribution_problems(node)
     if problems:
         raise WiseError("; ".join(problems))
+    mark_said(node, None)
     if kind in TIER2 and node.get("path"):
         for other in graph.of_type(kind):
             if other.get("path") == node["path"] and other["id"] != node["id"]:
@@ -653,10 +716,16 @@ def cmd_set(graph, args):
     sets, appends, removes, links = parse_assignments(args.fields)
     if "id" in sets or "type" in sets:
         raise WiseError("id and type can't change; use merge or delete + add")
+    if "said_check" in sets:
+        raise WiseError("said_check is set only by check-said")
+    before = dict(node)
     apply_fields(node, sets, appends, removes)
-    problems = validate_node(node)
+    problems = validate_node(node) + attribution_problems(node)
     if problems:
+        node.clear()
+        node.update(before)
         raise WiseError("; ".join(problems))
+    mark_said(node, before.get("text" if node["type"] == "reflection" else "said"))
     graph.touch(node)
     for rel, target in links:
         graph.link(node_id, rel, target)
@@ -727,6 +796,10 @@ def cmd_answer(graph, args):
         raise WiseError(f"{qid} is not a question")
     if args.verdict not in ("correct", "partial", "wrong"):
         raise WiseError("verdict: correct, partial or wrong")
+    problems = attribution_problems({"id": qid, "type": "qa", "source": args.source,
+                                     "said": args.said or ""})
+    if problems:
+        raise WiseError("; ".join(problems))
     if args.source in ("quiz", "start-check") or args.schedule:
         box = int(question.get("box", 1))
         if args.verdict == "correct":
@@ -744,6 +817,9 @@ def cmd_answer(graph, args):
         qa["hints"] = args.hints
     if args.confidence:
         qa["confidence"] = args.confidence
+    if args.said:
+        qa["said"] = args.said
+        mark_said(qa, None)
     graph.nodes[qa["id"]] = qa
     graph.dirty = True
     graph.link(qa["id"], "answers", qid)
@@ -1079,7 +1155,9 @@ def cmd_history(graph, args):
     for node in items[: args.limit]:
         printer.line(summary(graph, node))
         if args.full:
-            printer.line(f"  A: {short(node.get('a', ''), 200)}")
+            printer.line(f"  A (gist): {short(node.get('a', ''), 200)}")
+            for line in said_lines(node, with_note=False):
+                printer.line(line)
     printer.done(max(0, len(items) - args.limit))
     if not items:
         print("no matching history")
@@ -1095,7 +1173,9 @@ def cmd_decisions(graph, args):
     for node in items[: args.limit]:
         printer.line(summary(graph, node))
         if args.pending and node.get("proposal"):
-            printer.line(f"  proposal: {short(node['proposal'], 300)}")
+            printer.line(f"  proposal (AI note, not the learner's words): {short(node['proposal'], 300)}")
+        for line in said_lines(node):
+            printer.line(line)
     printer.done(max(0, len(items) - args.limit))
     if not items:
         print("no pending decisions" if args.pending else "no decisions")
@@ -1322,6 +1402,134 @@ def cmd_export(graph, args):
 
 
 # ---------------------------------------------------------------- check
+
+# ---------------------------------------------------------------- learner quotes
+
+# Text inside these tags in a user entry was injected, not typed by the learner.
+INJECTED_RE = re.compile(
+    r"<(system-reminder|command-message|command-name|local-command-stdout|"
+    r"local-command-stderr|user-memory-input)>.*?</\1>", re.DOTALL)
+QUOTE_FOLD = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"',
+                            "–": "-", "—": "-", " ": " ", "…": "..."})
+
+
+def fold(text):
+    """Exact match up to case, whitespace, and curly quotes or dashes. No fuzz."""
+    text = unicodedata.normalize("NFKC", str(text)).translate(QUOTE_FOLD)
+    return " ".join(text.lower().split())
+
+
+def encode_project_dir(path):
+    """Claude Code's transcript folder names; two spellings are in use."""
+    text = str(path)
+    return [text.replace("/", "-").replace(".", "-"), re.sub(r"[^A-Za-z0-9]", "-", text)]
+
+
+def transcript_dirs(graph, override):
+    if override:
+        folder = Path(override).expanduser().resolve()
+        if not folder.is_dir():
+            raise WiseError(f"--transcripts {override} is not a folder")
+        return [folder]
+    base = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
+    root = graph.state.parent.resolve()
+    seen, found = set(), []
+    for name in encode_project_dir(root):
+        folder = base / name
+        if name not in seen and folder.is_dir():
+            seen.add(name)
+            found.append(folder)
+    return found
+
+
+def entry_text(entry):
+    """The learner's typed words in one transcript line, or '' for anything else.
+
+    Skips assistant turns, tool results, sub-agent threads (their prompts are
+    written by Claude), meta lines, text the client sent but nobody typed, and
+    compaction summaries (Claude's own
+    paraphrase: exactly what this check must not trust).
+    """
+    if not isinstance(entry, dict) or entry.get("type") != "user":
+        return ""
+    if entry.get("isSidechain") or entry.get("isMeta") or entry.get("isCompactSummary") \
+            or entry.get("textNotTyped") or entry.get("toolUseResult") is not None:
+        return ""
+    message = entry.get("message")
+    if not isinstance(message, dict) or message.get("role") != "user":
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        parts = [content]
+    elif isinstance(content, list):
+        parts = [b.get("text", "") for b in content
+                 if isinstance(b, dict) and b.get("type") == "text"]
+    else:
+        return ""
+    return INJECTED_RE.sub(" ", "\n".join(parts))
+
+
+def learner_messages(folders):
+    texts = []
+    for folder in folders:
+        for path in sorted(folder.glob("*.jsonl")):
+            if path.is_symlink():
+                continue
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    text = entry_text(json.loads(line))
+                except ValueError:
+                    continue
+                if text.strip():
+                    texts.append(fold(text))
+    return texts
+
+
+def said_status(spans, messages):
+    for part in spans:
+        wanted = fold(part)
+        if not any(wanted in message for message in messages):
+            return "missing"
+    return "ok"
+
+
+def cmd_check_said(graph, args):
+    folders = transcript_dirs(graph, args.transcripts)
+    targets = []
+    for node in graph.nodes.values():
+        field = "text" if node["type"] == "reflection" else "said"
+        if node["type"] not in ("qa", "decision", "reflection") or not node.get(field):
+            continue
+        if args.id and node["id"] not in {graph.resolve(i) for i in args.id}:
+            continue
+        if node.get("said_check") == "ok" and not (args.all or args.id):
+            continue
+        spans = [node["text"]] if field == "text" else said_parts(node["said"])
+        targets.append((node, spans))
+    if not targets:
+        print("nothing to check")
+        return 0
+    messages = learner_messages(folders) if folders else []
+    counts = {}
+    printer = Printer("pass --id")
+    for node, spans in targets:
+        status = said_status(spans, messages) if messages else "unverified"
+        if node.get("said_check") != status:
+            node["said_check"] = status
+            graph.touch(node)
+        counts[status] = counts.get(status, 0) + 1
+        if status == "missing":
+            printer.line(f"missing: {summary(graph, node)}")
+            printer.line(f"  not in the learner's messages: «{short(' … '.join(spans), 200)}»")
+    graph.save()
+    printer.done(0)
+    if not messages:
+        where = ", ".join(str(f) for f in folders) or "no transcript folder for this project"
+        print(f"no learner messages found ({where}); marked unverified. "
+              "Pass --transcripts <folder> if the session ran from a subfolder.")
+    print(" · ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    return 0
+
 
 def cmd_check(graph, args):
     problems, warnings = [], []
@@ -1836,6 +2044,7 @@ def build_parser():
     p.add_argument("id")
     p.add_argument("verdict")
     p.add_argument("--answer", help="gist of the learner's answer")
+    p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
     p.add_argument("--hints", type=int, default=0)
@@ -1931,7 +2140,13 @@ def build_parser():
     p.add_argument("--shelf", help="shelf repo folder, to check shelf ids")
     p.set_defaults(func=cmd_check, write=False)
 
-    p = sub.add_parser("import-md", help="convert legacy Markdown notes, then back them up")
+    p = sub.add_parser("check-said", help="match learner quotes against this project's transcripts")
+    p.add_argument("--id", action="append", help="check one record (repeatable)")
+    p.add_argument("--all", action="store_true", help="recheck quotes already ok")
+    p.add_argument("--transcripts", help="transcript folder, if not found automatically")
+    p.set_defaults(func=cmd_check_said, write=False)  # never creates state
+
+    p = sub.add_parser("import-md",help="convert legacy Markdown notes, then back them up")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_import_md, write=True)
 

@@ -61,6 +61,28 @@ The "before" column grows with history; the "after" column doesn't.
 
 Readable views of tier 1 come from `wise.py render`; `cards.tsv` is an export.
 
+## Learner's words
+
+Records that say what the learner decided or reasoned carry `said`: a verbatim
+span (3 to 40 words per part, parts joined with ` … `) of the learner's own
+message. Without it, a note Claude wrote ("outcome", a QA gist) gets read back
+after a restart as if the learner had said it, and each restart paraphrases the
+last paraphrase. Research solved the same problem for web pages with verbatim
+spans; this applies it to the learner.
+
+- Required on write (`add`, `set`, `answer`) for a settled decision `by=learner`
+  or `both`, and for QA from `checkpoint`, `explore`, `reflect` and `repair`.
+  Graphs written before the rule still pass `check`.
+- `said_check` (`unchecked`, `ok`, `missing`, `unverified`) is set only by
+  `wise.py check-said`, which matches each part against the typed user messages
+  in this project's Claude Code transcripts. It skips compaction summaries,
+  tool results, sub-agent threads, injected reminders and client text
+  nobody typed (`textNotTyped`), and stores nothing
+  from the transcripts. Reflections are checked on their `text`.
+- `decisions` and `history --full` print quotes as `learner said «…» · check …`
+  and label `proposal` and `outcome` as AI notes, so the restore reads the
+  difference instead of guessing it.
+
 ## Edges
 
 | Relation | From | To |

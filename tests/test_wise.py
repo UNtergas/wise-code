@@ -211,7 +211,8 @@ class QueryTests(WiseTestCase):
         did = self.out("add", "decision", "title=Storage", "proposal=SQLite",
                        "stage=implementation-approval").strip()
         self.assertIn("implementation-approval", self.out("decisions", "--pending"))
-        self.run_wise("set", did, "status=settled", "outcome=JSON", "by=learner")
+        self.run_wise("set", did, "status=settled", "outcome=JSON", "by=learner",
+                      "said=just use a JSON file")
         self.assertIn("no pending decisions", self.out("decisions", "--pending"))
 
     def test_output_is_capped_and_says_how_to_narrow(self):
@@ -399,7 +400,7 @@ class ConfusionTests(WiseTestCase):
     def qa(self, concept, verdict, q="Q?", confidence=None, day="2026-10-28",
            repairs=(), source="checkpoint"):
         args = ["add", "qa", f"source={source}", f"q={q}", "a=A", f"verdict={verdict}",
-                "--about", concept]
+                "said=because the owner drops it", "--about", concept]
         if confidence:
             args.append(f"confidence={confidence}")
         for miss in repairs:
@@ -461,7 +462,7 @@ class ConfusionTests(WiseTestCase):
     def test_repairs_must_point_at_a_confusion(self):
         fine = self.qa("ownership", "correct", q="fine")
         bad = self.run_wise("add", "qa", "source=repair", "q=x", "a=y", "verdict=correct",
-                            "--about", "ownership", "--repairs", fine, check=False)
+                            "said=the owner frees it", "--about", "ownership", "--repairs", fine, check=False)
         self.assertEqual(bad.returncode, 2)
         self.assertIn("is not a confusion", bad.stderr)
 

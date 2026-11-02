@@ -69,7 +69,9 @@ If `profile.md` exists, read it and `project-map.md`. Then query the learning gr
 
 - Old Markdown notes and no `graph/` → run `wise.py import-md` first and say so
   in one line.
-- `wise.py decisions --pending`: every pending decision with its stage.
+- `wise.py decisions --pending`: every pending decision with its stage. Recall
+  what the learner said only from its «quote» lines; the rest is your note (see
+  "Learner's words" in [behavior.md](behavior.md)).
 - `wise.py confusions`: open confusions; the repair gate applies before building
   on them (see "Repair gate" in [behavior.md](behavior.md)).
 - `wise.py weak` and `wise.py concept <slug>` for the concepts the task touches;
@@ -133,7 +135,9 @@ recap: a `done` or `skipped` entry is never checked again.
 When the learner says they are stopping ("done for today", "wrap up", "end
 session", or runs `/wise-code:reflect`), write the session recap before the final
 reply. Gather evidence first: this conversation, this session's QA
-(`wise.py history --since <today>`), concept changes, pending decisions, and the
+(`wise.py history --since <today>`), concept changes, pending decisions, quote checks
+(`wise.py check-said`; a `missing` quote is a misattribution: tell the learner
+and fix it before the recap), and the
 Git log and diff since the session started. Add it with `wise.py add session
 goal=… finished+=… learned+=… decided+=… open+=… checkpoints+=…` as in
 [materials.md](materials.md); it starts as `Start check: pending`

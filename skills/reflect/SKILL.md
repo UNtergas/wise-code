@@ -50,7 +50,8 @@ fine; don't push for more.
 ## 3. Check against the evidence
 
 Evidence: this conversation, this session's QA (`wise.py history --since <date>
---full`), confidence vs results (`wise.py calibration --since <date>`), open
+--full`; run `wise.py check-said` first, and treat a claim resting on a `missing`
+quote as not shown), confidence vs results (`wise.py calibration --since <date>`), open
 confusions (`wise.py confusions`), concept changes (`wise.py weak`, `wise.py concept <slug>`), Code review
 findings, and the Git diff since the session started.
 If the conversation was compacted and the learner agrees, you may read this

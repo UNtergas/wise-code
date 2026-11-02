@@ -126,8 +126,13 @@ One exchange worth keeping, in either direction.
 ```sh
 wise.py add qa source=checkpoint q="Why store spans as UTF-8 offsets?" \
   a="The core indexes bytes; UTF-16 offsets are converted at the boundary." \
+  said="the core only ever sees bytes … convert utf-16 at the edge" \
   verdict=partial hints=1 --about rust-strings
 ```
+
+- `said`: the learner's exact words, required when `source` is `checkpoint`,
+  `explore`, `reflect` or `repair` (where `a` is their reasoning). See "Learner's
+  words" below. `a` is your gist; `said` is the evidence it came from them.
 
 - `source`: `checkpoint` (reasoning at a Build or Design checkpoint), `review`
   (Code review finding), `quiz`, `lesson`, `explore` (a prediction checked
@@ -192,7 +197,7 @@ repaired before the project builds on it.
 - **Repair.** Name the confusion and cite the learner's wrong answer, then ask one
   fresh question that applies the idea to this project's code, at the current
   assist level. No lecture first unless they ask. Record their answer as
-  `source=repair` with `--about <concept> --repairs <QA id of the confusion>`
+  `source=repair` with `said="<their answer, verbatim>" --about <concept> --repairs <QA id of the confusion>`
   (repeat `--repairs` only when the question truly tests the idea behind each
   miss): correct repairs it; otherwise explain what is still off (at the assist
   level) and ask another fresh question, linked the same way.
@@ -250,14 +255,17 @@ restart must restore.
 ```sh
 wise.py add decision title="Storage for drafts" proposal="SQLite file per user; awaiting Implement" \
   stage=implementation-approval by=learner --about persistence
-wise.py set D-20261028-1f2e status=settled outcome="SQLite, chosen" stage=
+wise.py set D-20261028-1f2e status=settled outcome="SQLite, chosen" stage= \
+  said="go with SQLite, one file per user … keeps backups trivial"
 ```
 
 - While waiting on a checkpoint, keep exactly one `pending` decision for it, with
   the proposal and `stage`: `awaiting-reasoning`, `choice-confirmation` or
-  `implementation-approval`. Settle it (`status=settled outcome=…`, clear `stage`)
+  `implementation-approval`. Settle it (`status=settled outcome=… said=…`, clear `stage`)
   once resolved, and record the outcome in `project-map.md` as chosen or
   implemented. `by` separates the learner's decisions from AI proposals.
+- A settled decision `by=learner` or `both` needs `said`: their words choosing it.
+  `proposal` and `outcome` are your notes; `decisions` prints them labeled as such.
 - `wise.py decisions --pending` is what a restart reads. Restarting or compacting
   is never approval.
 
@@ -283,6 +291,26 @@ The learner's text, unchanged, plus a short evidence check.
 ```sh
 wise.py add reflection text="<their words, unedited>" evidence_check="<one to three lines>"
 ```
+
+`check-said` checks `text` like a quote: an edited reflection shows as `missing`.
+
+## Learner's words
+
+Rule and recall wording: "Learner's words" in [behavior.md](behavior.md).
+
+- `said="<span> … <span>"`: 3 to 40 words per part, copied character for
+  character from the learner's messages (case, spacing, curly quotes and dashes
+  are folded; nothing else is). Parts are joined with ` … `.
+- `said_check` is set only by `wise.py check-said`, never by hand: `unchecked`
+  (new or changed quote), `ok`, `missing` (in none of their messages), or
+  `unverified` (no transcript found). `wise.py answer … --said "<span>"` records
+  one for a quiz or start-check answer; it is optional there.
+- `wise.py check-said [--id ID] [--all] [--transcripts FOLDER]` reads this
+  project's Claude Code transcripts (`~/.claude/projects/<encoded project path>/`)
+  and nothing else. It counts only typed user messages: never compaction
+  summaries, tool results, sub-agent prompts or injected reminders. It stores
+  nothing from them. A session started from a subfolder has its own transcript
+  folder: pass it with `--transcripts`.
 
 ## Feedback
 

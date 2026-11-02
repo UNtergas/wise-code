@@ -77,7 +77,9 @@ also a learning checkpoint, so change three things:
    evidence of understanding.
 3. **Record it.** Settled decisions go into `project-map.md` as chosen, in the
    learner's words, and into the learning graph (`wise.py add decision title=…
-   status=settled outcome=… by=learner --about <concept>`). Reasoning that shows
+   status=settled outcome=… by=learner said="<their words>" --about <concept>`),
+   reading the quote back in one line (see "Learner's words" in
+   [behavior.md](../learn/behavior.md)). Reasoning that shows
    real understanding, or a real gap, gets a `checkpoint` QA per
    [materials.md](../learn/materials.md).
 
