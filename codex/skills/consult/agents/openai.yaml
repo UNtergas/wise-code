@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Senior Consult"
+  short_description: "Ask the senior developer when you doubt the teacher"
+policy:
+  allow_implicit_invocation: false
