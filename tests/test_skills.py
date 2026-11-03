@@ -440,7 +440,7 @@ class ResearchSpanTests(unittest.TestCase):
 
 
 class ShelfTests(unittest.TestCase):
-    """The shelf is opt-in, bounded to mapped folders, and pushes every record."""
+    """The shelf is opt-in, bounded to mapped folders, and pushes each citation cycle."""
 
     def text(self):
         return (ROOT / "skills/shelf/SKILL.md").read_text(encoding="utf-8")
@@ -469,14 +469,30 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("sparse-checkout set .wise-code shared <Folders...>", text)
         self.assertIn("lists `shelf-repo/`", text)
 
-    def test_every_cite_and_explanation_is_pushed(self):
+    def test_one_commit_and_push_per_citation_cycle(self):
         text = self.text()
-        self.assertIn("## Step 5: Record and push (after every cite and every explanation)", text)
-        self.assertIn("git -C <shelf> pull --rebase --quiet\ngit -C <shelf> push --quiet", text)
+        step5 = text.split("## Step 5:")[1].split("\n## ")[0]
+        self.assertIn(" Record, then commit and push once per citation", text)
+        # The cite and the read stay local; the cycle's end commits all of it.
+        self.assertIn("Don't commit after a cite or a read", step5)
+        self.assertIn("the explain-back, or `skipped-read`", step5)
+        self.assertIn("git -C <shelf> pull --rebase --quiet\ngit -C <shelf> push --quiet", step5)
+        self.assertIn("Never amend, squash or force-push", step5)
+        self.assertIn('wise.py --root "<shelf>"', step5)
+        self.assertIn("add citation project=<Project>", step5)
+        self.assertIn("merge with git's `union` driver", step5)
         self.assertIn("No `cd`, no `&&` chains", text)
-        self.assertIn('wise.py --root "<shelf>"', text)
-        self.assertIn("add citation project=<Project>", text)
-        self.assertIn("merge with git's `union` driver", text)
+
+    def test_pending_records_are_flushed_before_pull(self):
+        text = self.text()
+        sync = text.split("## Step 1: Sync")[1].split("\n## ")[0]
+        self.assertIn("Flush first", sync)
+        self.assertLess(sync.index("Flush first"), sync.index("pull --rebase"))
+        self.assertIn('shelf(<Project>): carry-over', sync)
+
+    def test_shelf_mode_quiz_answers_are_pushed(self):
+        extras = self.text().split("## Shelf mode extras")[1].split("\n## ")[0]
+        self.assertIn("after each answered book question", extras)
 
     def test_quotes_are_checked_and_capped(self):
         text = self.text()

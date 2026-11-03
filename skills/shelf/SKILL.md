@@ -42,6 +42,8 @@ Two kinds of session:
 
 `<shelf>` below is `<state>/shelf-repo` in project mode and the shelf repo's root in shelf mode.
 
+**Flush first.** A citation cycle left open last session (a cite never explained) leaves uncommitted records, and `pull --rebase` refuses a dirty tree. If `git -C "<shelf>" status --porcelain .wise-code` prints anything, commit it before any pull: `git -C "<shelf>" add .wise-code`, then `git -C "<shelf>" commit -m "shelf(<Project>): carry-over"`; the pull below then pushes it with the rest.
+
 Run each git command as its own call, with `git -C <path>` and absolute paths. No `cd`, no `&&` chains, no shell variables: permission checks block those and the learner gets prompts.
 
 ### Project mode
@@ -125,7 +127,7 @@ Don't summarize, paraphrase or explain the section in this reply. The parts of t
 
 If the learner says "just tell me", "skip reading" or similar: explain it, and record the citation as `skipped-read`. That gives no understanding credit.
 
-Then record and push (Step 5): one new citation, status `sent`.
+Then record (Step 5): one new citation, status `sent`. Nothing is committed yet.
 
 ## Step 4: Check the explanation
 
@@ -134,9 +136,9 @@ When the learner explains:
 2. Feedback: what holds, what is missing or wrong, each gap pointing back to a page. Never rewrite their explanation into a model answer. Ask them to fix the gap, unless they ask for the answer.
 3. Verdict: `understood` (core idea correct, in their words), `partial` (gaps named), or `misread` (wrong idea). Base it on what they wrote, not on effort.
 
-Then record and push (Step 5).
+Then record, commit and push (Step 5).
 
-## Step 5: Record and push (after every cite and every explanation)
+## Step 5: Record, then commit and push once per citation cycle
 
 In the shelf graph (`wise.py --root "<shelf>"`, where `<shelf>` is `<state>/shelf-repo` in project mode and the repo itself in shelf mode). `<Project>` is `Project:` from `shelf.md` (required; missing → ask the learner for a stable name and add it); every record carries it, which is what makes a book's use across projects visible:
 - After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`); a Markdown book takes `heading="…"` instead of `page`. The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
@@ -145,7 +147,7 @@ In the shelf graph (`wise.py --root "<shelf>"`, where `<shelf>` is `<state>/shel
 - After `understood` or `partial`: up to 2 questions and up to 2 cards about the section, `--from SEC-…`, formats from [../learn/materials.md](../learn/materials.md). Book questions live in the shelf graph, not in the project.
 - Any index you built (Step 2).
 
-Then:
+A citation cycle is cite → read → explain-back. Don't commit after a cite or a read: those records stay in the working tree. The cycle ends at the explain-back, or `skipped-read` when the learner skips reading; then commit everything it wrote in one commit and push:
 
 ```sh
 git -C <shelf> add .wise-code
@@ -154,9 +156,9 @@ git -C <shelf> pull --rebase --quiet
 git -C <shelf> push --quiet
 ```
 
-(One call per line; run `push` only if `pull` succeeded.)
+(One call per line; run `push` only if `pull` succeeded.) A second explain-back on the same citation (after fixing a gap) is a new cycle end: one more commit. Never amend, squash or force-push: the shelf is shared between machines and projects, and a rewritten pushed commit breaks every other clone. A cycle left open at session end is committed by the next sync's flush (Step 1).
 
-The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next record.
+The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next cycle end.
 
 In the project: one `shelf` QA pointing to the citation, not a copy of it (`wise.py add qa source=shelf q="<question>" a="<CIT-id> <book> <section>" verdict=n/a --about <concept>`), and `set <concept> shelf+=SEC-…` so the concept points to the section. Learn's rules decide whether the concept's status changes.
 
@@ -168,6 +170,8 @@ Run in the shelf repo with no question (`/wise-code:shelf`): report, from the gr
 - books, how far each is indexed, and their impact across projects: `wise.py impact` (one book: `wise.py impact <book-slug>`: projects, sections cited per project, understood vs not yet, concepts),
 - citations still `sent` (never explained) or `partial`: `wise.py list citation --where status=sent` (and `=partial`),
 - due questions (`wise.py due`) → suggest `/wise-code:quiz`.
+
+Quiz on the shelf graph: after each answered book question, commit (`shelf: quiz <QB-id> <verdict>`) and push as in Step 5, so another machine sees the new schedule.
 
 Report from the records only; don't invent progress. Learn, Teach and Quiz run in the shelf repo as in any project, with its `.wise-code/` as their state.
 

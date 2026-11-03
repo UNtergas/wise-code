@@ -69,7 +69,8 @@ git push
 - **Claude Code on the web / cloud sessions**: the Claude GitHub app must be able
   to access the shelf repo. Add it under your GitHub app installation settings,
   or attach the repo to the session.
-- WiseCode pushes after every citation and every explanation, so the access must
+- WiseCode commits and pushes once per citation cycle (when you explain back, or
+  skip reading) and after each answered book quiz question, so the access must
   include write.
 
 ## 4. Turn it on in a project
@@ -118,4 +119,4 @@ not access control: whoever can read the repo can read every folder.
 | quote unreadable | PDF has no text layer (OCR it) or `pdftotext` is missing (install poppler) |
 | books use Git LFS but git-lfs is not installed | Install `git-lfs` on that machine |
 | Git LFS download failed | LFS quota used up, or no network; check GitHub billing → Git LFS |
-| push pending | Another project pushed first; WiseCode retries at the next record |
+| push pending | Another project pushed first; WiseCode retries at the next cycle end |
