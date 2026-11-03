@@ -404,6 +404,72 @@ class GraphHookTests(HookCase):
         self.assertNotIn("import-lesson", self.context(source="compact"))
 
 
+class ConsultJournalHookTests(HookCase):
+    """The hook points Claude at senior consults since the last session."""
+
+    # Borrowed helpers only: subclassing would rerun every GraphHookTests test.
+    wise = GraphHookTests.wise
+    graph_state = GraphHookTests.graph_state
+
+    def journal(self, *entries):
+        path = self.project / ".wise-code/consult/journal.md"
+        path.parent.mkdir(exist_ok=True)
+        lines = []
+        for day, disagrees in entries:
+            verdict = "yes — the cap is wrong" if disagrees else "no"
+            lines += [f"## {day} 10:00 — Secret topic", "Level: Hint",
+                      "Asked: private question", "Tried / knew: x",
+                      "Senior view: private answer", f"Disagrees with teacher: {verdict}",
+                      "Refs: src/a.ts", ""]
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return path
+
+    def test_consults_since_last_session_are_announced_without_their_content(self):
+        self.graph_state()
+        self.wise("add", "session", "goal=retries", day="2026-11-02")
+        path = self.journal(("2026-11-01", True), ("2026-11-02", False),
+                            ("2026-11-03", True))
+        context = self.context()
+        self.assertIn(str(path), context)
+        self.assertIn("2 senior consults since the last session", context)
+        self.assertIn("1 disagrees with the teacher", context)
+        for secret in ("Secret topic", "private question", "private answer"):
+            self.assertNotIn(secret, context)
+
+    def test_consults_before_the_last_session_stay_quiet(self):
+        self.graph_state()
+        self.wise("add", "session", "goal=retries", day="2026-11-03")
+        self.journal(("2026-11-01", True))
+        self.assertNotIn("senior consult", self.context())
+
+    def test_without_sessions_every_consult_counts(self):
+        self.graph_state()
+        self.journal(("2026-11-01", False))
+        self.assertIn("1 senior consult since the last session", self.context())
+
+    def test_compaction_also_announces(self):
+        # A consult can happen mid-conversation; compaction is the next chance.
+        self.graph_state()
+        self.journal(("2026-11-01", False))
+        self.assertIn("senior consult", self.context(source="compact"))
+
+    def test_paused_learning_or_symlinked_journal_stays_quiet(self):
+        state = self.graph_state()
+        target = self.root / "outside.md"
+        target.write_text("## 2026-11-01 10:00 — t\nDisagrees with teacher: no\n",
+                          encoding="utf-8")
+        (state / "consult").mkdir()
+        (state / "consult/journal.md").symlink_to(target)
+        self.assertNotIn("senior consult", self.context())
+
+    def test_teacher_is_told_to_re_examine_not_argue(self):
+        self.graph_state()
+        self.journal(("2026-11-01", True))
+        context = self.context()
+        self.assertIn("re-examine", context)
+        self.assertIn("with the learner", context)
+
+
 class SettingsGuideTests(HookCase):
     """The hook notices when Claude Code's read block would refuse wise-code's scripts."""
 
