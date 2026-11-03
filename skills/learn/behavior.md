@@ -103,7 +103,8 @@ Confirmation indicates readiness to proceed, not demonstrated understanding.
 After implementing, give a concise **Implementation report** explaining what changed,
 where, how the key code works, and why it fits the design, naming the principles
 that shaped it. Include tests added or
-updated (if any), what they cover, and actual verification results. Let the scope
+updated (if any), what they cover, and actual verification results, including
+each quality gate from gates.md (or "not run"). Let the scope
 of the work determine the length and format. Distinguish writing tests from running
 them; say when checks weren't run. Offer deeper detail without another approval
 gate. A **System check** connects the pieces at milestones.
