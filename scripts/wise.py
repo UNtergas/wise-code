@@ -663,6 +663,11 @@ def cmd_add(graph, args):
         slug = sets.pop("id", None) or slugify(sets.get("name", ""))
         if not SLUG_RE.match(slug):
             raise WiseError(f"concept id must be a lowercase slug; got {slug!r}")
+        # Same identity and similar meaning are separate checks: --force
+        # overrides only the second, never replacing an existing concept.
+        if args.force and slug in graph.nodes:
+            raise WiseError(f"concept id {slug!r} is taken; change it with "
+                            f"wise.py set {slug} …, or add with a different id=")
         names = [sets.get("name", "")] + appends.get("aliases", [])
         match = similar_concept(graph, slug, names)
         if match and not args.force:

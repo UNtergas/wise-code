@@ -190,6 +190,25 @@ class ConceptTests(WiseTestCase):
         self.assertIn("exists: rust-strings", dup.stdout)
         self.run_wise("add", "concept", "name=Rust traits")  # different idea passes
 
+    def test_forced_add_never_replaces_an_existing_concept_id(self):
+        # Review #19 finding 3: --force skips the similarity check, not identity.
+        self.run_wise("add", "concept", "name=Alpha", "notes+=keep me")
+        graph = self.project / ".wise-code" / "graph"
+        before = {name: (graph / name).read_bytes() for name in ("nodes.jsonl", "edges.jsonl")
+                  if (graph / name).exists()}
+        for args in (("name=Alpha",), ("id=alpha", "name=Other idea")):
+            with self.subTest(args=args):
+                bad = self.run_wise("add", "--force", "concept", *args, check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("'alpha' is taken", bad.stderr)
+                after = {name: (graph / name).read_bytes() for name in before}
+                self.assertEqual(after, before)
+        # A distinct id with a similar name still goes through with --force.
+        self.run_wise("add", "--force", "concept", "id=alpha-prime", "name=Alpha prime")
+        ids = {n["id"]: n for n in self.nodes()}
+        self.assertEqual(ids["alpha"]["notes"], ["keep me"])
+        self.assertIn("alpha-prime", ids)
+
     def test_alias_resolves_everywhere(self):
         self.run_wise("add", "concept", "name=Rust strings", "aliases+=str")
         self.run_wise("add", "qa", "q=Q", "a=A", "source=asked", "--about", "str")
