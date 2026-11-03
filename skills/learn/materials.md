@@ -300,10 +300,11 @@ Rule and recall wording: "Learner's words" in [behavior.md](behavior.md).
 
 - `said="<span> … <span>"`: 3 to 40 words per part, copied character for
   character from the learner's messages (case, spacing, curly quotes and dashes
-  are folded; nothing else is). Parts are joined with ` … `.
+  are folded; nothing else is), matched as whole words. Parts are joined with ` … `.
 - `said_check` is set only by `wise.py check-said`, never by hand: `unchecked`
   (new or changed quote), `ok`, `missing` (in none of their messages), or
-  `unverified` (no transcript found). `wise.py answer … --said "<span>"` records
+  `unverified` (no transcript found). A check holds only for the words it
+  checked: change the quote by any means and it reads `unchecked`. `wise.py answer … --said "<span>"` records
   one for a quiz or start-check answer; it is optional there.
 - `wise.py check-said [--id ID] [--all] [--transcripts FOLDER]` reads this
   project's Claude Code transcripts (`~/.claude/projects/<encoded project path>/`)

@@ -14,6 +14,7 @@ Standard library only, Python 3.9+. Spec: docs/graph.md. Usage: wise.py --help.
 import argparse
 import datetime as dt
 import difflib
+import hashlib
 import html
 import json
 import os
@@ -65,7 +66,8 @@ TYPES = {
         "date": "date", "source": QA_SOURCES, "q": "str", "a": "str",
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "project": "str", "confidence": CONFIDENCE,
-        "skipped": "date", "said": "str", "said_check": SAID_CHECKS}},
+        "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
+        "said_hash": "str"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
         "legacy": "str"}},
@@ -80,14 +82,14 @@ TYPES = {
         "stage": ("awaiting-reasoning", "choice-confirmation",
                   "implementation-approval"),
         "proposal": "str", "outcome": "str", "by": ("learner", "ai", "both"),
-        "said": "str", "said_check": SAID_CHECKS}},
+        "said": "str", "said_check": SAID_CHECKS, "said_hash": "str"}},
     "guardrail": {"prefix": "G", "required": ["mistake"], "fields": {
         "mistake": "str", "evidence": "list",
         "level": ("design", "types", "lint", "test", "note"),
         "enforced_by": "str", "proven": "str", "retired": "str"}},
     "reflection": {"prefix": "R", "required": ["text"], "fields": {
         "date": "date", "text": "str", "evidence_check": "str",
-        "said_check": SAID_CHECKS}},
+        "said_check": SAID_CHECKS, "said_hash": "str"}},
     "feedback": {"prefix": "FB", "required": ["what"], "fields": {
         "date": "date", "what": "str", "guide": "str", "rule": "str",
         "proposed_edit": "str",
@@ -456,12 +458,38 @@ def attribution_problems(node):
     return problems
 
 
+def quote_of(node):
+    """The learner's words a record claims, or '' (reflections: their whole text)."""
+    if node.get("type") not in ("qa", "decision", "reflection"):
+        return ""
+    return node.get("text" if node["type"] == "reflection" else "said") or ""
+
+
+def quote_hash(text):
+    return hashlib.sha256(str(text).encode("utf-8")).hexdigest()[:16]
+
+
+def said_check_of(node):
+    """The stored check, but only if it was made on the quote stored now.
+
+    `set` resets the check on a changed quote, but `edit`, a hand edit, or a
+    union merge that keeps the newer line can change the words and leave an
+    old `ok` behind. Binding the check to a hash of the checked words makes
+    any such change read as `unchecked`, whatever path changed it.
+    """
+    check = node.get("said_check", "unchecked")
+    if check in ("ok", "missing") and node.get("said_hash") != quote_hash(quote_of(node)):
+        return "unchecked"
+    return check
+
+
 def mark_said(node, before):
     """A new or changed quote has not been checked yet."""
     field = "text" if node["type"] == "reflection" else "said"
     if node["type"] in ("qa", "decision", "reflection") and node.get(field) \
             and node.get(field) != before:
         node["said_check"] = "unchecked"
+        node.pop("said_hash", None)
 
 
 def similar_concept(graph, slug, names):
@@ -608,7 +636,7 @@ def said_lines(node, with_note=True):
     if with_note and node.get("outcome"):
         lines.append(f"  outcome (AI note, not the learner's words): {short(node['outcome'], 200)}")
     if node.get("said"):
-        check = node.get("said_check", "unchecked")
+        check = said_check_of(node)
         lines.append(f"  learner said «{short(node['said'], 240)}» · check {check}")
     return lines
 
@@ -622,7 +650,7 @@ def cmd_add(graph, args):
     fields = [f for f in args.fields if f != "--force"]
     args.force = args.force or len(fields) != len(args.fields)
     sets, appends, removes, links = parse_assignments(fields)
-    if "said_check" in sets:
+    if "said_check" in sets or "said_hash" in sets:
         raise WiseError("said_check is set only by check-said")
     spec = TYPES[kind]
     node = {"type": kind}
@@ -720,7 +748,7 @@ def cmd_set(graph, args):
     sets, appends, removes, links = parse_assignments(args.fields)
     if "id" in sets or "type" in sets:
         raise WiseError("id and type can't change; use merge or delete + add")
-    if "said_check" in sets:
+    if "said_check" in sets or "said_hash" in sets:
         raise WiseError("said_check is set only by check-said")
     previous_said = node.get("text" if node["type"] == "reflection" else "said")
     apply_fields(node, sets, appends, removes)
@@ -1005,9 +1033,14 @@ def cmd_edit(graph, args):
         os.unlink(path)
     if node.get("id") != node_id or node.get("type") != graph.nodes[node_id]["type"]:
         raise WiseError("id and type can't change in edit")
-    problems = validate_node(node)
+    old = graph.nodes[node_id]
+    for field in ("said_check", "said_hash"):
+        if node.get(field) != old.get(field):
+            raise WiseError(f"{field} is set only by check-said; leave it as it is")
+    problems = validate_node(node) + attribution_problems(node)
     if problems:
         raise WiseError("; ".join(problems))
+    mark_said(node, quote_of(old))
     graph.nodes[node_id] = node
     graph.touch(node)
     graph.save()
@@ -1490,12 +1523,24 @@ def learner_messages(folders):
     return texts
 
 
+def quote_pattern(part):
+    """Match a folded quote as whole words: 'safe to use' must not match 'unsafe to use'.
+
+    A boundary is required only at an edge that is a word character, so a quote
+    that starts or ends with punctuation still matches where it was typed.
+    """
+    wanted = fold(part)
+    head = r"(?<!\w)" if re.match(r"\w", wanted) else ""
+    tail = r"(?!\w)" if re.search(r"\w$", wanted) else ""
+    return re.compile(head + re.escape(wanted) + tail)
+
+
 def said_status(spans, messages):
     if not spans:
         return "missing"
     for part in spans:
-        wanted = fold(part)
-        if not any(wanted in message for message in messages):
+        pattern = quote_pattern(part)
+        if not any(pattern.search(message) for message in messages):
             return "missing"
     return "ok"
 
@@ -1509,7 +1554,7 @@ def cmd_check_said(graph, args):
             continue
         if args.id and node["id"] not in {graph.resolve(i) for i in args.id}:
             continue
-        if node.get("said_check") == "ok" and not (args.all or args.id):
+        if said_check_of(node) == "ok" and not (args.all or args.id):
             continue
         spans = [node["text"]] if field == "text" else said_parts(node["said"])
         targets.append((node, spans))
@@ -1521,8 +1566,10 @@ def cmd_check_said(graph, args):
     printer = Printer("pass --id")
     for node, spans in targets:
         status = said_status(spans, messages) if messages else "unverified"
-        if node.get("said_check") != status:
+        digest = quote_hash(quote_of(node))
+        if node.get("said_check") != status or node.get("said_hash") != digest:
             node["said_check"] = status
+            node["said_hash"] = digest
             graph.touch(node)
         counts[status] = counts.get(status, 0) + 1
         if status == "missing":

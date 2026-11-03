@@ -79,6 +79,11 @@ spans; this applies it to the learner.
   tool results, sub-agent threads, injected reminders and client text
   nobody typed (`textNotTyped`), and stores nothing
   from the transcripts. Reflections are checked on their `text`.
+- Matching is whole-word: `safe to use` does not match `unsafe to use`.
+- A check is bound to the words it checked (`said_hash`). If the quote later
+  changes by any path (`set`, `edit`, a hand edit, a union merge), it reads as
+  `unchecked` and the next `check-said` checks it again. `edit` refuses changes
+  to `said_check` and `said_hash`, and applies the same quote rules as `set`.
 - `decisions` and `history --full` print quotes as `learner said «…» · check …`
   and label `proposal` and `outcome` as AI notes, so the restore reads the
   difference instead of guessing it.

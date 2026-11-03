@@ -21,6 +21,7 @@ def user(content, **flags):
 
 TRANSCRIPT = [
     user("I’d go with SQLite, one file per user — keeps backups trivial"),
+    user("that crate is unsafe to use with threads, and (async) is fine"),
     user([{"type": "text", "text": "<command-args>grill storage</command-args> use the "
            "outbox pattern for retries"}]),
     # Everything below holds "we need concurrency", and none of it is the learner.
@@ -48,9 +49,11 @@ class SaidTests(unittest.TestCase):
         (self.transcripts / "s1.jsonl").write_text(
             "\n".join(json.dumps(e) for e in TRANSCRIPT) + "\nnot json\n", encoding="utf-8")
 
-    def run_wise(self, *args, check=True, config=True):
+    def run_wise(self, *args, check=True, config=True, editor=None):
         env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": "2026-11-02",
                "HOME": str(self.project.parent)}
+        if editor:
+            env["EDITOR"] = editor
         if config:
             env["CLAUDE_CONFIG_DIR"] = str(self.config)
         result = subprocess.run([sys.executable, str(SCRIPT), "--root", str(self.project), *args],
@@ -141,6 +144,95 @@ class SaidTests(unittest.TestCase):
         for cmd in (["set", did, "said_check=ok"],
                     ["add", "qa", "source=asked", "q=Q", "a=A", "said_check=ok"]):
             self.assertIn("only by check-said", self.run_wise(*cmd, check=False).stderr)
+
+    # ---- review: a changed quote never keeps an old check
+
+    def edit_to(self, node_id, field, words):
+        """Run `wise.py edit` with a scripted editor that rewrites one field."""
+        script = self.project.parent / "editor.py"
+        script.write_text(
+            "import json, sys\n"
+            "p = sys.argv[1]; n = json.load(open(p, encoding='utf-8'))\n"
+            f"n[{field!r}] = {words!r}\n"
+            "json.dump(n, open(p, 'w', encoding='utf-8'))\n", encoding="utf-8")
+        return self.run_wise("edit", node_id, editor=f"{sys.executable} {script}",
+                             check=False)
+
+    def checked_pair(self):
+        did = self.decision("go with SQLite, one file")
+        rid = self.out("add", "reflection", "text=use the outbox pattern for retries").strip()
+        self.run_wise("check-said")
+        self.assertEqual(self.node(did)["said_check"], "ok")
+        self.assertEqual(self.node(rid)["said_check"], "ok")
+        return did, rid
+
+    def assert_rechecked_as_missing(self, *ids):
+        for node_id in ids:
+            self.assertIn("check unchecked", self.recall(node_id))
+        out = self.out("check-said")  # no --all: a stale ok must not be skipped
+        for node_id in ids:
+            self.assertIn(f"missing: {node_id}", out)
+            self.assertEqual(self.node(node_id)["said_check"], "missing")
+
+    def recall(self, node_id):
+        node = self.node(node_id)
+        return "\n".join(wise.said_lines(node)) if node["type"] != "reflection" \
+            else f"check {wise.said_check_of(node)}"
+
+    def test_editing_the_quote_of_either_record_type_resets_its_check(self):
+        did, rid = self.checked_pair()
+        self.assertEqual(self.edit_to(did, "said", "we need Postgres for sure").returncode, 0)
+        self.assertEqual(self.edit_to(rid, "text", "I learned we need Postgres").returncode, 0)
+        self.assertEqual(self.node(did)["said_check"], "unchecked")
+        self.assertEqual(self.node(rid)["said_check"], "unchecked")
+        self.assert_rechecked_as_missing(did, rid)
+
+    def test_a_hand_edited_quote_reads_unchecked_and_is_rechecked(self):
+        # A hand edit or a union merge keeping the newer line can change the
+        # words without going through wise.py; the stale ok must not survive.
+        did, rid = self.checked_pair()
+        path = self.project / ".wise-code" / "graph" / "nodes.jsonl"
+        lines = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            node = json.loads(line)
+            if node["id"] == did:
+                node["said"] = "we need Postgres for sure"
+            if node["id"] == rid:
+                node["text"] = "I learned we need Postgres"
+            lines.append(json.dumps(node, ensure_ascii=False))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self.assertEqual(self.node(did)["said_check"], "ok")  # stale flag on disk
+        self.assert_rechecked_as_missing(did, rid)
+
+    def test_setting_the_quote_of_either_record_type_resets_its_check(self):
+        did, rid = self.checked_pair()
+        self.run_wise("set", did, "said=we need Postgres for sure")
+        self.run_wise("set", rid, "text=I learned we need Postgres")
+        self.assert_rechecked_as_missing(did, rid)
+
+    def test_edit_cannot_forge_a_check_or_drop_a_required_quote(self):
+        did = self.decision("we need Postgres for sure")
+        forged = self.edit_to(did, "said_check", "ok")
+        self.assertEqual(forged.returncode, 2)
+        self.assertIn("only by check-said", forged.stderr)
+        dropped = self.edit_to(did, "said", "")
+        self.assertEqual(dropped.returncode, 2)
+        self.assertEqual(self.node(did)["said"], "we need Postgres for sure")
+
+    # ---- review: whole words only
+
+    def test_quotes_match_whole_words_only(self):
+        inside = self.decision("safe to use with threads")       # typed: "unsafe to use…"
+        prefix = self.decision("crate is unsafe to use with t")   # cut mid-word
+        whole = self.decision("is unsafe to use with threads")
+        punct = self.decision("(async) is fine")                  # edges are punctuation
+        out = self.out("check-said")
+        self.assertIn(f"missing: {inside}", out)
+        self.assertIn(f"missing: {prefix}", out)
+        self.assertEqual(self.node(whole)["said_check"], "ok")
+        self.assertEqual(self.node(punct)["said_check"], "ok")
+        self.assertIsNone(wise.quote_pattern("safe to use").search("unsafe to use"))
+        self.assertIsNotNone(wise.quote_pattern("safe to use").search("it is safe to use."))
 
     def test_changing_a_quote_resets_its_check(self):
         did = self.decision("go with SQLite, one file")
