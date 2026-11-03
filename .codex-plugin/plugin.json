@@ -1,7 +1,7 @@
 {
   "name": "wise-code",
   "version": "0.10.0",
-  "description": "Learning-first development with three assist levels (Hint, Pseudo, Full code): Teach, Quiz, Explore, Correct, Reflect, Sharpen, Critique, Grill, Grill with docs, Research and Shelf (citations from your own books), with per-project learning materials kept in a token-cheap learning graph (scripts/wise.py). Fork of VibeWise by Noah Kim; adapts pstack by Lauren Tan.",
+  "description": "WiseCode senior-developer role for Codex: on-demand consults and PR reviews alongside the Claude-side WiseCode teacher. Fork of VibeWise by Noah Kim; adapts pstack by Lauren Tan.",
   "author": {
     "name": "Nguyen Anh Tuan"
   },
@@ -11,12 +11,12 @@
     "architecture",
     "engineering"
   ],
-  "skills": "./skills/",
+  "skills": "./codex/skills/",
   "hooks": {},
   "interface": {
     "displayName": "WiseCode",
-    "shortDescription": "Learn to build software by writing the code yourself",
-    "longDescription": "Fork of VibeWise with Hint, Pseudo and Full code assist levels. You own the design; at Hint or Pseudo you also write the code and Codex reviews it.",
+    "shortDescription": "On-demand senior developer for WiseCode learners",
+    "longDescription": "Claude is the WiseCode teacher. Codex is the senior developer you call in when you doubt a decision or want a PR reviewed. It answers at your assist level and keeps a consult journal Claude can read.",
     "developerName": "Nguyen Anh Tuan",
     "category": "Developer Tools",
     "capabilities": [
@@ -26,9 +26,7 @@
     ],
     "composerIcon": "./.claude-plugin/icon.svg",
     "logo": "./assets/wisecode-icon.png",
-    "defaultPrompt": [
-      "$wise-code:learn"
-    ],
+    "defaultPrompt": [],
     "screenshots": []
   }
 }

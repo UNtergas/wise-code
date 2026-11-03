@@ -14,8 +14,11 @@ engineering discipline below applies to you.
 - `scripts/wise.py` and the hooks are standard library only, Python 3.9+. Don't
   add dependencies or newer syntax.
 - Each skill in `skills/<name>/` has `SKILL.md` (frontmatter `name` and
-  `description`), `codex.md`, and `agents/openai.yaml`. Learning commands keep
-  `disable-model-invocation: true`; `tests/test_skills.py` enforces the layout.
+  `description`) and is Claude-only: no `codex.md`, no `agents/openai.yaml`.
+  Learning commands keep `disable-model-invocation: true`;
+  `tests/test_skills.py` enforces the layout.
+- Codex is the on-demand senior developer, not the teacher. Its skills live in
+  `codex/skills/`, the only folder `.codex-plugin/plugin.json` loads.
 - Model hints (`model: sonnet`) go in the skill body, never in frontmatter.
 - Every skill keeps its Canary section; don't edit or drop it.
 - The plugin ships no learner data. Learning state lives in each project's

@@ -23,8 +23,6 @@ Missing start or end line → the reply was cut off or the instructions were dro
 
 User wants to learn a topic over multiple sessions. Teaching workspace = `teach/` inside this project's WiseCode state dir. Every project has its own workspace: start `/wise-code:teach` in repo A → lessons, mission, records live in repo A only.
 
-If running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## Locate workspace
 
 Same lookup as Learn ([../learn/SKILL.md](../learn/SKILL.md), "Locate state"):

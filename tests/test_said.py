@@ -360,10 +360,6 @@ class SaidGuideTests(unittest.TestCase):
         self.assertIn("my note, not your words", hook)
         self.assertIn("compaction summary is your own paraphrase", hook)
 
-    def test_codex_notes_say_quotes_are_unverified_there(self):
-        for skill in ("learn", "reflect"):
-            self.assertIn("unverified", self.read(f"skills/{skill}/codex.md"))
-
 
 if __name__ == "__main__":
     unittest.main()

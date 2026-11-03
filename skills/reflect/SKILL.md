@@ -27,8 +27,6 @@ against evidence and point at gaps. Afterwards, you look at how WiseCode itself
 behaved and propose fixes to the plugin. Adapted from pstack's `reflect` skill by
 Lauren Tan (MIT).
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## 1. Locate state
 
 Locate the state directory as the [Learn guide](../learn/SKILL.md) describes. If

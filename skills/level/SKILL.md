@@ -29,8 +29,6 @@ Levels are defined in [assist-levels.md](../learn/assist-levels.md). Hint is the
 default. This command only changes the stored level; it doesn't reset notes or
 repeat onboarding.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 1. Locate `.wise-code/profile.md` the same way as [the Learn guide](../learn/SKILL.md)
    (nearest `.wise-code/` up to the Git root, no symlinks). If there is no profile,
    say so and suggest `/wise-code:learn`; don't create state here.
