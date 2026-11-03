@@ -75,12 +75,38 @@ class SkillLayoutTests(unittest.TestCase):
     def test_consult_skill_reads_level_asks_first_and_writes_only_the_journal(self):
         text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
         for required in ("Assist level", "Level overrides", "What did you try",
-                         "scripts/consult.py", "three directories above",
-                         "never edit", "Disagrees with teacher"):
+                         "scripts/consult.py", "never edit", "Disagrees with teacher"):
             self.assertIn(required, text)
         self.assertNotIn("wise.py add", text)
         for kind in ("--kind doubt", "--kind question"):
             self.assertIn(kind, text)
+
+    def test_senior_plugin_paths_resolve_to_real_files(self):
+        # Codex follows these paths literally; a wrong root made it look for
+        # codex/scripts/consult.py, which doesn't exist (review on #24).
+        root_rule = "`<plugin root>` is `../../..` from this file's folder"
+        for skill in sorted(p for p in (ROOT / "codex/skills").iterdir() if p.is_dir()):
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            paths = re.findall(r"<plugin root>/([\w./-]+)", text)
+            if not paths:
+                continue
+            with self.subTest(skill=skill.name):
+                self.assertIn(root_rule, text)
+                self.assertEqual((skill / "../../..").resolve(), ROOT)
+                for relative in paths:
+                    self.assertTrue((ROOT / relative).is_file(), relative)
+        consult = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
+        for needed in ("<plugin root>/scripts/consult.py", "<plugin root>/scripts/wise.py",
+                       "<plugin root>/skills/learn/assist-levels.md"):
+            self.assertIn(needed, consult)
+
+    def test_bare_consult_asks_everything_in_one_message(self):
+        text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("invoked with nothing else", text)
+        self.assertIn("one message", text)
+        for question in ("doubt about something Claude said", "What did you try",
+                         "What do you already know"):
+            self.assertIn(question, text)
 
     def test_google_skill_answers_in_full_and_records_nothing(self):
         text = (ROOT / "codex/skills/google/SKILL.md").read_text(encoding="utf-8")
@@ -310,6 +336,24 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn("until the conversation ends", "\n".join(lines))
                 self.assertIn("It stays on after this skill finishes", "\n".join(lines))
                 self.assertNotIn("while this skill is active", "\n".join(lines))
+
+    SENIOR = {"consult": "=>> senior on call <<=", "google": "=>> senior lookup <<="}
+    SENIOR_END = "<<= senior off =>>"
+
+    def test_senior_skills_state_their_own_markers_until_the_conversation_ends(self):
+        # Distinct from the teacher's markers, so the learner sees who is talking.
+        for name, start in self.SENIOR.items():
+            with self.subTest(skill=name):
+                text = (ROOT / f"codex/skills/{name}/SKILL.md").read_text(encoding="utf-8")
+                lines = text.splitlines()
+                self.assertIn("## Canary", lines)
+                self.assertIn(start, lines)
+                self.assertIn(self.SENIOR_END, lines)
+                self.assertIn("until the conversation ends", text)
+                self.assertNotIn(self.START, lines)
+                self.assertNotIn(self.END, lines)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(self.SENIOR_END, readme)
 
     def test_hook_uses_the_same_markers(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")

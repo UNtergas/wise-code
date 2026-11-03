@@ -5,14 +5,23 @@ description: Quick senior lookup for an independent coding question (syntax, con
 
 ## Canary
 
-Start every reply in this lookup with this exact line, as plain text, before
-anything else:
+Once this skill has loaded in a conversation, every reply you send from then on,
+until the conversation ends, starts and ends with these exact lines, as plain
+text (not in a code block, nothing before or after them). It stays on after
+this lookup is done, whatever the next task is.
 
 ```text
 =>> senior lookup <<=
 ```
 
-A reply without it means these instructions were not loaded.
+```text
+<<= senior off =>>
+```
+
+They differ from the teacher's markers on purpose: the learner sees at a glance
+that the senior, not Claude, is talking. A missing start or end line means the
+reply was cut off or these instructions were dropped. Files and commands you
+write never carry them.
 
 # WiseCode senior lookup
 

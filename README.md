@@ -91,8 +91,10 @@ senior-developer role you call in on purpose, never on its own:
   logged anywhere; your choice to step outside the learning loop for one answer.
 - PR review: a clean-code pass on an open pull request, on request (in progress).
 
-Consult replies start with `=>> senior on call <<=`; lookups with
-`=>> senior lookup <<=`.
+Senior replies carry their own canary, distinct from the teacher's so you see
+who is talking: they start with `=>> senior on call <<=` (consult) or
+`=>> senior lookup <<=` (google) and end with `<<= senior off =>>`, from the
+first senior skill load until the conversation ends.
 
 ## Canary
 
