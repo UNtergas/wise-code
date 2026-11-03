@@ -106,6 +106,18 @@ class CheckQuoteTests(unittest.TestCase):
                                  "absorb bursts"], capture_output=True, text=True, timeout=10)
         self.assertEqual((result.returncode, result.stdout.strip()), (0, "FOUND § Queues"))
 
+    def test_fenced_code_comments_are_not_headings(self):
+        book = Path(self.temp.name) / "fence.md"
+        book.write_text("# Retries\n\nIntro.\n\n```python\n# Example\nx = 1\n```\n\n"
+                        "~~~\n## Tilde\n~~~\n\nBackoff spreads retries over time.\n",
+                        encoding="utf-8")
+        self.assertEqual(cq.check(book, "Retries", "backoff spreads retries"),
+                         ("FOUND", "Retries"))
+        self.assertEqual(cq.check(book, "Example", "backoff spreads retries"),
+                         ("NO_HEADING", None))
+        self.assertEqual(cq.check(book, "Tilde", "backoff spreads retries"),
+                         ("NO_HEADING", None))
+
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
         book.write_text("Idempotent requests can be retried safely.", encoding="utf-8")

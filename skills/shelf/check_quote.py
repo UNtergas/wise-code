@@ -68,19 +68,38 @@ def is_lfs_pointer(path):
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 
 
+FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+
+
+def headings(lines):
+    """Yield (line index, level, title) for each heading outside fenced code."""
+    fence = None
+    for index, line in enumerate(lines):
+        match = FENCE_RE.match(line)
+        if match:
+            marker = match.group(1)
+            if fence is None:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = None
+            continue
+        if fence is None:
+            match = HEADING_RE.match(line)
+            if match:
+                yield index, len(match.group(1)), match.group(2)
+
+
 def heading_block(text, heading):
     """Return (heading as written, its text up to the next same-or-higher heading)."""
     wanted = normalize(heading)
     lines = text.splitlines()
-    for start, line in enumerate(lines):
-        match = HEADING_RE.match(line)
-        if not match or normalize(match.group(2)) != wanted:
+    found = list(headings(lines))
+    for position, (start, level, title) in enumerate(found):
+        if normalize(title) != wanted:
             continue
-        level = len(match.group(1))
-        end = next((i for i in range(start + 1, len(lines))
-                    if (m := HEADING_RE.match(lines[i])) and len(m.group(1)) <= level),
+        end = next((index for index, other, _ in found[position + 1:] if other <= level),
                    len(lines))
-        return match.group(2), "\n".join(lines[start + 1:end])
+        return title, "\n".join(lines[start + 1:end])
     return None, None
 
 
