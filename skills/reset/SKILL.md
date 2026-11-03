@@ -36,8 +36,6 @@ and clone (`shelf.md`, `shelf-repo/`) also stay intact: they are history the
 learner may want to keep. If the learner wants a clean slate, tell them what
 exists so they can delete it themselves; don't delete it here.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 1. Run the read-only preview for the user's current project directory. Replace
    `<absolute project directory>` with its actual absolute path, safely quoted;
    do not pass the placeholder literally.

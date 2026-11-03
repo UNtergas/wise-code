@@ -36,21 +36,30 @@ class SkillLayoutTests(unittest.TestCase):
                     "grill", "grill-with-docs", "research", "shelf"}
         self.assertTrue(expected <= names, expected - names)
 
-    def test_each_skill_has_frontmatter_codex_notes_and_agent_policy(self):
+    def test_each_skill_has_frontmatter_and_invocation_policy(self):
         for skill in SKILLS:
             with self.subTest(skill=skill.name):
                 fields = frontmatter(skill / "SKILL.md")
                 self.assertEqual(fields.get("name"), skill.name)
                 self.assertTrue(fields.get("description"))
-                self.assertTrue((skill / "codex.md").is_file())
-                agent = (skill / "agents/openai.yaml").read_text(encoding="utf-8")
                 if skill.name in MODEL_INVOKED:
                     self.assertNotIn("disable-model-invocation", fields)
-                    self.assertIn("allow_implicit_invocation: true", agent)
                 else:
                     # Learning commands run only when the learner asks for them.
                     self.assertEqual(fields.get("disable-model-invocation"), "true")
-                    self.assertIn("allow_implicit_invocation: false", agent)
+
+    def test_claude_skills_carry_no_codex_adapters(self):
+        # Codex has its own role under codex/skills/; the teacher skills are Claude-only.
+        for skill in SKILLS:
+            with self.subTest(skill=skill.name):
+                self.assertFalse((skill / "codex.md").exists())
+                self.assertFalse((skill / "agents").exists())
+                self.assertNotIn("codex", (skill / "SKILL.md").read_text(encoding="utf-8").lower())
+
+    def test_codex_manifest_points_at_codex_skills(self):
+        codex = json.loads((ROOT / ".codex-plugin/plugin.json").read_text())
+        self.assertEqual(codex["skills"], "./codex/skills/")
+        self.assertTrue((ROOT / "codex/skills").is_dir())
 
     def test_relative_links_in_guides_resolve(self):
         for guide in sorted((ROOT / "skills").rglob("*.md")):
@@ -189,8 +198,6 @@ class LearnerFirstTests(unittest.TestCase):
             with self.subTest(skill=skill):
                 path = ROOT / f"skills/{skill}/SKILL.md"
                 self.assertIn(hint, path.read_text(encoding="utf-8"))
-                self.assertIn("Ignore `model:` hints",
-                              (ROOT / f"skills/{skill}/codex.md").read_text(encoding="utf-8"))
         for skill in SKILLS:
             with self.subTest(frontmatter=skill.name):
                 fields = frontmatter(skill / "SKILL.md")
@@ -413,8 +420,6 @@ class GraphMigrationTests(unittest.TestCase):
             with self.subTest(skill=name):
                 text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
                 self.assertIn("wise.py", text)
-                codex = (ROOT / "skills" / name / "codex.md").read_text(encoding="utf-8")
-                self.assertIn("scripts/wise.py", codex)
 
     def test_research_indexes_only_existing_state(self):
         text = (ROOT / "skills/research/SKILL.md").read_text(encoding="utf-8")

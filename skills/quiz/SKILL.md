@@ -29,8 +29,6 @@ Retrieval practice for this project. Formats and scheduling rules are in
 [materials.md](../learn/materials.md); read it first. This command never edits
 the learner's source files.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 1. Locate the state directory the same way as [the Learn guide](../learn/SKILL.md)
    (nearest `.wise-code/` up to the Git root, no symlinks; without Git, the
    current directory only). If there is none, say so and suggest

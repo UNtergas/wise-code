@@ -29,8 +29,6 @@ Critique gives feedback on writing the learner wrote. It never rewrites the
 document: the learner does, because rewriting is where the writing skill grows.
 The rubric is [writing-rubric.md](writing-rubric.md); read it first.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## 1. Get the text
 
 - A file path: read the file. Don't edit it.

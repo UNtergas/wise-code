@@ -1,5 +1,0 @@
-interface:
-  display_name: "WiseCode Teach"
-  short_description: "Teach a topic over several sessions in this project's workspace"
-policy:
-  allow_implicit_invocation: false

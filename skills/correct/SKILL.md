@@ -31,8 +31,6 @@ The learner designs and writes each guard; you find the evidence, name the level
 and check the proof. Adapted from pstack's `correct` skill and the *Encode lessons
 in structure* principle by Lauren Tan (MIT).
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## 1. Locate state
 
 Locate the state directory as the [Learn guide](../learn/SKILL.md) describes. If

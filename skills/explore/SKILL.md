@@ -34,8 +34,6 @@ Explore is read-only. Never edit files, run migrations, or change Git state.
 Teach is for a multi-session course on a topic; Explore is for one question about
 specific code.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## 1. Scope
 
 - Restate the question in one line. If no question was given, ask for one.

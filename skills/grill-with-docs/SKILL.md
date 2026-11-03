@@ -23,8 +23,6 @@ Missing start or end line → the reply was cut off or the instructions were dro
 
 Stateful interview. Same loop as a plain grill, pointed at a codebase, and it leaves files behind: terms → `GLOSSARY.md` the moment they resolve, hard decisions → ADRs. Self-contained: this file holds the interview rules and the writing rules, plus one section for WiseCode learning mode.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## Is this the right skill?
 
 | Have | Use |

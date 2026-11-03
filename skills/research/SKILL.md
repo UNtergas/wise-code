@@ -4,8 +4,6 @@ description: Answer a question about the outside world (how a third-party API be
 argument-hint: "What do you need to find out?"
 ---
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 ## Canary
 
 Once this skill has loaded in a conversation, every chat reply you send from then on, until the conversation ends, starts and ends with these exact lines, as plain text (not in a code block, nothing before or after them). It stays on after this skill finishes, through other skills and ordinary tasks; never drop it because the work changed.

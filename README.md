@@ -71,6 +71,19 @@ Switch levels in chat at any time:
 - `pseudo for Rust`, `hint for FastAPI`, `pseudo for writing` — per-topic override.
 - `full code for this step` — one step only.
 
+## Codex: the senior developer
+
+The skills above are Claude-only: Claude is the teacher. Codex installs from the
+same repository (`.codex-plugin/`) but loads only `codex/skills/`, a separate
+senior-developer role you call in on purpose, never on its own:
+
+- consult: when you doubt a teacher decision, ask Codex. It reads your assist
+  level, asks what you tried first, and logs the exchange in
+  `.wise-code/consult/journal.md`, which Claude reads at the next session start.
+- PR review: a clean-code pass on an open pull request, on request.
+
+Both are in progress; `codex/skills/` is empty until they land.
+
 ## Canary
 
 Every WiseCode reply starts with the line `=====> ah0y_sir <name>` and ends

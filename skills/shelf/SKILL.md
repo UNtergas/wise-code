@@ -22,7 +22,7 @@ Missing start or end line → the reply was cut off or the instructions were dro
 
 The learner keeps their books (PDF, Markdown, text) in a private GitHub repo, the **shelf**. When a question is something a book on the shelf explains, send them to the exact section to read, then check their explanation. The shelf repo records what was cited, read and understood in its own learning graph, so a WiseCode session opened in the shelf repo can quiz the books later and see each book's impact across projects.
 
-If running in Codex rather than Claude Code, first read [codex.md](codex.md). Graph records: [formats.md](formats.md). All shelf records go through `wise.py --root "<shelf>"` (the script and its "Script blocked" fix: [../learn/materials.md](../learn/materials.md)); never read or edit the JSONL files. Setup guide for the learner: https://github.com/UNtergas/wise-code/blob/main/docs/shelf-setup.md
+Graph records: [formats.md](formats.md). All shelf records go through `wise.py --root "<shelf>"` (the script and its "Script blocked" fix: [../learn/materials.md](../learn/materials.md)); never read or edit the JSONL files. Setup guide for the learner: https://github.com/UNtergas/wise-code/blob/main/docs/shelf-setup.md
 
 ## Step 0: Gate (always, before anything else)
 

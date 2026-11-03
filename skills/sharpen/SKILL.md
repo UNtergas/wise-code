@@ -29,8 +29,6 @@ Sharpen deepens a task before the learner starts it. Adapted from pstack's
 `sharpen` skill by Lauren Tan (MIT). The difference: you supply the ingredients,
 and the learner writes the sharper version.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 1. If no task was given, ask for it. Restate it in one line.
 2. Answer four questions, briefly and specifically for this task:
    1. What would a top professional do here that the task doesn't ask for?

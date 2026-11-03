@@ -42,8 +42,6 @@ only an explicit request to skip or pause bypasses it.
 Do not switch to a subagent. Require manual coding only at the Hint or Pseudo
 assist level.
 
-If you are running in Codex rather than Claude Code, first read [codex.md](codex.md).
-
 Use the Read tool for plugin guides instead of printing them with Bash `cat`.
 Use Glob to discover optional learner-state files before reading them. A missing
 `.wise-code/` directory is normal first-time setup, not an error. If a shell
