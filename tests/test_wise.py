@@ -504,6 +504,28 @@ class CommitTests(WiseTestCase):
                              if p.name.endswith(".tmp") or p.name == ".commit"]
                 self.assertEqual(leftovers, [])
 
+    def test_journal_naming_a_symlinked_temp_is_refused_before_any_move(self):
+        # PR #20 review: recovery must keep the no-symlink boundary.
+        self.run_wise("add", "concept", "name=Alpha")
+        graph = self.project / ".wise-code" / "graph"
+        outside = Path(self.temp.name) / "external.jsonl"
+        outside.write_text('{"id": "evil", "name": "Evil", "type": "concept"}\n',
+                           encoding="utf-8")
+        # A real temp first, then the link: no move may happen at all.
+        (graph / ".edges.jsonl.real.tmp").write_text("", encoding="utf-8")
+        (graph / ".nodes.jsonl.example.tmp").symlink_to(outside)
+        (graph / ".commit").write_text(json.dumps(
+            [[".edges.jsonl.real.tmp", "edges.jsonl"],
+             [".nodes.jsonl.example.tmp", "nodes.jsonl"]]), encoding="utf-8")
+        before = {name: (graph / name).read_bytes() for name in ("nodes.jsonl", "edges.jsonl")
+                  if (graph / name).exists()}
+        bad = self.run_wise("list", "concept", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("symlink", bad.stderr)
+        self.assertNotIn("evil", bad.stdout)
+        self.assertFalse((graph / "nodes.jsonl").is_symlink())
+        self.assertEqual({name: (graph / name).read_bytes() for name in before}, before)
+
     def test_unreadable_journal_stops_instead_of_guessing(self):
         self.run_wise("add", "concept", "name=Alpha")
         (self.project / ".wise-code" / "graph" / ".commit").write_text(

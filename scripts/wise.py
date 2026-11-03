@@ -393,6 +393,12 @@ class Graph:
                 valid = False
             if not valid:
                 raise WiseError(f"{journal} is unreadable; restore graph/ from Git")
+            # Check every source before moving any: a symlinked temp would
+            # put a link to outside data where nodes.jsonl or edges.jsonl is.
+            for temp, _ in moves:
+                if (self.dir / temp).is_symlink():
+                    raise WiseError(f"{self.dir / temp} is a symlink; refusing to "
+                                    "finish the save; restore graph/ from Git")
             # Roll forward: a temp already moved is already in place.
             for temp, name in moves:
                 if (self.dir / temp).exists():
