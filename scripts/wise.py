@@ -464,10 +464,12 @@ class Graph:
             if canonical(self.nodes.get(node_id)) != versions[0]:
                 self._check_unresolved(node_id)
         if self._lock is None:
-            # graph/ didn't exist at load: lock now, and refuse if another
-            # process created the graph in between (this snapshot is stale).
+            # graph/ didn't exist at load: lock now, finish any save another
+            # process committed but didn't complete, and refuse if the graph
+            # exists now (this snapshot is stale).
             self.dir.mkdir(parents=True, exist_ok=True)
             self._acquire(LOCK_TIMEOUT)
+            self._recover()
             if any((self.dir / name).exists() for name in DATA_FILES):
                 raise WiseError("the graph was created by another wise.py meanwhile; "
                                 "nothing saved, retry the command")

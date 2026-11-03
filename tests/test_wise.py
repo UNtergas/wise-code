@@ -386,6 +386,32 @@ class ConcurrencyTests(WiseTestCase):
                 self.add_concept(graph, "Alpha")
         self.assertEqual({n["id"] for n in self.nodes()}, {"beta"})
 
+    def test_new_graph_save_finishes_a_crashed_writers_journal_first(self):
+        # PR #20 review: A and B both load before graph/ exists; A dies right
+        # after publishing its journal. B must not overwrite A's commit.
+        state = self.state()
+        first, second = wise.Graph(state), wise.Graph(state)
+        self.addCleanup(second.close)
+
+        class Stop(Exception):
+            pass
+
+        def stop_at(_, reached):
+            if reached == "journal published":
+                raise Stop
+        original = wise.Graph._checkpoint
+        wise.Graph._checkpoint = stop_at
+        try:
+            with self.assertRaises(Stop):
+                self.add_concept(first, "Alpha")
+        finally:
+            wise.Graph._checkpoint = original
+        first.close()  # the crashed process releases its lock
+        with self.assertRaisesRegex(wise.WiseError, "created by another wise.py"):
+            self.add_concept(second, "Beta")
+        second.close()
+        self.assertEqual({n["id"] for n in self.nodes()}, {"alpha"})
+
     def test_two_instances_in_one_process_do_not_overwrite(self):
         self.run_wise("add", "concept", "name=Seed")
         with wise.Graph(self.state(), write=True) as first:
