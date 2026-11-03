@@ -14,6 +14,7 @@ Standard library only, Python 3.9+. Spec: docs/graph.md. Usage: wise.py --help.
 import argparse
 import datetime as dt
 import difflib
+import errno
 import hashlib
 import html
 import json
@@ -180,6 +181,9 @@ GRAPH_IGNORE = f"{LOCK_NAME}\n{JOURNAL_NAME}\n.*.tmp\n"
 DATA_FILES = ("nodes.jsonl", "edges.jsonl")
 # Every file wise.py keeps inside graph/; none of them may be a symlink.
 GRAPH_FILES = (*DATA_FILES, ".gitattributes", ".gitignore", LOCK_NAME, JOURNAL_NAME)
+# Errors meaning graph/ can't be written (a read-only mount, no permission):
+# reads go on without the lock, writes are refused.
+READ_ONLY_ERRORS = (errno.EROFS, errno.EACCES, errno.EPERM)
 # How long a command waits for another wise.py using the same graph.
 LOCK_TIMEOUT = 20.0
 
@@ -296,7 +300,9 @@ class Graph:
         if self.dir.is_dir():
             try:
                 self._acquire(timeout)
-            except PermissionError:
+            except OSError as error:
+                if error.errno not in READ_ONLY_ERRORS:
+                    raise
                 if write:
                     raise WiseError(f"can't lock {self.dir}: not writable") from None
                 # A read-only checkout: read without the lock, but never a

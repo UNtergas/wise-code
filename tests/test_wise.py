@@ -1,5 +1,6 @@
 """The learning graph script: store, IDs, queries, cap, imports, shelf."""
 
+import errno
 import json
 import os
 from pathlib import Path
@@ -419,6 +420,34 @@ class ConcurrencyTests(WiseTestCase):
                 wise.Graph(self.state(), write=True, timeout=0.2)
             self.add_concept(first, "Alpha")
         self.assertEqual({n["id"] for n in self.nodes()}, {"seed", "alpha"})
+
+    def test_read_only_file_system_reads_without_the_lock(self):
+        # PR #20 review: a read-only mount raises EROFS, not PermissionError.
+        self.run_wise("add", "concept", "name=Alpha")
+        state = self.state()
+        real_open = os.open
+        for code in (errno.EROFS, errno.EACCES, errno.EPERM):
+            with self.subTest(errno=errno.errorcode[code]):
+                def refuse(path, *args, code=code, **kwargs):
+                    if str(path).endswith(".lock"):
+                        raise OSError(code, os.strerror(code))
+                    return real_open(path, *args, **kwargs)
+                os.open = refuse
+                try:
+                    with wise.Graph(state) as graph:
+                        self.assertEqual(set(graph.nodes), {"alpha"})
+                    with self.assertRaisesRegex(wise.WiseError, "not writable"):
+                        wise.Graph(state, write=True)
+                    # An unfinished save is never read past without the lock.
+                    journal = state / "graph" / ".commit"
+                    journal.write_text("[]", encoding="utf-8")
+                    try:
+                        with self.assertRaisesRegex(wise.WiseError, "unfinished save"):
+                            wise.Graph(state)
+                    finally:
+                        journal.unlink()
+                finally:
+                    os.open = real_open
 
     def test_process_files_are_git_ignored(self):
         self.run_wise("add", "concept", "name=Seed")
