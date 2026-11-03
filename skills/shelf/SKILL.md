@@ -42,7 +42,7 @@ Two kinds of session:
 
 `<shelf>` below is `<state>/shelf-repo` in project mode and the shelf repo's root in shelf mode.
 
-**Flush first.** A citation cycle left open last session (a cite never explained) leaves uncommitted records, and `pull --rebase` refuses a dirty tree. If `git -C "<shelf>" status --porcelain .wise-code` prints anything, commit it before any pull: `git -C "<shelf>" add .wise-code`, then `git -C "<shelf>" commit -m "shelf(<Project>): carry-over"`; the pull below then pushes it with the rest.
+**Flush first.** A citation cycle left open last session (a cite never explained) leaves uncommitted records, and `pull --rebase` refuses a dirty tree. If `git -C "<shelf>" status --porcelain .wise-code` prints anything, commit it before any pull: `git -C "<shelf>" add .wise-code`, then `git -C "<shelf>" commit -m "shelf(<Project>): carry-over"`. After the sync pull succeeds, publish it with `git -C "<shelf>" push --quiet`: a pull never pushes, so without this the carry-over stays on this machine until the next cycle end. Pull or push fails → keep the commit, say once that the push is pending, and retry at the next cycle end.
 
 Run each git command as its own call, with `git -C <path>` and absolute paths. No `cd`, no `&&` chains, no shell variables: permission checks block those and the learner gets prompts.
 

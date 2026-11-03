@@ -489,6 +489,11 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("Flush first", sync)
         self.assertLess(sync.index("Flush first"), sync.index("pull --rebase"))
         self.assertIn('shelf(<Project>): carry-over', sync)
+        # pull --rebase never publishes: the carry-over needs its own push.
+        self.assertNotIn("the pull below then pushes it", sync)
+        flush = sync[sync.index("Flush first"):]
+        self.assertIn("After the sync pull succeeds", flush)
+        self.assertIn('git -C "<shelf>" push --quiet', flush)
 
     def test_shelf_mode_quiz_answers_are_pushed(self):
         extras = self.text().split("## Shelf mode extras")[1].split("\n## ")[0]
