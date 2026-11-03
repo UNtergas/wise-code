@@ -102,8 +102,10 @@ the benchmark for you.
 [ub-mode](https://github.com/unclebob/ub-mode):
 [crapper](https://github.com/unclebob/crapper) (CRAP < 10 per function),
 [dryer](https://github.com/unclebob/dryer) (no duplication at similarity 0.8) and
-[mutator](https://github.com/unclebob/mutator) (no surviving mutants), each run on
-the changed code only. Code review runs the ones you have installed and reports
+[mutator](https://github.com/unclebob/mutator) (no surviving mutants). Crapper and mutator run on
+the changed code; dryer scans the whole tree with `--threshold 0.8` and reports
+only pairs that touch changed code, so copies from unchanged files are caught.
+Code review runs the ones you have installed and reports
 the numbers; at Hint and Pseudo you fix what they find. At Full code Claude
 follows ub-mode's order: failing test first, make it work, then make it right
 against the gates. Missing tools are skipped; Claude never installs them.

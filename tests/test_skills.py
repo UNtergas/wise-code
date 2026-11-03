@@ -200,6 +200,13 @@ class LearnerFirstTests(unittest.TestCase):
         dryer = gates.split("2. **dryer**")[1].split("\n3. ")[0]
         self.assertIn("`--threshold 0.8`", dryer)
         self.assertIn("without `--changed`", dryer)
+        # Other docs defer to gates.md and must not narrow dryer to changed files.
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("dryer scans the whole tree with `--threshold 0.8`", readme)
+        for path in ("README.md", "skills/learn/assist-levels.md"):
+            text = (ROOT / path).read_text(encoding="utf-8")
+            self.assertNotIn("changed code only", text, path)
+            self.assertNotIn("scoped\n     to the change", text, path)
         self.assertIn('never "passed"', gates)
         self.assertIn("Never weaken a test, raise a threshold, or add a suppression", gates)
         # At Hint and Pseudo the learner fixes; only Full code edits.

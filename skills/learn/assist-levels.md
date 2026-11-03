@@ -107,9 +107,9 @@ make small commits, each saying why, what changed and how it was checked.
 - When the learner says they finished a step, run a **Code review**:
   1. Read the changed files and run the project's checks (build, type check,
      linter, tests, for example `cargo check`, `cargo clippy`, `pytest`).
-  2. Run the quality gates in [gates.md](gates.md) that are installed, scoped
-     to the change. Report actual results for every check: say what ran and
-     what didn't.
+  2. Run the quality gates that are installed, exactly as [gates.md](gates.md)
+     says, and report their findings on the changed code. Report actual
+     results for every check: say what ran and what didn't.
   3. Give feedback at the current level. In Hint, say where the problem is and
      what kind of problem it is (ownership, blocking call, missing validation)
      without the fix; name the principle from [principles.md](principles.md)
