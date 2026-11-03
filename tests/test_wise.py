@@ -1,5 +1,6 @@
 """The learning graph script: store, IDs, queries, cap, imports, shelf."""
 
+import errno
 import json
 import os
 from pathlib import Path
@@ -7,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,8 +29,8 @@ class WiseTestCase(unittest.TestCase):
         self.project.mkdir()
         (self.project / ".git").mkdir()
 
-    def run_wise(self, *args, root=None, day="2026-10-28", check=True):
-        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day}
+    def run_wise(self, *args, root=None, day="2026-10-28", check=True, extra_env=None):
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day, **(extra_env or {})}
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--root", str(root or self.project), *args],
             text=True, capture_output=True, env=env, timeout=30)
@@ -152,6 +154,35 @@ class StoreTests(WiseTestCase):
         self.assertEqual(bad.returncode, 2)
         self.assertIn("symlink", bad.stderr)
 
+    def test_symlinked_graph_folder_is_refused_for_reads_and_writes(self):
+        # Review #19 finding 4: the folder, not just its files, is the boundary.
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        (outside / "nodes.jsonl").write_text(
+            '{"id": "ext", "name": "External", "type": "concept"}\n', encoding="utf-8")
+        before = sorted((p.name, p.read_bytes()) for p in outside.iterdir())
+        state = self.project / ".wise-code"
+        state.mkdir()
+        (state / "graph").symlink_to(outside, target_is_directory=True)
+        for args in (("list", "concept"), ("add", "concept", "name=Inside")):
+            with self.subTest(args=args):
+                bad = self.run_wise(*args, check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("symlink", bad.stderr)
+                self.assertNotIn("External", bad.stdout)
+        self.assertEqual(sorted((p.name, p.read_bytes()) for p in outside.iterdir()), before)
+
+    def test_symlinked_gitattributes_is_refused(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        graph = self.project / ".wise-code" / "graph"
+        target = Path(self.temp.name) / "attrs"
+        target.write_text("", encoding="utf-8")
+        (graph / ".gitattributes").unlink()
+        (graph / ".gitattributes").symlink_to(target)
+        bad = self.run_wise("add", "concept", "name=Beta", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertEqual(target.read_text(encoding="utf-8"), "")
+
 
 class ConceptTests(WiseTestCase):
     def test_near_duplicate_concept_is_refused_with_the_match(self):
@@ -160,6 +191,25 @@ class ConceptTests(WiseTestCase):
         self.assertEqual(dup.returncode, 1)
         self.assertIn("exists: rust-strings", dup.stdout)
         self.run_wise("add", "concept", "name=Rust traits")  # different idea passes
+
+    def test_forced_add_never_replaces_an_existing_concept_id(self):
+        # Review #19 finding 3: --force skips the similarity check, not identity.
+        self.run_wise("add", "concept", "name=Alpha", "notes+=keep me")
+        graph = self.project / ".wise-code" / "graph"
+        before = {name: (graph / name).read_bytes() for name in ("nodes.jsonl", "edges.jsonl")
+                  if (graph / name).exists()}
+        for args in (("name=Alpha",), ("id=alpha", "name=Other idea")):
+            with self.subTest(args=args):
+                bad = self.run_wise("add", "--force", "concept", *args, check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("'alpha' is taken", bad.stderr)
+                after = {name: (graph / name).read_bytes() for name in before}
+                self.assertEqual(after, before)
+        # A distinct id with a similar name still goes through with --force.
+        self.run_wise("add", "--force", "concept", "id=alpha-prime", "name=Alpha prime")
+        ids = {n["id"]: n for n in self.nodes()}
+        self.assertEqual(ids["alpha"]["notes"], ["keep me"])
+        self.assertIn("alpha-prime", ids)
 
     def test_alias_resolves_everywhere(self):
         self.run_wise("add", "concept", "name=Rust strings", "aliases+=str")
@@ -223,6 +273,392 @@ class QueryTests(WiseTestCase):
         text = self.out("history", "--limit", "200", "--full")
         self.assertLessEqual(len(text), wise.CAP_CHARS + 200)
         self.assertRegex(text, r"… \d+ more; pass --concept")
+
+
+class ValidationTests(WiseTestCase):
+    """Review #19 finding 5: stored types and ranges are checked, not just converted."""
+
+    def graph_bytes(self):
+        graph = self.project / ".wise-code" / "graph"
+        return {p.name: p.read_bytes() for p in graph.iterdir() if p.suffix == ".jsonl"}
+
+    def editor(self, change):
+        # A stand-in editor: applies `change` (JSON fields) to the file it opens.
+        script = Path(self.temp.name) / "editor.py"
+        script.write_text(
+            "import json, sys\n"
+            "path = sys.argv[1]\n"
+            "node = json.load(open(path, encoding='utf-8'))\n"
+            f"node.update(json.loads({json.dumps(json.dumps(change))}))\n"
+            "json.dump(node, open(path, 'w', encoding='utf-8'))\n", encoding="utf-8")
+        return {"EDITOR": f"{sys.executable} {script}"}
+
+    def test_box_outside_leitner_range_is_refused(self):
+        for box in ("0", "6", "-1"):
+            with self.subTest(box=box):
+                bad = self.run_wise("add", "question", "q=Q", "a=A", f"box={box}", check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("question.box must be 1 to 5", bad.stderr)
+        self.assertFalse((self.project / ".wise-code" / "graph" / "nodes.jsonl").exists())
+
+    def test_answer_on_a_stored_bad_box_fails_cleanly_without_writing(self):
+        qid = self.out("add", "question", "q=Q", "a=A").strip()
+        nodes = self.project / ".wise-code" / "graph" / "nodes.jsonl"
+        nodes.write_text(nodes.read_text(encoding="utf-8").replace('"box": 1', '"box": 0'),
+                         encoding="utf-8")
+        before = self.graph_bytes()
+        bad = self.run_wise("answer", qid, "partial", "--source", "quiz", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertNotIn("Traceback", bad.stderr)
+        self.assertIn(f"set {qid} box=1", bad.stderr)
+        self.assertEqual(self.graph_bytes(), before)
+
+    def test_editor_cannot_store_wrong_json_types(self):
+        self.run_wise("add", "concept", "name=Alpha", "notes+=one")
+        qid = self.out("add", "question", "q=Q", "a=A").strip()
+        cases = [("alpha", {"notes": "a string, not a list"}, "concept.notes must be a list"),
+                 ("alpha", {"aliases": ["ok", 3]}, "concept.aliases must be a list of text"),
+                 ("alpha", {"rev": "2"}, "concept.rev must be a whole number"),
+                 ("alpha", {"created": "yesterday"}, "concept.created must be YYYY-MM-DD"),
+                 (qid, {"box": "2"}, "question.box must be a whole number"),
+                 (qid, {"box": True}, "question.box must be a whole number")]
+        before = self.graph_bytes()
+        for node_id, change, message in cases:
+            with self.subTest(change=change):
+                bad = self.run_wise("edit", node_id, check=False, extra_env=self.editor(change))
+                self.assertEqual(bad.returncode, 2, bad.stdout)
+                self.assertIn(message, bad.stderr)
+                self.assertEqual(self.graph_bytes(), before)
+        # A well-typed edit still works.
+        self.run_wise("edit", "alpha", extra_env=self.editor({"notes": ["one", "two"]}))
+        self.assertEqual({n["id"]: n for n in self.nodes()}["alpha"]["notes"], ["one", "two"])
+
+    def test_imported_legacy_records_pass_strict_validation(self):
+        fixture.build(self.project, qa=40, questions=20, sessions=2)
+        self.run_wise("import-md")
+        self.assertIn("ok · ", self.out("check"))
+
+
+class ConcurrencyTests(WiseTestCase):
+    """Review #19 finding 1: overlapping writers never silently lose records."""
+
+    def state(self):
+        return wise.find_state(self.project, create=True)
+
+    def spawn(self, *args):
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": "2026-10-28"}
+        return subprocess.Popen(
+            [sys.executable, str(SCRIPT), "--root", str(self.project), *args],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+
+    def add_concept(self, graph, name):
+        node_id = wise.slugify(name)
+        graph.nodes[node_id] = {"id": node_id, "type": "concept", "name": name,
+                                "created": "2026-10-28"}
+        graph.dirty = True
+        graph.save()
+
+    def test_second_process_waits_and_both_additions_survive(self):
+        self.run_wise("add", "concept", "name=Seed")
+        with wise.Graph(self.state(), write=True) as graph:
+            other = self.spawn("add", "concept", "name=Beta")
+            time.sleep(1.0)
+            self.assertIsNone(other.poll(), "the second writer must wait for the lock")
+            self.add_concept(graph, "Alpha")
+        _, err = other.communicate(timeout=30)
+        self.assertEqual(other.returncode, 0, err)
+        self.assertEqual({n["id"] for n in self.nodes()}, {"seed", "alpha", "beta"})
+
+    def test_parallel_independent_processes_keep_every_record(self):
+        self.run_wise("add", "concept", "name=Seed")
+        names = [f"Topic {chr(65 + i)} unique{i}" for i in range(8)]
+        procs = [self.spawn("add", "--force", "concept", f"name={n}") for n in names]
+        for proc in procs:
+            _, err = proc.communicate(timeout=60)
+            self.assertEqual(proc.returncode, 0, err)
+        self.assertEqual({n["id"] for n in self.nodes()},
+                         {"seed", *(wise.slugify(n) for n in names)})
+
+    def test_stale_writer_on_a_new_graph_fails_explicitly(self):
+        # No graph yet: A loads an empty graph, B creates it, A's save must refuse.
+        with wise.Graph(self.state(), write=True) as graph:
+            self.run_wise("add", "concept", "name=Beta")
+            with self.assertRaisesRegex(wise.WiseError, "created by another wise.py"):
+                self.add_concept(graph, "Alpha")
+        self.assertEqual({n["id"] for n in self.nodes()}, {"beta"})
+
+    def test_new_graph_save_finishes_a_crashed_writers_journal_first(self):
+        # PR #20 review: A and B both load before graph/ exists; A dies right
+        # after publishing its journal. B must not overwrite A's commit.
+        state = self.state()
+        first, second = wise.Graph(state), wise.Graph(state)
+        self.addCleanup(second.close)
+
+        class Stop(Exception):
+            pass
+
+        def stop_at(_, reached):
+            if reached == "journal published":
+                raise Stop
+        original = wise.Graph._checkpoint
+        wise.Graph._checkpoint = stop_at
+        try:
+            with self.assertRaises(Stop):
+                self.add_concept(first, "Alpha")
+        finally:
+            wise.Graph._checkpoint = original
+        first.close()  # the crashed process releases its lock
+        with self.assertRaisesRegex(wise.WiseError, "created by another wise.py"):
+            self.add_concept(second, "Beta")
+        second.close()
+        self.assertEqual({n["id"] for n in self.nodes()}, {"alpha"})
+
+    def test_two_instances_in_one_process_do_not_overwrite(self):
+        self.run_wise("add", "concept", "name=Seed")
+        with wise.Graph(self.state(), write=True) as first:
+            with self.assertRaisesRegex(wise.WiseError, "busy"):
+                wise.Graph(self.state(), write=True, timeout=0.2)
+            self.add_concept(first, "Alpha")
+        self.assertEqual({n["id"] for n in self.nodes()}, {"seed", "alpha"})
+
+    def test_read_only_file_system_reads_without_the_lock(self):
+        # PR #20 review: a read-only mount raises EROFS, not PermissionError.
+        self.run_wise("add", "concept", "name=Alpha")
+        state = self.state()
+        real_open = os.open
+        for code in (errno.EROFS, errno.EACCES, errno.EPERM):
+            with self.subTest(errno=errno.errorcode[code]):
+                def refuse(path, *args, code=code, **kwargs):
+                    if str(path).endswith(".lock"):
+                        raise OSError(code, os.strerror(code))
+                    return real_open(path, *args, **kwargs)
+                os.open = refuse
+                try:
+                    with wise.Graph(state) as graph:
+                        self.assertEqual(set(graph.nodes), {"alpha"})
+                    with self.assertRaisesRegex(wise.WiseError, "not writable"):
+                        wise.Graph(state, write=True)
+                    # An unfinished save is never read past without the lock.
+                    journal = state / "graph" / ".commit"
+                    journal.write_text("[]", encoding="utf-8")
+                    try:
+                        with self.assertRaisesRegex(wise.WiseError, "unfinished save"):
+                            wise.Graph(state)
+                    finally:
+                        journal.unlink()
+                finally:
+                    os.open = real_open
+
+    def test_process_files_are_git_ignored(self):
+        self.run_wise("add", "concept", "name=Seed")
+        ignore = (self.project / ".wise-code" / "graph" / ".gitignore").read_text()
+        for name in (".lock", ".commit", ".*.tmp"):
+            self.assertIn(name, ignore.splitlines())
+
+
+class CommitTests(WiseTestCase):
+    """Review #19 finding 6: an interrupted save leaves one whole graph."""
+
+    class Stop(Exception):
+        pass
+
+    STEPS = ("temps written", "journal published", "nodes.jsonl replaced",
+             "edges.jsonl replaced")
+
+    def graph_state(self):
+        graph = self.project / ".wise-code" / "graph"
+        nodes = {n["id"] for n in self.nodes()}
+        edges = [json.loads(line) for line in
+                 (graph / "edges.jsonl").read_text(encoding="utf-8").splitlines()]
+        return nodes, {(e["from"], e["rel"], e["to"]) for e in edges}
+
+    def test_interrupted_delete_recovers_old_or_new_graph_in_a_new_process(self):
+        old = ({"alpha", "beta"}, {("alpha", "prereq", "beta")})
+        new = ({"alpha"}, set())
+        for step in self.STEPS:
+            with self.subTest(step=step):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                self.run_wise("add", "concept", "name=Alpha")
+                self.run_wise("add", "concept", "name=Beta")
+                self.run_wise("link", "alpha", "prereq", "beta")
+                self.assertEqual(self.graph_state(), old)
+
+                def stop_at(_, reached, step=step):
+                    if reached == step:
+                        raise self.Stop(step)
+                state = wise.find_state(self.project)
+                original = wise.Graph._checkpoint
+                wise.Graph._checkpoint = stop_at
+                try:
+                    with wise.Graph(state, write=True) as graph:
+                        graph.remove("beta")
+                        with self.assertRaises(self.Stop):
+                            graph.save()
+                finally:
+                    wise.Graph._checkpoint = original
+                # A new process loads (and, if needed, finishes) the graph.
+                self.assertIn("ok · ", self.out("check"))
+                expected = old if step == "temps written" else new
+                self.assertEqual(self.graph_state(), expected)
+                leftovers = [p.name for p in (state / "graph").iterdir()
+                             if p.name.endswith(".tmp") or p.name == ".commit"]
+                self.assertEqual(leftovers, [])
+
+    def test_journal_naming_a_symlinked_temp_is_refused_before_any_move(self):
+        # PR #20 review: recovery must keep the no-symlink boundary.
+        self.run_wise("add", "concept", "name=Alpha")
+        graph = self.project / ".wise-code" / "graph"
+        outside = Path(self.temp.name) / "external.jsonl"
+        outside.write_text('{"id": "evil", "name": "Evil", "type": "concept"}\n',
+                           encoding="utf-8")
+        # A real temp first, then the link: no move may happen at all.
+        (graph / ".edges.jsonl.real.tmp").write_text("", encoding="utf-8")
+        (graph / ".nodes.jsonl.example.tmp").symlink_to(outside)
+        (graph / ".commit").write_text(json.dumps(
+            [[".edges.jsonl.real.tmp", "edges.jsonl"],
+             [".nodes.jsonl.example.tmp", "nodes.jsonl"]]), encoding="utf-8")
+        before = {name: (graph / name).read_bytes() for name in ("nodes.jsonl", "edges.jsonl")
+                  if (graph / name).exists()}
+        bad = self.run_wise("list", "concept", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("symlink", bad.stderr)
+        self.assertNotIn("evil", bad.stdout)
+        self.assertFalse((graph / "nodes.jsonl").is_symlink())
+        self.assertEqual({name: (graph / name).read_bytes() for name in before}, before)
+
+    def test_unreadable_journal_stops_instead_of_guessing(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        (self.project / ".wise-code" / "graph" / ".commit").write_text(
+            '[["../../escape.tmp", "nodes.jsonl"]]', encoding="utf-8")
+        bad = self.run_wise("list", "concept", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("unreadable", bad.stderr)
+
+
+class MergeConflictTests(WiseTestCase):
+    """Review #19 finding 2: equal merge stamps never pick a winner silently."""
+
+    def nodes_file(self):
+        return self.project / ".wise-code" / "graph" / "nodes.jsonl"
+
+    def with_lines(self, *extra):
+        # Simulate a union merge: append other clones' versions of a node.
+        path = self.nodes_file()
+        lines = path.read_text(encoding="utf-8").splitlines()
+        path.write_text("\n".join([*lines, *extra]) + "\n", encoding="utf-8")
+
+    def versions(self, node_id):
+        return [json.loads(line) for line in self.nodes_file().read_text(
+            encoding="utf-8").splitlines() if json.loads(line)["id"] == node_id]
+
+    def two_divergent(self):
+        self.run_wise("add", "concept", "name=Alpha", "notes+=base")
+        self.run_wise("add", "concept", "name=Other")
+        base = self.versions("alpha")[0]
+        ours = {**base, "notes": ["base", "ours"], "updated": "2026-10-29", "rev": 1}
+        theirs = {**base, "notes": ["base", "theirs"], "updated": "2026-10-29", "rev": 1}
+        return base, ours, theirs
+
+    def line(self, node):
+        return json.dumps(node, ensure_ascii=False, sort_keys=True)
+
+    def test_divergent_equal_stamps_are_kept_in_either_line_order(self):
+        for order in ("ours-first", "theirs-first"):
+            with self.subTest(order=order):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                base, ours, theirs = self.two_divergent()
+                pair = [ours, theirs] if order == "ours-first" else [theirs, ours]
+                # Drop the base line: both sides edited it.
+                keep = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                        if json.loads(l)["id"] != "alpha"]
+                self.nodes_file().write_text("\n".join(keep) + "\n", encoding="utf-8")
+                self.with_lines(*(self.line(n) for n in pair))
+                # An unrelated write keeps both versions on disk and warns.
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertIn("conflicting versions from a merge: alpha", res.stderr)
+                self.assertCountEqual([v["notes"] for v in self.versions("alpha")],
+                                      [["base", "ours"], ["base", "theirs"]])
+                # Changing the conflicted node is refused until resolved.
+                bad = self.run_wise("set", "alpha", "definition=y", check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("wise.py resolve alpha", bad.stderr)
+                self.assertEqual(self.run_wise("delete", "alpha", check=False).returncode, 2)
+                self.assertIn("alpha: 2 conflicting versions",
+                              self.run_wise("check", check=False).stdout)
+                shown = self.out("resolve", "alpha")
+                self.assertIn("differ in notes", shown)
+                self.assertIn('2: {"notes": ["base", "', shown)
+                theirs_at = 1 + [n["notes"][1] for n in pair].index("theirs")
+                self.out("resolve", "alpha", "--keep", str(theirs_at))
+                [kept] = self.versions("alpha")
+                self.assertEqual(kept["notes"], ["base", "theirs"])
+                self.assertEqual(kept["rev"], 2)  # beats both sides in later merges
+                self.assertIn("ok · ", self.out("check"))
+
+    def test_resolved_choice_beats_future_dated_versions(self):
+        # PR #20 review: versions dated ahead of today (another time zone,
+        # a clock ahead) must not outrank the learner's later choice.
+        base, ours, theirs = self.two_divergent()
+        ours, theirs = ({**n, "updated": "2026-10-30"} for n in (ours, theirs))
+        keep = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                if json.loads(l)["id"] != "alpha"]
+        self.nodes_file().write_text("\n".join(keep) + "\n", encoding="utf-8")
+        self.with_lines(self.line(ours), self.line(theirs))
+        self.out("resolve", "alpha", "--keep", "1", day="2026-10-28")
+        [kept] = self.versions("alpha")
+        for rejected in (ours, theirs):
+            self.assertGreater(wise.stamp(kept), wise.stamp(rejected))
+        # A later merge that brings the rejected version back loses to it.
+        self.with_lines(self.line(theirs))
+        self.run_wise("set", "other", "definition=x")
+        [after] = self.versions("alpha")
+        self.assertEqual(after["notes"], kept["notes"])
+
+    def test_identical_duplicates_collapse_silently(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        self.with_lines(self.line(self.versions("alpha")[0]))
+        res = self.run_wise("add", "concept", "name=Other")
+        self.assertNotIn("conflicting", res.stderr)
+        self.assertEqual(len(self.versions("alpha")), 1)
+
+    def test_higher_stamp_wins_in_either_line_order(self):
+        for newer_first in (True, False):
+            with self.subTest(newer_first=newer_first):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                base, ours, theirs = self.two_divergent()
+                theirs = {**theirs, "rev": 2}
+                self.with_lines(*(self.line(n) for n in
+                                  ([theirs, ours] if newer_first else [ours, theirs])))
+                self.run_wise("set", "other", "definition=x")
+                [kept] = self.versions("alpha")
+                self.assertEqual(kept["notes"], ["base", "theirs"])
+
+    @unittest.skipUnless(shutil.which("git"), "git not installed")
+    def test_real_git_merge_of_same_day_edits_waits_for_resolve(self):
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": self.temp.name,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(cwd, *args):
+            return subprocess.run(["git", "-C", str(cwd), *args], text=True,
+                                  capture_output=True, env=env, timeout=30)
+        shutil.rmtree(self.project / ".git")
+        git(self.project, "init", "-q", "-b", "main")
+        self.run_wise("add", "concept", "name=Alpha")
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-qm", "base")
+        tracked = git(self.project, "ls-files").stdout.split()
+        self.assertFalse([f for f in tracked if f.endswith((".lock", ".commit", ".tmp"))])
+        clone = Path(self.temp.name) / "clone"
+        git(self.temp.name, "clone", "-q", str(self.project), str(clone))
+        for root, note in ((self.project, "ours"), (clone, "theirs")):
+            self.run_wise("set", "alpha", f"notes+={note}", root=root, day="2026-10-29")
+            git(root, "commit", "-qam", note)
+        git(self.project, "fetch", "-q", str(clone), "main")
+        merge = git(self.project, "merge", "-q", "--no-edit", "FETCH_HEAD")
+        self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
+        self.assertEqual(len(self.versions("alpha")), 2)
+        self.assertIn("2 versions", self.out("resolve", "alpha"))
 
 
 class ViewTests(WiseTestCase):

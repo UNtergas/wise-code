@@ -14,6 +14,7 @@ Standard library only, Python 3.9+. Spec: docs/graph.md. Usage: wise.py --help.
 import argparse
 import datetime as dt
 import difflib
+import errno
 import hashlib
 import html
 import json
@@ -25,7 +26,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
+
+try:  # Graph lock: flock on Unix, byte-range locking on Windows.
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+    import msvcrt
 
 if sys.version_info < (3, 9):  # pragma: no cover - checked by the caller's interpreter
     sys.stderr.write("wise.py needs Python 3.9 or newer\n")
@@ -132,6 +140,10 @@ TYPES = {
 }
 
 META = ("id", "type", "created", "updated", "rev", "at")
+# Stored kinds of the metadata every record may carry (id and type checked apart).
+META_FIELDS = {"created": "date", "updated": "date", "rev": "int", "at": "str"}
+# Allowed ranges for int fields; others must be 0 or more.
+RANGES = {("question", "box"): (min(BOXES), max(BOXES))}
 TIER2 = ("lesson", "reference", "research", "adr", "mission", "resource")
 SHELF_RECORDS = ("citation", "read", "explainback")
 ANY = tuple(TYPES)
@@ -161,6 +173,24 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7}|\|{7})( |$)")
 # Git keeps both sides' lines when two clones add records, instead of a conflict.
 GITATTRIBUTES = "*.jsonl merge=union\n"
+# Process-local files in graph/: the lock, the commit journal, and temp files
+# (named .<file>.<random>.tmp). Git ignores them; they never merge.
+LOCK_NAME = ".lock"
+JOURNAL_NAME = ".commit"
+GRAPH_IGNORE = f"{LOCK_NAME}\n{JOURNAL_NAME}\n.*.tmp\n"
+DATA_FILES = ("nodes.jsonl", "edges.jsonl")
+# Every file wise.py keeps inside graph/; none of them may be a symlink.
+GRAPH_FILES = (*DATA_FILES, ".gitattributes", ".gitignore", LOCK_NAME, JOURNAL_NAME)
+# Errors meaning graph/ can't be written (a read-only mount, no permission):
+# reads go on without the lock, writes are refused.
+READ_ONLY_ERRORS = (errno.EROFS, errno.EACCES, errno.EPERM)
+# How long a command waits for another wise.py using the same graph.
+LOCK_TIMEOUT = 20.0
+
+
+def canonical(node):
+    """One node as its stored line."""
+    return json.dumps(node, ensure_ascii=False, sort_keys=True)
 
 
 def stamp(node):
@@ -240,17 +270,147 @@ def find_state(start, create=False):
 # ---------------------------------------------------------------- store
 
 class Graph:
-    def __init__(self, state):
+    """The learning graph, locked from load to close.
+
+    Every command that opens a graph holds an exclusive lock on graph/.lock
+    until close(), so a save always writes the snapshot it loaded: two
+    processes take turns instead of overwriting each other (review #19, 1).
+    Use it as a context manager. A save publishes both files through a commit
+    journal, so a crash leaves the old graph or the new one, never a mix (6).
+    """
+
+    def __init__(self, state, write=False, timeout=LOCK_TIMEOUT):
         self.state = state
         self.dir = state / "graph"
         self.nodes = {}
         self.edges = set()
+        # id -> canonical JSON of each version a union merge left with the
+        # same stamp; nodes[id] holds the first until `resolve` picks one.
+        self.conflicts = {}
         self.dirty = False
-        for name in ("nodes.jsonl", "edges.jsonl"):
-            path = self.dir / name
+        self._lock = None
+        # The state boundary holds for every path wise.py reads or writes: a
+        # symlinked folder would move the files outside it as surely as a
+        # symlinked file.
+        for path in (state, self.dir, *(self.dir / name for name in GRAPH_FILES)):
             if path.is_symlink():
                 raise WiseError(f"{path} is a symlink; refusing")
-        self._load()
+        # No graph/ yet: nothing to read or lock. save() creates it and
+        # refuses if another process got there first.
+        if self.dir.is_dir():
+            try:
+                self._acquire(timeout)
+            except OSError as error:
+                if error.errno not in READ_ONLY_ERRORS:
+                    raise
+                if write:
+                    raise WiseError(f"can't lock {self.dir}: not writable") from None
+                # A read-only checkout: read without the lock, but never a
+                # half-committed save.
+            try:
+                self._recover()
+                self._load()
+            except BaseException:
+                self.close()
+                raise
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        lock, self._lock = getattr(self, "_lock", None), None
+        if lock is not None:
+            os.close(lock)  # closing the descriptor releases the lock
+
+    # -- lock and commit
+
+    def _acquire(self, timeout):
+        path = self.dir / LOCK_NAME
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o644)
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if fcntl:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:  # pragma: no cover - Windows
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    os.close(fd)
+                    raise WiseError(f"{self.dir} is busy: another wise.py is using it; "
+                                    "retry when it finishes") from None
+                time.sleep(0.05)
+        self._lock = fd
+        ignore = self.dir / ".gitignore"
+        if not ignore.exists():
+            self._publish(".gitignore", GRAPH_IGNORE)
+
+    def _fsync_dir(self):
+        if hasattr(os, "O_DIRECTORY"):  # POSIX: make renames survive power loss
+            fd = os.open(self.dir, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+
+    def _temp(self, name, text):
+        """Write text to a durable temp file beside name; return its file name."""
+        handle, temp = tempfile.mkstemp(dir=self.dir, prefix=f".{name}.", suffix=".tmp")
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return Path(temp).name
+
+    def _publish(self, name, text):
+        os.replace(self.dir / self._temp(name, text), self.dir / name)
+        self._fsync_dir()
+
+    def _checkpoint(self, step):
+        """No-op; tests replace it to interrupt a save after each step."""
+
+    def _recover(self):
+        """Finish a save that stopped after its journal was published."""
+        journal = self.dir / JOURNAL_NAME
+        if journal.exists():
+            if self._lock is None:
+                raise WiseError(f"{self.dir} has an unfinished save; run any write "
+                                "command where the graph is writable to finish it")
+            try:
+                moves = json.loads(journal.read_text(encoding="utf-8"))
+                valid = isinstance(moves, list) and all(
+                    isinstance(m, list) and len(m) == 2 and m[1] in DATA_FILES
+                    and isinstance(m[0], str) and re.fullmatch(r"\.[\w.-]+\.tmp", m[0])
+                    for m in moves)
+            except ValueError:
+                valid = False
+            if not valid:
+                raise WiseError(f"{journal} is unreadable; restore graph/ from Git")
+            # Check every source before moving any: a symlinked temp would
+            # put a link to outside data where nodes.jsonl or edges.jsonl is.
+            for temp, _ in moves:
+                if (self.dir / temp).is_symlink():
+                    raise WiseError(f"{self.dir / temp} is a symlink; refusing to "
+                                    "finish the save; restore graph/ from Git")
+            # Roll forward: a temp already moved is already in place.
+            for temp, name in moves:
+                if (self.dir / temp).exists():
+                    os.replace(self.dir / temp, self.dir / name)
+            self._fsync_dir()
+            journal.unlink()
+            self._fsync_dir()
+        if self._lock is not None:
+            # Temps no journal names come from a save that stopped before
+            # publishing; the old graph is intact, so they are garbage.
+            for leftover in self.dir.glob(".*.tmp"):
+                leftover.unlink()
 
     def _load(self):
         nodes_path = self.dir / "nodes.jsonl"
@@ -265,14 +425,7 @@ class Graph:
                     raise WiseError(f"nodes.jsonl line {number}: {error}") from None
                 if not isinstance(node, dict) or "id" not in node or "type" not in node:
                     raise WiseError(f"nodes.jsonl line {number}: needs id and type")
-                old = self.nodes.get(node["id"])
-                if old is not None:
-                    # A union merge kept both sides' version of one node: the
-                    # newer change wins, and the next write drops the other line.
-                    self.dirty = True
-                    if stamp(old) > stamp(node):
-                        continue
-                self.nodes[node["id"]] = node
+                self._keep_version(node)
         if edges_path.is_file():
             for number, line in enumerate(edges_path.read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip() or CONFLICT_RE.match(line):
@@ -283,25 +436,76 @@ class Graph:
                 except (ValueError, KeyError, TypeError) as error:
                     raise WiseError(f"edges.jsonl line {number}: {error}") from None
 
+    def _keep_version(self, node):
+        """Choose among the lines a union merge left for one id.
+
+        A higher (updated, rev) stamp wins and the next write drops the other
+        line: an edit on the older side is lost, by design. Identical lines
+        collapse. Different lines with the same stamp can't be ordered, so
+        both are kept on disk until the learner picks one (wise.py resolve).
+        """
+        node_id = node["id"]
+        old = self.nodes.get(node_id)
+        if old is None:
+            self.nodes[node_id] = node
+            return
+        new, ours = stamp(node), stamp(old)
+        if new != ours:
+            self.dirty = True  # the losing line goes on the next write
+            if new > ours:
+                self.nodes[node_id] = node
+                self.conflicts.pop(node_id, None)
+            return
+        text = canonical(node)
+        versions = self.conflicts.get(node_id, [canonical(old)])
+        if text in versions:
+            self.dirty = True  # an identical duplicate collapses
+            return
+        self.conflicts[node_id] = versions + [text]
+
+    def _check_unresolved(self, node_id):
+        if node_id in self.conflicts:
+            raise WiseError(f"{node_id} has {len(self.conflicts[node_id])} conflicting "
+                            f"versions from a merge; pick one first: wise.py resolve {node_id}")
+
     def save(self):
         if not self.dirty:
             return
-        self.dir.mkdir(parents=True, exist_ok=True)
-        attributes = self.dir / ".gitattributes"
-        if not attributes.exists():
-            attributes.write_text(GITATTRIBUTES, encoding="utf-8")
-        node_lines = [json.dumps(self.nodes[key], ensure_ascii=False, sort_keys=True)
-                      for key in sorted(self.nodes)]
+        for node_id, versions in self.conflicts.items():
+            # Every change path is guarded; this catches any that isn't.
+            if canonical(self.nodes.get(node_id)) != versions[0]:
+                self._check_unresolved(node_id)
+        if self._lock is None:
+            # graph/ didn't exist at load: lock now, finish any save another
+            # process committed but didn't complete, and refuse if the graph
+            # exists now (this snapshot is stale).
+            self.dir.mkdir(parents=True, exist_ok=True)
+            self._acquire(LOCK_TIMEOUT)
+            self._recover()
+            if any((self.dir / name).exists() for name in DATA_FILES):
+                raise WiseError("the graph was created by another wise.py meanwhile; "
+                                "nothing saved, retry the command")
+        if not (self.dir / ".gitattributes").exists():
+            self._publish(".gitattributes", GITATTRIBUTES)
+        node_lines = [line for key in sorted(self.nodes)
+                      for line in self.conflicts.get(key, [canonical(self.nodes[key])])]
         edge_lines = [json.dumps({"from": a, "rel": r, "to": b}, ensure_ascii=False,
                                  sort_keys=True)
                       for a, r, b in sorted(self.edges)]
-        for name, lines in (("nodes.jsonl", node_lines), ("edges.jsonl", edge_lines)):
-            target = self.dir / name
-            # Write beside the target and rename: a crash never leaves half a file.
-            handle, temp = tempfile.mkstemp(dir=self.dir, prefix=f".{name}.")
-            with os.fdopen(handle, "w", encoding="utf-8") as stream:
-                stream.write("\n".join(lines) + ("\n" if lines else ""))
-            os.replace(temp, target)
+        # 1. Both new files, durable, beside their targets.
+        moves = [[self._temp(name, "\n".join(lines) + ("\n" if lines else "")), name]
+                 for name, lines in (("nodes.jsonl", node_lines), ("edges.jsonl", edge_lines))]
+        self._checkpoint("temps written")
+        # 2. The journal is the single commit point: once it exists, the new
+        #    graph is the graph, and _recover finishes the moves if we stop.
+        self._publish(JOURNAL_NAME, json.dumps(moves))
+        self._checkpoint("journal published")
+        for temp, name in moves:
+            os.replace(self.dir / temp, self.dir / name)
+            self._checkpoint(f"{name} replaced")
+        self._fsync_dir()
+        (self.dir / JOURNAL_NAME).unlink()
+        self._fsync_dir()
         self.dirty = False
 
     # -- lookup
@@ -368,12 +572,17 @@ class Graph:
 
     def touch(self, node):
         """Mark a changed node so a later union merge can tell which side is newer."""
-        node["updated"] = iso(today())
+        self._check_unresolved(node["id"])
+        # Never move the date back: a node dated ahead of today (another
+        # time zone, a clock ahead) would otherwise outrank this change.
+        node["updated"] = max(iso(today()), node.get("updated") or "",
+                              node.get("created") or "")
         node["rev"] = int(node.get("rev", 0)) + 1
         self.dirty = True
 
     def remove(self, node_id):
         node_id = self.resolve(node_id)
+        self._check_unresolved(node_id)
         del self.nodes[node_id]
         self.edges = {e for e in self.edges if node_id not in (e[0], e[2])}
         self.dirty = True
@@ -393,9 +602,13 @@ def coerce(kind, field, value):
         return value
     if spec == "int":
         try:
-            return int(value)
+            number = int(value)
         except (TypeError, ValueError):
             raise WiseError(f"{kind}.{field} must be a number; got {value!r}") from None
+        low, high = RANGES.get((kind, field), (None, None))
+        if low is not None and not low <= number <= high:
+            raise WiseError(f"{kind}.{field} must be {low} to {high}; got {number}")
+        return number
     if spec == "date":
         try:
             return iso(dt.date.fromisoformat(str(value)))
@@ -406,21 +619,55 @@ def coerce(kind, field, value):
     return str(value)
 
 
+def stored_problem(kind, field, value):
+    """Why a stored value has the wrong JSON type or range, or None.
+
+    coerce converts CLI text; this checks a record as stored, so a value that
+    coerce would convert (the string "3" for an int, "a" for a list) is wrong
+    here: later commands read it without converting.
+    """
+    spec = META_FIELDS.get(field) or TYPES[kind]["fields"].get(field)
+    if spec is None:
+        return f"{kind} has no field {field!r}"
+    if isinstance(spec, tuple):
+        ok = isinstance(value, str) and value in spec
+        return None if ok else f"{kind}.{field} must be one of {', '.join(spec)}; got {value!r}"
+    if spec == "int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"{kind}.{field} must be a whole number; got {value!r}"
+        low, high = RANGES.get((kind, field), (0, None))
+        if value < low or (high is not None and value > high):
+            limit = f"{low} to {high}" if high is not None else f"{low} or more"
+            return f"{kind}.{field} must be {limit}; got {value}"
+        return None
+    if spec == "date":
+        try:
+            ok = isinstance(value, str) and iso(dt.date.fromisoformat(value)) == value
+        except ValueError:
+            ok = False
+        return None if ok else f"{kind}.{field} must be YYYY-MM-DD; got {value!r}"
+    if spec == "list":
+        ok = isinstance(value, list) and all(isinstance(item, str) for item in value)
+        return None if ok else f"{kind}.{field} must be a list of text; got {value!r}"
+    return None if isinstance(value, str) else f"{kind}.{field} must be text; got {value!r}"
+
+
 def validate_node(node):
     kind = node.get("type")
     if kind not in TYPES:
         return [f"{node.get('id')}: unknown type {kind!r}"]
+    if not isinstance(node.get("id"), str) or not node["id"]:
+        return [f"{node.get('id')!r}: id must be text"]
     problems = []
     for field in TYPES[kind]["required"]:
         if node.get(field) in (None, "", []):
             problems.append(f"{node['id']}: missing {field}")
     for field, value in node.items():
-        if field in META:
+        if field in ("id", "type"):
             continue
-        try:
-            coerce(kind, field, value)
-        except WiseError as error:
-            problems.append(f"{node['id']}: {error}")
+        problem = stored_problem(kind, field, value)
+        if problem:
+            problems.append(f"{node['id']}: {problem}")
     return problems
 
 
@@ -659,6 +906,11 @@ def cmd_add(graph, args):
         slug = sets.pop("id", None) or slugify(sets.get("name", ""))
         if not SLUG_RE.match(slug):
             raise WiseError(f"concept id must be a lowercase slug; got {slug!r}")
+        # Same identity and similar meaning are separate checks: --force
+        # overrides only the second, never replacing an existing concept.
+        if args.force and slug in graph.nodes:
+            raise WiseError(f"concept id {slug!r} is taken; change it with "
+                            f"wise.py set {slug} …, or add with a different id=")
         names = [sets.get("name", "")] + appends.get("aliases", [])
         match = similar_concept(graph, slug, names)
         if match and not args.force:
@@ -792,6 +1044,7 @@ def cmd_merge(graph, args):
     keep, drop = graph.resolve(args.keep), graph.resolve(args.drop)
     if keep == drop:
         raise WiseError("same node")
+    graph._check_unresolved(drop)
     a, b = graph.nodes[keep], graph.nodes[drop]
     if a["type"] != b["type"]:
         raise WiseError("can only merge nodes of the same type")
@@ -821,6 +1074,34 @@ def cmd_merge(graph, args):
     return 0
 
 
+def cmd_resolve(graph, args):
+    """Show a merge conflict's versions, or keep one of them."""
+    node_id = graph.resolve(args.id)
+    versions = graph.conflicts.get(node_id)
+    if not versions:
+        raise WiseError(f"{node_id} has no conflicting versions")
+    nodes = [json.loads(text) for text in versions]
+    if args.keep is None:
+        fields = sorted({f for n in nodes for f in n})
+        differ = [f for f in fields if len({canonical(n.get(f)) for n in nodes}) > 1]
+        print(f"{node_id}: {len(nodes)} versions with the same stamp "
+              f"{stamp(nodes[0])[0]} rev {stamp(nodes[0])[1]}; they differ in "
+              f"{', '.join(differ)}")
+        for number, node in enumerate(nodes, 1):
+            print(f"{number}: " + canonical({f: node.get(f) for f in differ}))
+        print(f"keep one: wise.py resolve {node_id} --keep <number>")
+        return 0
+    if not 1 <= args.keep <= len(nodes):
+        raise WiseError(f"--keep must be 1 to {len(nodes)}")
+    node = nodes[args.keep - 1]
+    del graph.conflicts[node_id]
+    graph.nodes[node_id] = node
+    graph.touch(node)  # a higher rev, so this choice wins every later merge
+    graph.save()
+    print(f"kept version {args.keep} of {node_id}")
+    return 0
+
+
 def cmd_answer(graph, args):
     """Record a quiz or start-check answer: QA entry plus Leitner rescheduling."""
     qid = graph.resolve(args.id)
@@ -833,8 +1114,12 @@ def cmd_answer(graph, args):
                                      "said": args.said or ""})
     if problems:
         raise WiseError("; ".join(problems))
+    problem = stored_problem("question", "box", question.get("box", 1))
+    if problem:
+        # Checked before any change, so a bad stored box never half-applies.
+        raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
     if args.source in ("quiz", "start-check") or args.schedule:
-        box = int(question.get("box", 1))
+        box = question.get("box", 1)
         if args.verdict == "correct":
             box = min(box + 1, 5)
         elif args.verdict == "wrong":
@@ -1587,6 +1872,9 @@ def cmd_check_said(graph, args):
 
 def cmd_check(graph, args):
     problems, warnings = [], []
+    for node_id, versions in sorted(graph.conflicts.items()):
+        problems.append(f"{node_id}: {len(versions)} conflicting versions; "
+                        f"wise.py resolve {node_id}")
     for node in graph.nodes.values():
         problems += validate_node(node)
     for a, r, b in graph.edges:
@@ -1606,11 +1894,18 @@ def cmd_check(graph, args):
             if not (repo / node["path"]).exists():
                 warnings.append(f"{node['id']}: file gone: {node['path']}")
     if args.shelf:
-        shelf = Graph(Path(args.shelf).resolve() / ".wise-code")
-        for node in graph.of_type("concept"):
-            for ref in node.get("shelf", []):
-                if ref not in shelf.nodes:
-                    warnings.append(f"{node['id']}: shelf id not found: {ref}")
+        shelf_state = Path(args.shelf).resolve() / ".wise-code"
+        # Same graph: reuse it; a second lock in this process would wait forever.
+        same = shelf_state.resolve() == graph.state.resolve()
+        shelf = graph if same else Graph(shelf_state)
+        try:
+            for node in graph.of_type("concept"):
+                for ref in node.get("shelf", []):
+                    if ref not in shelf.nodes:
+                        warnings.append(f"{node['id']}: shelf id not found: {ref}")
+        finally:
+            if not same:
+                shelf.close()
     seen = {}
     for node in graph.of_type("concept"):
         for name in [node["id"], *node.get("aliases", [])]:
@@ -2094,6 +2389,11 @@ def build_parser():
     p.add_argument("drop")
     p.set_defaults(func=cmd_merge, write=True)
 
+    p = sub.add_parser("resolve", help="show or pick between a node's conflicting versions")
+    p.add_argument("id")
+    p.add_argument("--keep", type=int, help="the version number to keep")
+    p.set_defaults(func=cmd_resolve, write=True)
+
     p = sub.add_parser("answer", help="record an answer to a question and reschedule it")
     p.add_argument("id")
     p.add_argument("verdict")
@@ -2228,8 +2528,12 @@ def main(argv=None):
         if state is None:
             print("no .wise-code here; nothing recorded yet")
             return 0
-        graph = Graph(state)
-        return args.func(graph, args) or 0
+        with Graph(state, write=args.write) as graph:
+            if graph.conflicts and args.func not in (cmd_resolve, cmd_check):
+                ids = ", ".join(sorted(graph.conflicts))
+                print(f"wise.py: conflicting versions from a merge: {ids}; "
+                      "wise.py resolve <id>", file=sys.stderr)
+            return args.func(graph, args) or 0
     except WiseError as error:
         print(f"wise.py: {error}", file=sys.stderr)
         return 2
