@@ -21,6 +21,10 @@ class SetupCase(unittest.TestCase):
         self.home.mkdir()
         self.codex_home = self.home / ".codex"
         self.codex_home.mkdir()
+        # PATH holds only what a test puts there, so a real `codex` on the
+        # developer's machine can't change what setup detects.
+        self.bin = base / "bin"
+        self.bin.mkdir()
         self.project = base / "project"
         self.project.mkdir()
         (self.project / ".git").mkdir()
@@ -32,11 +36,16 @@ class SetupCase(unittest.TestCase):
             json.dumps({"name": "wise-code"}), encoding="utf-8")
 
     def setup(self, *args, cwd=None):
-        env = {"PATH": os.environ.get("PATH", ""), "HOME": str(self.home),
+        env = {"PATH": str(self.bin), "HOME": str(self.home),
                "CODEX_HOME": str(self.codex_home)}
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup.py"), *args],
                               text=True, capture_output=True, env=env, timeout=30,
                               cwd=cwd or self.project)
+
+    def fake_codex(self):
+        codex = self.bin / "codex"
+        codex.write_text("#!/bin/sh\necho codex-cli 0.0.0\n", encoding="utf-8")
+        codex.chmod(0o755)
 
     def claude(self):
         return json.loads(self.settings.read_text(encoding="utf-8"))
@@ -119,6 +128,28 @@ class ExistingClaudeSettingsTests(SetupCase):
         self.assertRegex(result.stdout, r"(?m)^conflict +Claude sandbox")
         self.assertEqual(self.settings.read_text(encoding="utf-8"), "{ not json")
 
+    def test_every_shell_denied_path_is_also_denied_to_the_read_tool(self):
+        # The Read tool runs outside the shell sandbox (review on #26).
+        self.assertEqual(self.setup("apply").returncode, 0)
+        settings = self.claude()
+        deny = settings["permissions"]["deny"]
+        for path in settings["sandbox"]["filesystem"]["denyRead"]:
+            self.assertIn(f"Read({path}/**)", deny)
+
+    def test_planted_temp_symlink_cannot_write_outside(self):
+        # A fixed temp name was followed and truncated its target (review on #26).
+        outside = Path(self.temp.name) / "victim.txt"
+        outside.write_text("keep me", encoding="utf-8")
+        self.settings.parent.mkdir()
+        (self.settings.parent / ".settings.local.json.tmp").symlink_to(outside)
+        (self.codex_home / ".senior.config.toml.tmp").symlink_to(outside)
+        result = self.setup("apply")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "keep me")
+        self.assertFalse(self.settings.is_symlink())
+        self.assertFalse(self.profile.is_symlink())
+        self.assertIn("sandbox", self.claude())
+
     def test_symlinked_settings_are_refused(self):
         outside = Path(self.temp.name) / "outside.json"
         outside.write_text("{}", encoding="utf-8")
@@ -137,6 +168,21 @@ class CodexProfileTests(SetupCase):
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
         self.assertEqual(self.profile.read_text(encoding="utf-8"), "# mine\n")
+
+    def test_installed_codex_without_a_config_folder_still_gets_the_profile(self):
+        # Codex on PATH but never run: no CODEX_HOME yet (review on #26).
+        import shutil
+        shutil.rmtree(self.codex_home)
+        self.fake_codex()
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^missing +Codex senior profile")
+        given = Path(self.temp.name) / "plugin/wise-code"
+        given.mkdir(parents=True)
+        result = self.setup("apply", "--codex-plugin-root", str(given))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn(json.dumps(str(given)) + ' = "read"',
+                      self.profile.read_text(encoding="utf-8"))
 
     def test_without_codex_installed_the_profile_is_not_applicable(self):
         import shutil

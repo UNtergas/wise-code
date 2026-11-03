@@ -22,17 +22,23 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wise  # noqa: E402 - shares project lookup and errors
 
 
+# Credentials no Claude tool may read. The shell sandbox (denyRead) and the Read
+# tool (permissions.deny) are separate layers, so each path goes in both.
+CREDENTIALS = ["~/.ssh", "~/.aws", "~/.config/gh"]
+
 CLAUDE_REQUIRED = {
-    ("sandbox", "filesystem", "denyRead"): ["~/.ssh", "~/.aws", "~/.config/gh"],
+    ("sandbox", "filesystem", "denyRead"): CREDENTIALS,
     ("sandbox", "network", "allowedDomains"): [
         "*.github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
-    ("permissions", "deny"): ["Read(~/.ssh/**)", "Read(~/.aws/**)", "Read(**/.env)"],
+    ("permissions", "deny"): [f"Read({path}/**)" for path in CREDENTIALS] + ["Read(**/.env)"],
 }
 
 DOCS_HOSTS = ("developer.mozilla.org", "nodejs.org", "www.typescriptlang.org",
@@ -110,9 +116,20 @@ enabled = true
 # ---------------------------------------------------------------- the items
 
 def write_atomic(path, text):
-    temp = path.with_name(f".{path.name}.tmp")
-    temp.write_text(text, encoding="utf-8")
-    os.replace(temp, path)
+    """Write through a fresh, exclusively created temp file, then replace.
+
+    A fixed temp name could be a planted symlink that write_text would follow;
+    mkstemp creates a new file with O_EXCL and never follows one.
+    """
+    handle, temp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        os.replace(temp, path)
+    except BaseException:
+        if os.path.lexists(temp):
+            os.unlink(temp)
+        raise
 
 
 def consult_item(project):
@@ -157,6 +174,8 @@ def claude_item(project):
 
 def find_codex_plugin(codex_home):
     """The installed wise-code plugin under CODEX_HOME, or None."""
+    if not codex_home.is_dir():
+        return None
     for manifest in sorted(codex_home.rglob(".codex-plugin/plugin.json")):
         try:
             if json.loads(manifest.read_text(encoding="utf-8")).get("name") == "wise-code":
@@ -168,8 +187,10 @@ def find_codex_plugin(codex_home):
 
 def codex_item(codex_home, plugin_root):
     name = "Codex senior profile"
-    if not codex_home.is_dir():
-        return Item(name, "n/a", f"Codex not installed ({codex_home} missing)")
+    # Installed means the CLI is on PATH or Codex has created its home; a CLI
+    # that was never run has no home yet and still needs the profile.
+    if not codex_home.is_dir() and shutil.which("codex") is None:
+        return Item(name, "n/a", f"Codex not installed (no `codex` on PATH, no {codex_home})")
     path = codex_home / "senior.config.toml"
     if path.is_symlink():
         return Item(name, "conflict", f"{path} is a symlink; refusing")
@@ -185,6 +206,7 @@ def codex_item(codex_home, plugin_root):
                     f"{codex_home}; install it in Codex, or pass --codex-plugin-root PATH")
 
     def apply():
+        codex_home.mkdir(parents=True, exist_ok=True)
         write_atomic(path, codex_profile(root))
         return f"created {path}"
     return Item(name, "missing", str(path), apply)
