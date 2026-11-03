@@ -65,7 +65,7 @@ def is_lfs_pointer(path):
         return False
 
 
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 
 
 FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")

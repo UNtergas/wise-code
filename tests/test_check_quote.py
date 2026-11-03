@@ -152,6 +152,15 @@ class CheckQuoteTests(unittest.TestCase):
         # "---" after a blank line is a thematic break, not a heading.
         self.assertEqual(run("Not a heading", "after a thematic break"), "NO_HEADING")
 
+    def test_atx_headings_indented_up_to_three_spaces(self):
+        book = Path(self.temp.name) / "indent.md"
+        book.write_text("# Retries\n\nBackoff.\n\n  # Queues\n\nQueues absorb bursts.\n\n"
+                        "    # Code\n\nIndented four is code.\n", encoding="utf-8")
+        self.assertEqual(cq.check(book, "Queues", "queues absorb bursts"), ("FOUND", "Queues"))
+        self.assertEqual(cq.check(book, "Retries", "queues absorb bursts"), ("MISSING", None))
+        # Four spaces make an indented code block, not a heading.
+        self.assertEqual(cq.check(book, "Code", "indented four is code"), ("NO_HEADING", None))
+
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
         book.write_text("Idempotent requests can be retried safely.", encoding="utf-8")
