@@ -769,15 +769,26 @@ class ShelfTests(WiseTestCase):
         self.assertIn("p: 1 citations · 1 sections · understood 1 · not yet 0",
                       self.out("impact", "ddia", **s))
 
-    def test_markdown_book_citation_records_heading_not_page(self):
+    def test_text_book_sections_and_citations_carry_line_ranges(self):
         s = {"root": self.shelf}
         self.run_wise("add", "book", "slug=notes", "title=Notes", "file=shared/notes.md", **s)
-        self.run_wise("add", "section", "book=notes", "number=2", "title=Backoff", **s)
-        cid = self.out("add", "citation", "project=p", "question=Q", "heading=Backoff",
+        self.run_wise("add", "section", "book=notes", "number=2", "title=Backoff",
+                      "lines=12-40", **s)
+        cid = self.out("add", "citation", "project=p", "question=Q", "lines=14-15",
                        "--on", "SEC-notes-2", **s).strip()
-        node = next(n for n in self.nodes(self.shelf) if n["id"] == cid)
-        self.assertEqual(node["heading"], "Backoff")
-        self.assertNotIn("page", node)
+        nodes = {n["id"]: n for n in self.nodes(self.shelf)}
+        self.assertEqual(nodes["SEC-notes-2"]["lines"], "12-40")
+        self.assertEqual(nodes[cid]["lines"], "14-15")
+        self.assertNotIn("page", nodes[cid])
+        self.run_wise("set", "SEC-notes-2", "lines=7", **s)  # one line is a range too
+        for bad in ("40-12", "0-3", "12 - 40", "abc"):
+            result = self.run_wise("set", "SEC-notes-2", f"lines={bad}", check=False, **s)
+            self.assertNotEqual(result.returncode, 0, bad)
+            self.assertIn("section.lines must be a line range", result.stderr + result.stdout)
+        # The location is the index's line range; the heading field is gone.
+        result = self.run_wise("add", "citation", "project=p", "question=Q",
+                               "heading=Backoff", check=False, **s)
+        self.assertIn("citation has no field 'heading'", result.stderr + result.stdout)
 
     def test_project_check_warns_on_dead_shelf_ids(self):
         self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf",

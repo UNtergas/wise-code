@@ -62,7 +62,8 @@ SAID_MIN_WORDS, SAID_MAX_WORDS = 3, 40
 # QA sources where `a` is the learner's reasoning, so `said` is required.
 LEARNER_QA_SOURCES = ("checkpoint", "explore", "reflect", "repair")
 
-# Field kinds: "str", "list", "int", "date", or a tuple of allowed values.
+# Field kinds: "str", "list", "int", "date", "range" (a line range, "12-40" or
+# "7"), or a tuple of allowed values.
 # "prefix" is the ID prefix; None means the ID is a slug the caller provides.
 TYPES = {
     "concept": {"prefix": None, "required": ["name"], "fields": {
@@ -126,11 +127,12 @@ TYPES = {
         "pages": "int", "l1": "date", "projects": "list"}},
     "section": {"prefix": "SEC", "required": ["book", "number", "title"],
                 "fields": {"book": "str", "number": "str", "title": "str",
-                           "pages": "str", "printed": "str", "concepts": "list",
+                           "pages": "str", "printed": "str", "lines": "range",
+                           "concepts": "list",
                            "l2": "date"}},
     "citation": {"prefix": "CIT", "required": ["project", "question"], "fields": {
         "date": "date", "project": "str", "question": "str", "quote": "str",
-        "page": "int", "heading": "str", "status": ("sent",) + READ_VERDICTS,
+        "page": "int", "lines": "range", "status": ("sent",) + READ_VERDICTS,
         "updated": "date"}},
     "read": {"prefix": "RD", "required": ["project"], "fields": {
         "date": "date", "project": "str", "verdict": READ_VERDICTS,
@@ -170,6 +172,15 @@ RELS = {
 }
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+RANGE_RE = re.compile(r"^([1-9][0-9]*)(?:-([1-9][0-9]*))?$")
+
+
+def range_problem(kind, field, value):
+    """Why a value is not a line range ("12-40", or "7" for one line), or None."""
+    match = RANGE_RE.match(value) if isinstance(value, str) else None
+    if match and int(match.group(1)) <= int(match.group(2) or match.group(1)):
+        return None
+    return f"{kind}.{field} must be a line range like 12-40; got {value!r}"
 # Leftover markers from a merge done without the union driver.
 CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7}|\|{7})( |$)")
 # Git keeps both sides' lines when two clones add records, instead of a conflict.
@@ -617,6 +628,10 @@ def coerce(kind, field, value):
             raise WiseError(f"{kind}.{field} must be YYYY-MM-DD; got {value!r}") from None
     if spec == "list":
         return value if isinstance(value, list) else [value]
+    if spec == "range":
+        problem = range_problem(kind, field, str(value))
+        if problem:
+            raise WiseError(problem)
     return str(value)
 
 
@@ -650,6 +665,8 @@ def stored_problem(kind, field, value):
     if spec == "list":
         ok = isinstance(value, list) and all(isinstance(item, str) for item in value)
         return None if ok else f"{kind}.{field} must be a list of text; got {value!r}"
+    if spec == "range":
+        return range_problem(kind, field, value)
     return None if isinstance(value, str) else f"{kind}.{field} must be text; got {value!r}"
 
 
