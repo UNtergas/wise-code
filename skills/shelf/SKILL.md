@@ -44,6 +44,15 @@ Two kinds of session:
 
 **Flush first.** A citation cycle left open last session (a cite never explained) leaves uncommitted records, and `pull --rebase` refuses a dirty tree. If `git -C "<shelf>" status --porcelain .wise-code` prints anything, commit it before any pull: `git -C "<shelf>" add .wise-code`, then `git -C "<shelf>" commit -m "shelf(<Project>): carry-over"`. After the sync pull succeeds, publish it with `git -C "<shelf>" push --quiet`: a pull never pushes, so without this the carry-over stays on this machine until the next cycle end. Pull or push fails → keep the commit, say once that the push is pending, and retry at the next cycle end.
 
+**Failed pull.** Every `pull --rebase` in this skill can stop halfway: a conflict in a file without the union driver (`shelf.md`, `.gitattributes`) leaves a detached HEAD, and the next commit would take the conflict markers. After any failed pull, check, and undo it only if the first command prints a commit:
+
+```sh
+git -C "<shelf>" rev-parse -q --verify REBASE_HEAD
+git -C "<shelf>" rebase --abort
+```
+
+That puts the branch back with local commits on it. Never force or reset.
+
 Run each git command as its own call, with `git -C <path>` and absolute paths. No `cd`, no `&&` chains, no shell variables: permission checks block those and the learner gets prompts.
 
 ### Project mode
@@ -61,11 +70,11 @@ Project mode keeps a sparse clone at `<state>/shelf-repo/`. Make sure `<state>/.
   `--include="shared/**,<folder>/**"`, one `<folder>/**` per mapped folder,
   comma-separated, so only in-scope books are downloaded (LFS bandwidth is metered).
 - A folder in `Folders` that is missing in the repo → say once: "Shelf: folder `<name>` not in shelf". Names must match exactly.
-- Clone fails (not found, no access, no network) → reply once this session with "Shelf: repo `<Repo>` not reachable", git's error line, and the setup guide link above, then answer the question normally. A failed pull with a clone present → use the clone as it is and say it may be stale. Don't retry on every question. Never fall back to a different repo or a public copy.
+- Clone fails (not found, no access, no network) → reply once this session with "Shelf: repo `<Repo>` not reachable", git's error line, and the setup guide link above, then answer the question normally. A failed pull with a clone present → **Failed pull** above, then use the clone as it is and say it may be stale. Don't retry on every question. Never fall back to a different repo or a public copy.
 
 ### Shelf mode
 
-No clone: the books are the working tree. Run `git -C "<shelf>" pull --rebase --quiet` so books added on another machine are present. A failed pull (no network, conflict) → use the files as they are and say once they may be stale; never force or reset. If the shelf uses LFS, run the LFS step below without `--include`: every folder is in scope.
+No clone: the books are the working tree. Run `git -C "<shelf>" pull --rebase --quiet` so books added on another machine are present. A failed pull (no network, conflict) → **Failed pull** above, then use the files as they are and say once they may be stale; never force or reset. If the shelf uses LFS, run the LFS step below without `--include`: every folder is in scope.
 
 ### Git LFS step (both modes)
 
@@ -158,7 +167,7 @@ git -C <shelf> push --quiet
 
 (One call per line; run `push` only if `pull` succeeded.) A second explain-back on the same citation (after fixing a gap) is a new cycle end: one more commit. Never amend, squash or force-push: the shelf is shared between machines and projects, and a rewritten pushed commit breaks every other clone. A cycle left open at session end is committed by the next sync's flush (Step 1).
 
-The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next cycle end.
+The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → **Failed pull** (Step 1), keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next cycle end.
 
 In the project: one `shelf` QA pointing to the citation, not a copy of it (`wise.py add qa source=shelf q="<question>" a="<CIT-id> <book> <section>" verdict=n/a --about <concept>`), and `set <concept> shelf+=SEC-…` so the concept points to the section. Learn's rules decide whether the concept's status changes.
 

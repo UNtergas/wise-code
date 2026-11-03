@@ -72,8 +72,17 @@ the learner's source files.
    git -C "<root>" pull --rebase --quiet
    git -C "<root>" push --quiet
    ```
-   Pull or push fails → keep the commit, say once that the push is pending, and
-   go on; the next answer's push sends it. Never force-push.
+   Pull fails → a conflict in a file without the union driver (`shelf.md`, say)
+   stops the rebase halfway, on a detached HEAD, and the next commit would take
+   the conflict markers. Check, and undo it only if the first command prints a
+   commit:
+   ```sh
+   git -C "<root>" rev-parse -q --verify REBASE_HEAD
+   git -C "<root>" rebase --abort
+   ```
+   That puts the branch back with the local commit on it. Then, and whenever
+   push fails, keep the commit, say once that the push is pending, and go on; the
+   next answer's sync retries it. Never force-push or reset.
 8. End with one line: score, which topics were weak, any high-confidence misses,
    and the next due date. Offer
    to add atomic cards (`wise.py add card … --tests <concept>`) for facts the
