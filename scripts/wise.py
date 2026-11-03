@@ -132,6 +132,10 @@ TYPES = {
 }
 
 META = ("id", "type", "created", "updated", "rev", "at")
+# Stored kinds of the metadata every record may carry (id and type checked apart).
+META_FIELDS = {"created": "date", "updated": "date", "rev": "int", "at": "str"}
+# Allowed ranges for int fields; others must be 0 or more.
+RANGES = {("question", "box"): (min(BOXES), max(BOXES))}
 TIER2 = ("lesson", "reference", "research", "adr", "mission", "resource")
 SHELF_RECORDS = ("citation", "read", "explainback")
 ANY = tuple(TYPES)
@@ -397,9 +401,13 @@ def coerce(kind, field, value):
         return value
     if spec == "int":
         try:
-            return int(value)
+            number = int(value)
         except (TypeError, ValueError):
             raise WiseError(f"{kind}.{field} must be a number; got {value!r}") from None
+        low, high = RANGES.get((kind, field), (None, None))
+        if low is not None and not low <= number <= high:
+            raise WiseError(f"{kind}.{field} must be {low} to {high}; got {number}")
+        return number
     if spec == "date":
         try:
             return iso(dt.date.fromisoformat(str(value)))
@@ -410,21 +418,55 @@ def coerce(kind, field, value):
     return str(value)
 
 
+def stored_problem(kind, field, value):
+    """Why a stored value has the wrong JSON type or range, or None.
+
+    coerce converts CLI text; this checks a record as stored, so a value that
+    coerce would convert (the string "3" for an int, "a" for a list) is wrong
+    here: later commands read it without converting.
+    """
+    spec = META_FIELDS.get(field) or TYPES[kind]["fields"].get(field)
+    if spec is None:
+        return f"{kind} has no field {field!r}"
+    if isinstance(spec, tuple):
+        ok = isinstance(value, str) and value in spec
+        return None if ok else f"{kind}.{field} must be one of {', '.join(spec)}; got {value!r}"
+    if spec == "int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"{kind}.{field} must be a whole number; got {value!r}"
+        low, high = RANGES.get((kind, field), (0, None))
+        if value < low or (high is not None and value > high):
+            limit = f"{low} to {high}" if high is not None else f"{low} or more"
+            return f"{kind}.{field} must be {limit}; got {value}"
+        return None
+    if spec == "date":
+        try:
+            ok = isinstance(value, str) and iso(dt.date.fromisoformat(value)) == value
+        except ValueError:
+            ok = False
+        return None if ok else f"{kind}.{field} must be YYYY-MM-DD; got {value!r}"
+    if spec == "list":
+        ok = isinstance(value, list) and all(isinstance(item, str) for item in value)
+        return None if ok else f"{kind}.{field} must be a list of text; got {value!r}"
+    return None if isinstance(value, str) else f"{kind}.{field} must be text; got {value!r}"
+
+
 def validate_node(node):
     kind = node.get("type")
     if kind not in TYPES:
         return [f"{node.get('id')}: unknown type {kind!r}"]
+    if not isinstance(node.get("id"), str) or not node["id"]:
+        return [f"{node.get('id')!r}: id must be text"]
     problems = []
     for field in TYPES[kind]["required"]:
         if node.get(field) in (None, "", []):
             problems.append(f"{node['id']}: missing {field}")
     for field, value in node.items():
-        if field in META:
+        if field in ("id", "type"):
             continue
-        try:
-            coerce(kind, field, value)
-        except WiseError as error:
-            problems.append(f"{node['id']}: {error}")
+        problem = stored_problem(kind, field, value)
+        if problem:
+            problems.append(f"{node['id']}: {problem}")
     return problems
 
 
@@ -842,8 +884,12 @@ def cmd_answer(graph, args):
                                      "said": args.said or ""})
     if problems:
         raise WiseError("; ".join(problems))
+    problem = stored_problem("question", "box", question.get("box", 1))
+    if problem:
+        # Checked before any change, so a bad stored box never half-applies.
+        raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
     if args.source in ("quiz", "start-check") or args.schedule:
-        box = int(question.get("box", 1))
+        box = question.get("box", 1)
         if args.verdict == "correct":
             box = min(box + 1, 5)
         elif args.verdict == "wrong":

@@ -27,8 +27,8 @@ class WiseTestCase(unittest.TestCase):
         self.project.mkdir()
         (self.project / ".git").mkdir()
 
-    def run_wise(self, *args, root=None, day="2026-10-28", check=True):
-        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day}
+    def run_wise(self, *args, root=None, day="2026-10-28", check=True, extra_env=None):
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day, **(extra_env or {})}
         result = subprocess.run(
             [sys.executable, str(SCRIPT), "--root", str(root or self.project), *args],
             text=True, capture_output=True, env=env, timeout=30)
@@ -271,6 +271,70 @@ class QueryTests(WiseTestCase):
         text = self.out("history", "--limit", "200", "--full")
         self.assertLessEqual(len(text), wise.CAP_CHARS + 200)
         self.assertRegex(text, r"… \d+ more; pass --concept")
+
+
+class ValidationTests(WiseTestCase):
+    """Review #19 finding 5: stored types and ranges are checked, not just converted."""
+
+    def graph_bytes(self):
+        graph = self.project / ".wise-code" / "graph"
+        return {p.name: p.read_bytes() for p in graph.iterdir() if p.suffix == ".jsonl"}
+
+    def editor(self, change):
+        # A stand-in editor: applies `change` (JSON fields) to the file it opens.
+        script = Path(self.temp.name) / "editor.py"
+        script.write_text(
+            "import json, sys\n"
+            "path = sys.argv[1]\n"
+            "node = json.load(open(path, encoding='utf-8'))\n"
+            f"node.update(json.loads({json.dumps(json.dumps(change))}))\n"
+            "json.dump(node, open(path, 'w', encoding='utf-8'))\n", encoding="utf-8")
+        return {"EDITOR": f"{sys.executable} {script}"}
+
+    def test_box_outside_leitner_range_is_refused(self):
+        for box in ("0", "6", "-1"):
+            with self.subTest(box=box):
+                bad = self.run_wise("add", "question", "q=Q", "a=A", f"box={box}", check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("question.box must be 1 to 5", bad.stderr)
+        self.assertFalse((self.project / ".wise-code" / "graph" / "nodes.jsonl").exists())
+
+    def test_answer_on_a_stored_bad_box_fails_cleanly_without_writing(self):
+        qid = self.out("add", "question", "q=Q", "a=A").strip()
+        nodes = self.project / ".wise-code" / "graph" / "nodes.jsonl"
+        nodes.write_text(nodes.read_text(encoding="utf-8").replace('"box": 1', '"box": 0'),
+                         encoding="utf-8")
+        before = self.graph_bytes()
+        bad = self.run_wise("answer", qid, "partial", "--source", "quiz", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertNotIn("Traceback", bad.stderr)
+        self.assertIn(f"set {qid} box=1", bad.stderr)
+        self.assertEqual(self.graph_bytes(), before)
+
+    def test_editor_cannot_store_wrong_json_types(self):
+        self.run_wise("add", "concept", "name=Alpha", "notes+=one")
+        qid = self.out("add", "question", "q=Q", "a=A").strip()
+        cases = [("alpha", {"notes": "a string, not a list"}, "concept.notes must be a list"),
+                 ("alpha", {"aliases": ["ok", 3]}, "concept.aliases must be a list of text"),
+                 ("alpha", {"rev": "2"}, "concept.rev must be a whole number"),
+                 ("alpha", {"created": "yesterday"}, "concept.created must be YYYY-MM-DD"),
+                 (qid, {"box": "2"}, "question.box must be a whole number"),
+                 (qid, {"box": True}, "question.box must be a whole number")]
+        before = self.graph_bytes()
+        for node_id, change, message in cases:
+            with self.subTest(change=change):
+                bad = self.run_wise("edit", node_id, check=False, extra_env=self.editor(change))
+                self.assertEqual(bad.returncode, 2, bad.stdout)
+                self.assertIn(message, bad.stderr)
+                self.assertEqual(self.graph_bytes(), before)
+        # A well-typed edit still works.
+        self.run_wise("edit", "alpha", extra_env=self.editor({"notes": ["one", "two"]}))
+        self.assertEqual({n["id"]: n for n in self.nodes()}["alpha"]["notes"], ["one", "two"])
+
+    def test_imported_legacy_records_pass_strict_validation(self):
+        fixture.build(self.project, qa=40, questions=20, sessions=2)
+        self.run_wise("import-md")
+        self.assertIn("ok · ", self.out("check"))
 
 
 class ViewTests(WiseTestCase):
