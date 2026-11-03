@@ -63,7 +63,7 @@ class SkillLayoutTests(unittest.TestCase):
 
     def test_codex_senior_skills_run_only_when_called(self):
         senior = sorted(p for p in (ROOT / "codex/skills").iterdir() if p.is_dir())
-        self.assertEqual([p.name for p in senior], ["consult"])
+        self.assertEqual([p.name for p in senior], ["consult", "google"])
         for skill in senior:
             with self.subTest(skill=skill.name):
                 fields = frontmatter(skill / "SKILL.md")
@@ -79,6 +79,16 @@ class SkillLayoutTests(unittest.TestCase):
                          "never edit", "Disagrees with teacher"):
             self.assertIn(required, text)
         self.assertNotIn("wise.py add", text)
+        for kind in ("--kind doubt", "--kind question"):
+            self.assertIn(kind, text)
+
+    def test_google_skill_answers_in_full_and_records_nothing(self):
+        text = (ROOT / "codex/skills/google/SKILL.md").read_text(encoding="utf-8")
+        for required in ("full answer", "ignores the assist level", "never edit",
+                         "primary source", "not recorded"):
+            self.assertIn(required, text)
+        self.assertNotIn("consult.py", text)
+        self.assertNotIn("wise.py", text)
 
     def test_relative_links_in_guides_resolve(self):
         for guide in sorted((ROOT / "skills").rglob("*.md")):

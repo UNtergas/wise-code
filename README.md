@@ -77,17 +77,22 @@ The skills above are Claude-only: Claude is the teacher. Codex installs from the
 same repository (`.codex-plugin/`) but loads only `codex/skills/`, a separate
 senior-developer role you call in on purpose, never on its own:
 
-- `$wise-code:consult` — when you doubt a teacher decision, hint or explanation.
-  Codex asks what you tried and what you know first, checks the teacher's claim
-  against the code and primary sources, and answers at your assist level (Hint
-  stays a hint). It never edits your code or the learning graph. Each consult is
-  appended to `.wise-code/consult/journal.md` through `scripts/consult.py`; at
-  the next session start (or compaction) Claude is told how many consults came
-  in and how many disagree with it, reads them, and re-examines its own call
-  with you.
+- `$wise-code:consult` — at your assist level (Hint stays a hint) and logged.
+  Two kinds: a *doubt* about a teacher decision, hint or explanation (Codex
+  asks what you tried and know, then checks the teacher's claim against the code
+  and primary sources), or an independent *question* on syntax, config or a tool
+  (it asks only if you gave no context). It never edits your code or the
+  learning graph. Each consult is appended to `.wise-code/consult/journal.md`
+  through `scripts/consult.py`; at the next session start (or compaction)
+  Claude is told how many consults came in and how many doubts disagree with
+  it, reads them, and re-examines its own call with you.
+- `$wise-code:google` — a quick lookup answered in full, ignoring the assist
+  level, from primary sources and checked against this project's versions. Not
+  logged anywhere; your choice to step outside the learning loop for one answer.
 - PR review: a clean-code pass on an open pull request, on request (in progress).
 
-Consult replies start with `=>> senior on call <<=`.
+Consult replies start with `=>> senior on call <<=`; lookups with
+`=>> senior lookup <<=`.
 
 ## Canary
 

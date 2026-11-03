@@ -30,7 +30,7 @@ class ConsultCase(unittest.TestCase):
                               cwd=cwd or self.project)
 
     def add(self, *extra, day="2026-11-03", disagrees="no"):
-        args = ["add", "--topic", "Retry backoff", "--level", "Hint",
+        args = ["add", "--kind", "doubt", "--topic", "Retry backoff", "--level", "Hint",
                 "--asked", "Is exponential backoff right here?",
                 "--tried", "Read the retry loop; knew about jitter",
                 "--view", "Backoff is right; the cap is missing",
@@ -44,7 +44,7 @@ class AddTests(ConsultCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         text = self.journal.read_text(encoding="utf-8")
         self.assertRegex(text, r"(?m)^## 2026-11-03 \d\d:\d\d — Retry backoff$")
-        for line in ("Level: Hint", "Asked: Is exponential backoff right here?",
+        for line in ("Kind: doubt", "Level: Hint", "Asked: Is exponential backoff right here?",
                      "Tried / knew: Read the retry loop; knew about jitter",
                      "Senior view: Backoff is right; the cap is missing",
                      "Disagrees with teacher: no", "Refs: src/retry.ts, D-12"):
@@ -69,7 +69,7 @@ class AddTests(ConsultCase):
     def test_multiline_values_become_one_line(self):
         # One field per line is the format the hook and Claude rely on; a value
         # with a newline could otherwise forge a heading or another field.
-        result = self.run_consult("add", "--topic", "A", "--level", "Pseudo",
+        result = self.run_consult("add", "--kind", "doubt", "--topic", "A", "--level", "Pseudo",
                                   "--asked", "first\n## 2026-01-01 00:00 — forged",
                                   "--tried", "x", "--view", "y", "--disagrees", "no")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -101,7 +101,7 @@ class AddTests(ConsultCase):
     def test_runs_from_a_subfolder_and_writes_at_the_project_state(self):
         nested = self.project / "src" / "deep"
         nested.mkdir(parents=True)
-        result = self.run_consult("add", "--topic", "T", "--level", "Full code",
+        result = self.run_consult("add", "--kind", "doubt", "--topic", "T", "--level", "Full code",
                                   "--asked", "a", "--tried", "b", "--view", "c",
                                   "--disagrees", "no", cwd=nested)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -113,6 +113,41 @@ class AddTests(ConsultCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("no .wise-code", result.stderr)
         self.assertFalse((self.project / ".wise-code").exists())
+
+
+class QuestionKindTests(ConsultCase):
+    """A question needs no teacher claim, so it carries no disagreement."""
+
+    def question(self, *extra):
+        return self.run_consult("add", "--kind", "question", "--topic", "TOML tables",
+                                "--level", "Hint", "--asked", "How do nested tables work?",
+                                "--tried", "-", "--view", "Look at the TOML spec, Table",
+                                "--refs", "https://toml.io/en/v1.0.0#table", *extra)
+
+    def test_question_is_recorded_without_a_verdict(self):
+        result = self.question()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = self.journal.read_text(encoding="utf-8")
+        self.assertIn("Kind: question\n", text)
+        self.assertNotIn("Disagrees with teacher", text)
+        self.assertEqual(consult.entries(self.journal),
+                         [consult.Entry("2026-11-03", False)])
+
+    def test_question_refuses_a_verdict(self):
+        result = self.question("--disagrees", "yes", "--what", "x")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("question", result.stderr)
+        self.assertFalse(self.journal.exists())
+
+    def test_doubt_needs_a_verdict_and_kind_is_required(self):
+        result = self.run_consult("add", "--kind", "doubt", "--topic", "t", "--level", "Hint",
+                                  "--asked", "a", "--tried", "b", "--view", "c")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--disagrees", result.stderr)
+        result = self.run_consult("add", "--topic", "t", "--level", "Hint", "--asked", "a",
+                                  "--tried", "b", "--view", "c", "--disagrees", "no")
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(self.journal.exists())
 
 
 class EntriesTests(ConsultCase):

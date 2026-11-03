@@ -1,0 +1,5 @@
+interface:
+  display_name: "WiseCode Senior Lookup"
+  short_description: "Quick full answer to a coding question, not logged"
+policy:
+  allow_implicit_invocation: false
