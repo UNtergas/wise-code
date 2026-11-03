@@ -189,9 +189,51 @@ class LearnerFirstTests(unittest.TestCase):
         self.assertIn("Never\nedit the installed", text)
         self.assertIn("wise.py add feedback", text)
 
+    def test_gates_follow_the_assist_level_and_stay_optional(self):
+        gates = (ROOT / "skills/learn/gates.md").read_text(encoding="utf-8")
+        for tool in ("crapper", "dryer", "mutator"):
+            self.assertIn(f"https://github.com/unclebob/{tool}", gates)
+        self.assertIn("skip that gate silently", gates)
+        self.assertIn("never install them", gates)
+        self.assertIn("`--changed`", gates)
+        # dryer: explicit 0.8 threshold, whole tree so copies from unchanged files count.
+        dryer = gates.split("2. **dryer**")[1].split("\n3. ")[0]
+        self.assertIn("`--threshold 0.8`", dryer)
+        self.assertIn("without `--changed`", dryer)
+        # Other docs defer to gates.md and must not narrow dryer to changed files.
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("dryer scans the whole tree with `--threshold 0.8`", readme)
+        for path in ("README.md", "skills/learn/assist-levels.md"):
+            text = (ROOT / path).read_text(encoding="utf-8")
+            self.assertNotIn("changed code only", text, path)
+            self.assertNotIn("scoped\n     to the change", text, path)
+        self.assertIn('never "passed"', gates)
+        self.assertIn("Never weaken a test, raise a threshold, or add a suppression", gates)
+        # At Hint and Pseudo the learner fixes; only Full code edits.
+        section = gates.split("## Fixing, by level")[1]
+        self.assertLess(section.index("**Hint**"), section.index("**Full code**"))
+        self.assertIn("fix it yourself", section.split("**Full code**")[1])
+        self.assertNotIn("fix it yourself", section.split("**Full code**")[0])
+
+    def test_code_review_and_full_code_use_the_gates(self):
+        levels = (ROOT / "skills/learn/assist-levels.md").read_text(encoding="utf-8")
+        review = levels.split("run a **Code review**:")[1].split("\n## ")[0]
+        self.assertIn("[gates.md](gates.md)", review)
+        # Steps are numbered once each.
+        numbers = re.findall(r"^  (\d)\. ", review, re.MULTILINE)
+        self.assertEqual(numbers, ["1", "2", "3", "4", "5", "6"])
+        full = levels.split("## Full code")[1].split("\n## ")[0]
+        self.assertLess(full.index("**Make it work.**"), full.index("**Make it right.**"))
+        self.assertIn("Don't commit or push unless the learner asks", full)
+        principles = (ROOT / "skills/learn/principles.md").read_text(encoding="utf-8")
+        self.assertIn("**Test first.**", principles)
+        self.assertIn("*Commit and push*", principles.split("## Not included")[1])
+
     def test_borrowed_material_is_attributed(self):
         notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
         self.assertIn("Copyright (c) 2026 Lauren Tan", notices)
+        self.assertIn("Copyright (c) 2026 Robert C. Martin", notices)
+        self.assertIn("skills/learn/gates.md", notices)
         for path in ("skills/learn/principles.md", "skills/explore/",
                      "skills/correct/", "skills/reflect/", "skills/sharpen/",
                      "skills/critique/writing-rubric.md"):

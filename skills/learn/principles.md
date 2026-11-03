@@ -104,6 +104,14 @@ exists" are proxies. The strongest proof is a check script the learner wrote and
 anyone can rerun.
 Ask: *What did I observe that shows it works, not just that it builds?*
 
+**Test first.** When adding behavior or fixing a bug. Write the failing test
+before changing the code, predict its failure message, run it, and see it fail
+for that reason. A test that fails for another reason, or passes at once, proves
+nothing yet. Then make the smallest change that passes. When an honest test is
+impractical, skip it rather than write one that checks nothing. From ub-mode by
+Robert C. Martin.
+Ask: *What failure do you expect to see, and did you see exactly that?*
+
 **Test behavior, not implementation.** When writing or keeping a test. Imagine
 two edits. Break the behavior: the test must fail. Restructure the internals with
 the same behavior: the test must still pass. Derive expected values from the
@@ -171,4 +179,7 @@ is unknown, a side was untuned, or questions 5 and 8 were not checked.
 Left out of pstack's set on purpose: *Never block on the human* (in WiseCode the
 learner's decisions are the point), *Guard the context window* (agent-internal),
 *Migrate callers then delete legacy APIs* and *Outcome-oriented execution* (team
-migrations). *Build the lever* is folded into *Prove it works*.
+migrations). *Build the lever* is folded into *Prove it works*. ub-mode's measurable gates
+(CRAP, duplication, mutation) are tools, not principles: see [gates.md](gates.md).
+Its *Keep a log* is covered by the learning graph, and *Commit and push* to the
+main line is left out: the learner decides what reaches it.

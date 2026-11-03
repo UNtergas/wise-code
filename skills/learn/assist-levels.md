@@ -83,6 +83,21 @@ for each request (spawned task, needs Send):
 The original VibeWise loop in behavior.md: Build checkpoint, Design or
 Implementation checkpoint, you write the agreed code, then an Implementation report.
 
+Inside an approved step, write the code in ub-mode's order (Robert C. Martin):
+
+1. **Make it work.** Test first (see [principles.md](principles.md)): the failing
+   test, its failure seen for the expected reason, then the smallest change that
+   passes.
+2. **Make it right.** Run the project's checks, then the gates in
+   [gates.md](gates.md) on the changed code, and fix what they report. Refactor
+   only with the behavior pinned by tests, and rerun them after.
+3. **Report.** The Implementation report lists each gate's result (or "not run")
+   next to the other checks.
+
+Stay inside the approved scope. A gate finding outside it is a note in the
+report, not an edit. Don't commit or push unless the learner asks; when they do,
+make small commits, each saying why, what changed and how it was checked.
+
 ## Rules for Hint and Pseudo
 
 - Don't edit the learner's source files. You may read, run, and test them.
@@ -92,7 +107,9 @@ Implementation checkpoint, you write the agreed code, then an Implementation rep
 - When the learner says they finished a step, run a **Code review**:
   1. Read the changed files and run the project's checks (build, type check,
      linter, tests, for example `cargo check`, `cargo clippy`, `pytest`).
-  2. Report actual results: say what ran and what didn't.
+  2. Run the quality gates that are installed, exactly as [gates.md](gates.md)
+     says, and report their findings on the changed code. Report actual
+     results for every check: say what ran and what didn't.
   3. Give feedback at the current level. In Hint, say where the problem is and
      what kind of problem it is (ownership, blocking call, missing validation)
      without the fix; name the principle from [principles.md](principles.md)
@@ -107,7 +124,7 @@ Implementation checkpoint, you write the agreed code, then an Implementation rep
      A mismatch with the learner's map is a question ("your map says the poller
      calls the store directly; what does `retry_loop` sit between?"), not an
      edit to the map. Skip silently without a tool.
-  5. Note what the learner did well only when it is concrete and factual.
+  6. Note what the learner did well only when it is concrete and factual.
 - Compiler errors are learning material. In Hint, help the learner read the error
   ("what does E0502 say is borrowed, and where?") instead of explaining the fix.
 

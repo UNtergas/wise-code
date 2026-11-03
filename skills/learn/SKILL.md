@@ -29,7 +29,8 @@ development, not just during this command. Keep this project's learning material
 only through `wise.py`, as described in [materials.md](materials.md).
 Read [principles.md](principles.md) before the session's first hint, Design
 checkpoint, or Code review; it names ideas for the learner to apply, not changes
-for you to make.
+for you to make. Read [gates.md](gates.md) before the first Code review or Full
+code step.
 The assist level (Hint, Pseudo, or Full code) decides who writes the real code;
 check it before each step.
 The learner owns the design. Ask for their approach and wait. Keep guidance minimal:

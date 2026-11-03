@@ -96,6 +96,20 @@ whether and how it applies. At Hint, the name is the first hint. When you report
 measured number, Claude asks the "Checking a number" questions instead of running
 the benchmark for you.
 
+## Quality gates
+
+`skills/learn/gates.md` adds Uncle Bob's deterministic gates from
+[ub-mode](https://github.com/unclebob/ub-mode):
+[crapper](https://github.com/unclebob/crapper) (CRAP < 10 per function),
+[dryer](https://github.com/unclebob/dryer) (no duplication at similarity 0.8) and
+[mutator](https://github.com/unclebob/mutator) (no surviving mutants). Crapper and mutator run on
+the changed code; dryer scans the whole tree with `--threshold 0.8` and reports
+only pairs that touch changed code, so copies from unchanged files are caught.
+Code review runs the ones you have installed and reports
+the numbers; at Hint and Pseudo you fix what they find. At Full code Claude
+follows ub-mode's order: failing test first, make it work, then make it right
+against the gates. Missing tools are skipped; Claude never installs them.
+
 ## One learning space per project
 
 Start WiseCode in repository A and everything it keeps lives in repository A's
