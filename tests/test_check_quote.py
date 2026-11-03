@@ -106,6 +106,23 @@ class CheckQuoteTests(unittest.TestCase):
                                  "absorb bursts"], capture_output=True, text=True, timeout=10)
         self.assertEqual((result.returncode, result.stdout.strip()), (0, "FOUND § Queues"))
 
+    def test_documented_command_takes_a_multiword_heading(self):
+        skill = (ROOT / "skills/shelf/SKILL.md").read_text(encoding="utf-8")
+        line = next(l for l in skill.splitlines() if "check_quote.py" in l and "python3" in l)
+        self.assertIn('"<where>"', line)
+        book = Path(self.temp.name) / "guide.md"
+        book.write_text("## Retry strategies\n\nJitter helps.\n", encoding="utf-8")
+        # Run the documented line through a shell, as the skill does.
+        command = (line.strip().replace('"${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py"',
+                                        f'"{SCRIPT}"')
+                   .replace("python3", f'"{sys.executable}" -I', 1)
+                   .replace("<book file>", str(book))
+                   .replace("<where>", "Retry strategies")
+                   .replace("<quote>", "jitter helps"))
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout.strip()),
+                         (0, "FOUND § Retry strategies"))
+
     def test_fenced_code_comments_are_not_headings(self):
         book = Path(self.temp.name) / "fence.md"
         book.write_text("# Retries\n\nIntro.\n\n```python\n# Example\nx = 1\n```\n\n"

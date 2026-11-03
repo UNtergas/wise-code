@@ -107,7 +107,7 @@ The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book
 **Quote check.** Before showing any quote, run:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" <where> "<quote>"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" "<where>" "<quote>"
 ```
 
 `<where>` is the PDF page, the section's heading for a Markdown book, or `-` for plain text (searched whole; cite the section title only).
