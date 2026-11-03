@@ -77,6 +77,18 @@ Every change follows: first make it work, then make it right, then practice.
 
 Applies to every pull request in this repository.
 
+### Canary
+
+Start every review message (the summary and each inline comment) with this
+exact line, on its own, before anything else:
+
+```
+=>> Incoming harsh truth <<=
+```
+
+A review without it means these rules were not loaded. Don't paraphrase it,
+translate it, or drop it when there are no findings.
+
 ### Priorities
 
 - **P0:** loss or silent corruption of learner data (graph records, Q/A

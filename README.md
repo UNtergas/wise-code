@@ -86,6 +86,10 @@ after a long context or a compaction: a sign that quality may be slipping. It
 marks a complete, on-instruction reply, not a true one; facts are guarded by
 research's span check.
 
+PR reviews of this repository (`@codex review`) carry their own canary: every
+review message starts with `=>> Incoming harsh truth <<=`. A review without it
+means the Code Review Rules in `AGENTS.md` were not loaded.
+
 ## Principles
 
 `skills/learn/principles.md` is a shared vocabulary for design and review: data
