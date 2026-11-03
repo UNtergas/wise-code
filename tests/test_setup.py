@@ -263,6 +263,46 @@ class CodexProfileTests(SetupCase):
         data = tomllib.loads(text)
         self.assertEqual(data["permissions"]["senior"]["filesystem"][str(given)], "read")
 
+    def moved_plugin(self):
+        new = Path(self.temp.name) / "plugins-v2/wise-code"
+        (new / ".codex-plugin").mkdir(parents=True)
+        return new
+
+    def test_moved_plugin_regenerates_an_unedited_profile(self):
+        # A marker-only check kept granting the old plugin folder (review on #26).
+        self.setup("apply")
+        new = self.moved_plugin()
+        result = self.setup("check", "--codex-plugin-root", str(new))
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^missing +Codex senior profile")
+        self.assertIn(str(self.codex_plugin), result.stdout)
+        result = self.setup("apply", "--codex-plugin-root", str(new))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(json.dumps(str(new)) + ' = "read"', text)
+        self.assertNotIn(json.dumps(str(self.codex_plugin)), text)
+        self.assertEqual(self.setup("check", "--codex-plugin-root", str(new)).returncode, 0)
+
+    def test_moved_plugin_with_an_edited_profile_is_a_conflict(self):
+        self.setup("apply")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"~/notes" = "read"\n')
+        before = self.profile.read_bytes()
+        result = self.setup("apply", "--codex-plugin-root", str(self.moved_plugin()))
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn("show-codex", result.stdout)
+        self.assertEqual(self.profile.read_bytes(), before)
+
+    def test_granted_plugin_folder_gone_is_reported(self):
+        import shutil
+        self.setup("apply")
+        shutil.rmtree(self.codex_home / "plugins")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn("--codex-plugin-root", result.stdout)
+
     def test_without_codex_installed_the_profile_is_not_applicable(self):
         import shutil
         shutil.rmtree(self.codex_home)

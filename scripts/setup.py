@@ -98,6 +98,41 @@ def toml_string(text):
     return '"' + "".join(out) + '"'
 
 
+def toml_unstring(text):
+    """Inverse of toml_string for the strings setup writes."""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
+            if text[i + 1] == "u":
+                out.append(chr(int(text[i + 2:i + 6], 16)))
+                i += 6
+                continue
+            out.append(text[i + 1])
+            i += 2
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+GRANT = re.compile(r'^"((?:[^"\\]|\\.)*)" = "read"$')
+
+
+def granted_plugin(profile):
+    """The plugin folder a setup-written profile grants read on, or None."""
+    section = None
+    for line in profile.splitlines():
+        if line.startswith("["):
+            section = line.strip()
+            continue
+        match = GRANT.match(line)
+        if section == "[permissions.senior.filesystem]" and match:
+            path = toml_unstring(match.group(1))
+            if not path.startswith(":"):
+                return path
+    return None
+
+
 def legacy_sandbox_files(paths):
     """The loaded Codex configs that carry legacy sandbox settings."""
     found = []
@@ -262,13 +297,13 @@ def codex_item(codex_home, plugin_root, project):
     path = codex_home / "senior.config.toml"
     if path.is_symlink():
         return Item(name, "conflict", f"{path} is a symlink; refusing")
+    root = plugin_root or find_codex_plugin(codex_home)
     if path.exists():
         text = path.read_text(encoding="utf-8")
-        if text.startswith(PROFILE_MARKER):
-            return Item(name, "ok", str(path))
-        return Item(name, "conflict", f"{path} exists and wasn't written by setup; "
-                    "compare it with `setup.py show-codex` and merge by hand")
-    root = plugin_root or find_codex_plugin(codex_home)
+        if not text.startswith(PROFILE_MARKER):
+            return Item(name, "conflict", f"{path} exists and wasn't written by setup; "
+                        "compare it with `setup.py show-codex` and merge by hand")
+        return existing_profile_item(name, path, text, root, codex_home)
     if root is None:
         return Item(name, "missing", "wise-code not found under "
                     f"{codex_home}; install it in Codex, or pass --codex-plugin-root PATH")
@@ -278,6 +313,32 @@ def codex_item(codex_home, plugin_root, project):
         write_atomic(path, codex_profile(root))
         return f"created {path}"
     return Item(name, "missing", str(path), apply)
+
+
+def existing_profile_item(name, path, text, root, codex_home):
+    """Check that a setup-written profile still grants the plugin's current folder.
+
+    The profile denies the filesystem root, so a stale grant (the plugin moved,
+    e.g. on update) leaves the senior unable to read its own scripts.
+    """
+    granted = granted_plugin(text)
+    if root is None:
+        if granted and Path(granted).is_dir():
+            return Item(name, "ok", str(path))
+        return Item(name, "conflict", f"{path} grants {granted}, which is gone, and wise-code "
+                    f"wasn't found under {codex_home}; pass --codex-plugin-root PATH")
+    if granted == str(root):
+        return Item(name, "ok", str(path))
+    if granted and text == codex_profile(granted):
+        # Unedited since setup wrote it: safe to regenerate for the new folder.
+        def apply():
+            write_atomic(path, codex_profile(root))
+            return f"updated {path}"
+        return Item(name, "missing", f"{path} grants the old plugin folder {granted}; "
+                    f"apply regenerates it for {root}", apply)
+    return Item(name, "conflict", f"{path} was edited and grants {granted}, but the plugin "
+                f"is now at {root}; compare it with `setup.py show-codex` and update the "
+                "plugin line by hand")
 
 
 def items(args):

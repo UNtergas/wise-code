@@ -90,7 +90,9 @@ sandbox), then onboarding continues. It sets up:
   live web search (hosted search isn't limited by the host list). Skipped when
   Codex isn't installed. A `sandbox_mode` or `[sandbox_workspace_write]` in
   `~/.codex/config.toml` or the project's `.codex/config.toml` is a conflict:
-  while loaded, Codex ignores permission profiles.
+  while loaded, Codex ignores permission profiles. When the plugin moves (for
+  example on update), `apply` regenerates an unedited profile for the new
+  folder; an edited one is reported as a conflict.
 - **`.wise-code/consult/`** — created up front, so the senior never needs write
   access to `.wise-code/` itself.
 
