@@ -174,6 +174,21 @@ The description is the change's log. Check it like code:
   skipped are listed as "not run", not left out.
 - Breaking changes, migrations and required config are called out.
 
+### Re-review
+
+When the pull request already has review findings (yours or anyone's), the
+summary opens, right after the canary, with a list of every earlier finding:
+
+- the finding's title and a link to its thread;
+- **fixed**, **not fixed** or **can't tell**, at the commit now reviewed;
+- the evidence: the `file:line` that now handles it, the test that covers it,
+  or why the reasoning still fails.
+
+A reply in the thread that says "fixed" is a claim, not evidence: check the
+code. A finding marked **not fixed** keeps its priority. Don't post it again as
+a new inline comment; the list is where it lives. A silent re-review, where old
+findings are neither listed nor raised again, does not show they were fixed.
+
 ### This repository
 
 WiseCode-specific checks, on top of everything above.
