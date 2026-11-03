@@ -114,6 +114,7 @@ that applies the new model to the learner's own next step ("Where would your
 
 If the state directory exists, follow [materials.md](../learn/materials.md):
 add a QA with source `explore` (`wise.py add qa source=explore q="<the question>"
-a="<prediction gist, and what the code showed>" verdict=<how well it matched>
+a="<prediction gist, and what the code showed>" said="<their prediction, verbatim>"
+verdict=<how well it matched>
 --about <concept>`). When the prediction was wrong in a way that will
 matter again, propose one question for the bank and say so in one line.

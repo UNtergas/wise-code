@@ -123,7 +123,8 @@ is also a learning checkpoint, and the learner does the thinking and the writing
    the gates it passes. The learner writes the ADR; offer `/wise-code:critique`
    on the draft. Write it yourself only when they ask.
 4. **Record it.** Settled decisions go into `project-map.md` as chosen and into the
-   learning graph (`wise.py add decision … status=settled`). Reasoning that shows
+   learning graph (`wise.py add decision … status=settled said="<their words>"`),
+   reading the quote back in one line. Reasoning that shows
    real understanding, or a real gap, gets a `checkpoint` QA per
    [materials.md](../learn/materials.md).
 5. **Link the docs.** `GLOSSARY.md` and the ADRs stay repo files for every reader;
