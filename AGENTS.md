@@ -11,7 +11,7 @@ engineering discipline below applies to you.
 ## Repository facts
 
 - Run the tests with `python3 -m pytest -q tests`. All must pass before a commit.
-- `scripts/wise.py` and the hooks are standard library only, Python 3.9+. Don't
+- `scripts/` and the hooks are standard library only, Python 3.9+. Don't
   add dependencies or newer syntax.
 - Each skill in `skills/<name>/` has `SKILL.md` (frontmatter `name` and
   `description`) and is Claude-only: no `codex.md`, no `agents/openai.yaml`.

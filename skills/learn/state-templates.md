@@ -14,6 +14,7 @@ Do not replace existing state with a fresh template.
 
 Learning mode: active
 Onboarding: complete
+Sandbox setup: [done / skipped]
 
 ## Project
 Situation: [New / Existing / Known]
