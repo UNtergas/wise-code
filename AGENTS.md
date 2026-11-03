@@ -79,7 +79,14 @@ Every change follows: first make it work, then make it right, then practice.
 
 ## Code Review Rules
 
-Applies to every pull request in this repository.
+Applies to every pull request in this repository. Review as a senior engineer
+who wants the change to ship and keep working: find what breaks, say why, say
+the fix. The design lens is clean code (Robert C. Martin), applied to the
+failures it causes, not to taste.
+
+These rules are portable: to use them in another repository, copy this file
+there and replace `## Repository facts` and `### This repository` with that
+repository's own. Everything else applies as written.
 
 ### Canary
 
@@ -95,15 +102,21 @@ translate it, or drop it when there are no findings.
 
 ### Priorities
 
-- **P0:** loss or silent corruption of learner data (graph records, Q/A
-  history, decisions); writes outside `.wise-code/` or through symlinks;
-  learner data shipped in the plugin.
-- **P1:** wrong behavior; a skill that writes code or answers for the learner
-  where the learner should (Hint and Pseudo levels, learner-first commands);
-  documents that contradict each other or the code; tests that pass vacuously or
-  that would pass on the old code; a missing license notice for borrowed
-  material.
-- Skip style preferences and wording nits unless they change meaning.
+`### This repository` adds its own P0 and P1 cases to these.
+
+- **P0:** data loss or silent corruption; a security hole (secret committed,
+  injection, missing authorization check, unsafe deserialization, writes
+  through symlinks or outside the intended folder); an irreversible operation
+  (delete, migration, payment) with no guard or rollback.
+- **P1:** wrong behavior on a reachable path; an error swallowed on a path that
+  changes state; a design problem below that already causes a bug or blocks
+  testing; tests that pass vacuously or would pass on the old code; documents
+  or a PR description that contradict each other or the code; a missing license
+  notice for borrowed material.
+- **P2:** a design problem below that will cost the next change; a PR
+  description missing why, decisions or evidence.
+- Skip formatting, naming taste and wording nits unless they change meaning;
+  CI owns lint. Raise a name only when it lies about what the code does.
 
 ### Evidence
 
@@ -111,26 +124,78 @@ translate it, or drop it when there are no findings.
   `file:line`.
 - Reproduce the failure, or say it wasn't reproduced and why the reasoning
   still holds.
-- For a claim about another project's tool or API, read its source or docs and
-  link the exact place.
+- For a claim about a library, tool or API, read its source or docs and link
+  the exact place, for the version this repository uses.
 - Quote errors and tool output exactly.
 
-### What to check
+### Design
 
+Flag each only with the concrete failure it causes in this diff.
+
+- **One reason to change:** a function or module that mixes I/O (database,
+  network, filesystem, clock) with a decision, so the decision can't be tested
+  without the I/O. Fix: pure function for the decision, thin shell for the I/O.
+- **Dependency direction:** high-level code importing a concrete low-level
+  implementation where an interface or injection point exists or is clearly
+  needed. Fix: depend on the abstraction.
+- **One decision, one place:** a rule (condition, calculation, limit)
+  duplicated across the diff, especially when one copy changed and another did
+  not.
+- **Names that lie:** a function, flag or type whose name no longer matches
+  what it does after this change (a `get` that writes, a boolean whose meaning
+  flipped).
+- **Boundaries:** input from outside (requests, files, env, CLI args, queue
+  messages) used without validation where it enters, or validation repeated
+  deep inside instead.
+- **Errors:** empty catch, catch-log-continue, or a generic catch that hides a
+  failure the caller must know about.
+- **Size that hides bugs:** a function long or branching enough that a path in
+  this diff is untested or unreadable. Point at the path, not the line count.
+
+### Tests
+
+- New or changed behavior has a test that fails without the change.
+- Assertions can't pass on an empty result, a mock that returns what the test
+  expects, or a skipped branch.
+- Tests call the code the way its user does and check what that user sees, not
+  private internals.
+- A bug fix comes with a test that reproduces the bug.
+
+### PR description
+
+The description is the change's log. Check it like code:
+
+- It matches the diff: everything it claims is in the commits, and nothing
+  significant in the diff is left unmentioned.
+- It says why the change is needed, not only what changed.
+- It records the decisions taken and the alternatives rejected, when there
+  were real ones.
+- It gives evidence: test results, a reproduction, numbers. Checks that were
+  skipped are listed as "not run", not left out.
+- Breaking changes, migrations and required config are called out.
+
+### This repository
+
+WiseCode-specific checks, on top of everything above.
+
+- **P0:** loss or silent corruption of learner data (graph records, Q/A
+  history, decisions, the consult journal); writes outside `.wise-code/`;
+  learner data shipped in the plugin.
+- **P1:** a skill that writes code or answers for the learner where the learner
+  should (Hint and Pseudo levels, learner-first commands).
 - Learner-first: at Hint and Pseudo, skills never edit the learner's source,
   and learner-first commands keep the learner acting first.
 - Graph integrity: every write goes through `wise.py`; concurrent or
   interrupted writes can't lose records or leave a mixed graph; stored types and
   ranges stay valid; two clones' edits to one record are never resolved by
   silently dropping one.
-- Tests: new behavior has a test that failed before the change; assertions
-  can't pass on an empty result.
-- Consistency: README, guides under `skills/`, `docs/`, and test assertions
-  describe the same behavior.
+- Consistency: README, guides under `skills/` and `codex/skills/`, `docs/`, and
+  test assertions describe the same behavior.
 - Compatibility: Python 3.9, standard library only, Linux, macOS and Windows.
 
 ### Comment format
 
 One finding per comment: where it is, the concrete failure it causes, the
-requested change, and the evidence that would show it fixed. When there are no
-findings, say what was checked.
+requested change, and the evidence that would show it fixed. Findings on the
+PR description go in the summary. When there are no findings, say what was
+checked.
