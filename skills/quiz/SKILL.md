@@ -33,6 +33,8 @@ the learner's source files.
    (nearest `.wise-code/` up to the Git root, no symlinks; without Git, the
    current directory only). If there is none, say so and suggest
    `/wise-code:learn` or `/wise-code:teach`; don't create state here.
+   Then run `wise.py list book` once: any `BK-` line means this is a shelf repo
+   (book records live only in the shelf's graph), so step 7 syncs.
 2. Parse the arguments, ignoring case: an optional topic filter and an optional
    count (default 5, at most 10). Run `wise.py due --limit <count> [--topic <topic>]`:
    due questions, oldest first, topics interleaved. Read the ones you ask with
@@ -60,10 +62,32 @@ the learner's source files.
 6. If a `wrong` answer reveals a gap in a concept the graph tracks, mark it
    (`wise.py set <concept> status=reinforce notes+="…"`). Don't create concepts
    or touch pending decisions.
-7. End with one line: score, which topics were weak, any high-confidence misses,
+7. **Shelf repo:** after steps 5 and 6 for each answer, commit and push, so another
+   machine sees the new schedule and any concept change with it. `<root>` is the
+   repo's Git root; one call per line, no `cd` or `&&`, and run `push` only if
+   `pull` succeeded:
+   ```sh
+   git -C "<root>" add .wise-code
+   git -C "<root>" commit -m "shelf: quiz <QB-id> <verdict>"
+   git -C "<root>" pull --rebase --quiet
+   git -C "<root>" push --quiet
+   ```
+   Pull fails → a conflict in a file without the union driver (`shelf.md`, say)
+   stops the rebase halfway, on a detached HEAD, and the next commit would take
+   the conflict markers. Check, and undo it only if the first command prints a
+   commit:
+   ```sh
+   git -C "<root>" rev-parse -q --verify REBASE_HEAD
+   git -C "<root>" rebase --abort
+   ```
+   That puts the branch back with the local commit on it. Then, and whenever
+   push fails, keep the commit, say once that the push is pending, and go on; the
+   next answer's sync retries it. Never force-push or reset.
+8. End with one line: score, which topics were weak, any high-confidence misses,
    and the next due date. Offer
    to add atomic cards (`wise.py add card … --tests <concept>`) for facts the
-   learner missed.
+   learner missed. In the shelf repo, cards added here go out with one more step 7
+   sync (commit message `shelf: quiz cards`).
 
 Ask in the language the learner uses in this conversation. Quiz questions stay
 open-ended unless the learner asks for options.

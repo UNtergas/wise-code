@@ -440,7 +440,7 @@ class ResearchSpanTests(unittest.TestCase):
 
 
 class ShelfTests(unittest.TestCase):
-    """The shelf is opt-in, bounded to mapped folders, and pushes every record."""
+    """The shelf is opt-in, bounded to mapped folders, and pushes each citation cycle."""
 
     def text(self):
         return (ROOT / "skills/shelf/SKILL.md").read_text(encoding="utf-8")
@@ -469,14 +469,59 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("sparse-checkout set .wise-code shared <Folders...>", text)
         self.assertIn("lists `shelf-repo/`", text)
 
-    def test_every_cite_and_explanation_is_pushed(self):
+    def test_one_commit_and_push_per_citation_cycle(self):
         text = self.text()
-        self.assertIn("## Step 5: Record and push (after every cite and every explanation)", text)
-        self.assertIn("git -C <shelf> pull --rebase --quiet\ngit -C <shelf> push --quiet", text)
+        step5 = text.split("## Step 5:")[1].split("\n## ")[0]
+        self.assertIn(" Record, then commit and push once per citation", text)
+        # The cite and the read stay local; the cycle's end commits all of it.
+        self.assertIn("Don't commit after a cite or a read", step5)
+        self.assertIn("the explain-back, or `skipped-read`", step5)
+        self.assertIn("git -C <shelf> pull --rebase --quiet\ngit -C <shelf> push --quiet", step5)
+        self.assertIn("Never amend, squash or force-push", step5)
+        self.assertIn('wise.py --root "<shelf>"', step5)
+        self.assertIn("add citation project=<Project>", step5)
+        self.assertIn("merge with git's `union` driver", step5)
         self.assertIn("No `cd`, no `&&` chains", text)
-        self.assertIn('wise.py --root "<shelf>"', text)
-        self.assertIn("add citation project=<Project>", text)
-        self.assertIn("merge with git's `union` driver", text)
+
+    def test_pending_records_are_flushed_before_pull(self):
+        text = self.text()
+        sync = text.split("## Step 1: Sync")[1].split("\n## ")[0]
+        self.assertIn("Flush first", sync)
+        self.assertLess(sync.index("Flush first"), sync.index("pull --rebase"))
+        self.assertIn('shelf(<Project>): carry-over', sync)
+        # pull --rebase never publishes: the carry-over needs its own push.
+        self.assertNotIn("the pull below then pushes it", sync)
+        flush = sync[sync.index("Flush first"):]
+        self.assertIn("After the sync pull succeeds", flush)
+        self.assertIn('git -C "<shelf>" push --quiet', flush)
+
+    def test_quiz_in_the_shelf_repo_pushes_each_answer(self):
+        # /wise-code:quiz never loads the Shelf skill, so Quiz itself must sync.
+        quiz = (ROOT / "skills/quiz/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("wise.py list book", quiz)
+        self.assertIn("**Shelf repo:**", quiz)
+        sync = quiz[quiz.index("**Shelf repo:**"):]
+        for command in ('git -C "<root>" add .wise-code',
+                        'git -C "<root>" commit -m "shelf: quiz <QB-id> <verdict>"',
+                        'git -C "<root>" pull --rebase --quiet',
+                        'git -C "<root>" push --quiet'):
+            self.assertIn(command, sync)
+        self.assertLess(sync.index("pull --rebase"), sync.index("push --quiet"))
+        # Publish the answer and the concept updates it caused together.
+        self.assertLess(quiz.index('status=reinforce'), quiz.index("**Shelf repo:**"))
+        self.assertLess(quiz.index("**Shelf repo:**"), quiz.index("End with one line"))
+        self.assertIn("cards added here go out with one more step 7", quiz)
+        # One rule, one place: Shelf points to Quiz instead of restating it.
+        extras = self.text().split("## Shelf mode extras")[1].split("\n## ")[0]
+        self.assertIn("Quiz commits and pushes each answer itself", extras)
+        self.assertNotIn("shelf: quiz <QB-id>", extras)
+
+    def test_text_books_without_line_ranges_are_reindexed(self):
+        step2 = self.text().split("## Step 2:")[1].split("\n## ")[0]
+        self.assertIn('wise.py --root "<shelf>" check', step2)
+        self.assertIn("indexed without line ranges", step2)
+        l1 = step2[step2.index("**L1 (outline)**"):step2.index("2. Match")]
+        self.assertIn("rebuild", l1)
 
     def test_quotes_are_checked_and_capped(self):
         text = self.text()

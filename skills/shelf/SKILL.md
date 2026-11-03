@@ -42,6 +42,17 @@ Two kinds of session:
 
 `<shelf>` below is `<state>/shelf-repo` in project mode and the shelf repo's root in shelf mode.
 
+**Flush first.** A citation cycle left open last session (a cite never explained) leaves uncommitted records, and `pull --rebase` refuses a dirty tree. If `git -C "<shelf>" status --porcelain .wise-code` prints anything, commit it before any pull: `git -C "<shelf>" add .wise-code`, then `git -C "<shelf>" commit -m "shelf(<Project>): carry-over"`. After the sync pull succeeds, publish it with `git -C "<shelf>" push --quiet`: a pull never pushes, so without this the carry-over stays on this machine until the next cycle end. Pull or push fails → keep the commit, say once that the push is pending, and retry at the next cycle end.
+
+**Failed pull.** Every `pull --rebase` in this skill can stop halfway: a conflict in a file without the union driver (`shelf.md`, `.gitattributes`) leaves a detached HEAD, and the next commit would take the conflict markers. After any failed pull, check, and undo it only if the first command prints a commit:
+
+```sh
+git -C "<shelf>" rev-parse -q --verify REBASE_HEAD
+git -C "<shelf>" rebase --abort
+```
+
+That puts the branch back with local commits on it. Never force or reset.
+
 Run each git command as its own call, with `git -C <path>` and absolute paths. No `cd`, no `&&` chains, no shell variables: permission checks block those and the learner gets prompts.
 
 ### Project mode
@@ -59,11 +70,11 @@ Project mode keeps a sparse clone at `<state>/shelf-repo/`. Make sure `<state>/.
   `--include="shared/**,<folder>/**"`, one `<folder>/**` per mapped folder,
   comma-separated, so only in-scope books are downloaded (LFS bandwidth is metered).
 - A folder in `Folders` that is missing in the repo → say once: "Shelf: folder `<name>` not in shelf". Names must match exactly.
-- Clone fails (not found, no access, no network) → reply once this session with "Shelf: repo `<Repo>` not reachable", git's error line, and the setup guide link above, then answer the question normally. A failed pull with a clone present → use the clone as it is and say it may be stale. Don't retry on every question. Never fall back to a different repo or a public copy.
+- Clone fails (not found, no access, no network) → reply once this session with "Shelf: repo `<Repo>` not reachable", git's error line, and the setup guide link above, then answer the question normally. A failed pull with a clone present → **Failed pull** above, then use the clone as it is and say it may be stale. Don't retry on every question. Never fall back to a different repo or a public copy.
 
 ### Shelf mode
 
-No clone: the books are the working tree. Run `git -C "<shelf>" pull --rebase --quiet` so books added on another machine are present. A failed pull (no network, conflict) → use the files as they are and say once they may be stale; never force or reset. If the shelf uses LFS, run the LFS step below without `--include`: every folder is in scope.
+No clone: the books are the working tree. Run `git -C "<shelf>" pull --rebase --quiet` so books added on another machine are present. A failed pull (no network, conflict) → **Failed pull** above, then use the files as they are and say once they may be stale; never force or reset. If the shelf uses LFS, run the LFS step below without `--include`: every folder is in scope.
 
 ### Git LFS step (both modes)
 
@@ -95,9 +106,11 @@ Read only files under `shared/` and the mapped folders. This boundary keeps a pr
 
 The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book-slug>-<number>`), built lazily and kept forever. `wise.py --root "<shelf>" list book` lists indexed books.
 
-1. **L1 (outline)**: for any in-scope book with no `BK-` node yet, build one: title, page count, chapters and sections with PDF page ranges. Use `pdfinfo`, the PDF outline, or `pdftotext -f 1 -l 20` for the table of contents; headings for Markdown and text. Several books missing → one background agent for all (`model: haiku`). Write with `wise.py --root "<shelf>" add book slug=<book-slug> title="…" file=<folder>/<file> folder=<folder> pages=<n> l1=<date>`, then one `add section book=<book-slug> number=<1 or 1.2> title="…" pages=<a>-<b> printed=<x>-<y>` per chapter and section. Stable IDs: adding the same book or section again updates it.
+Once per session, run `wise.py --root "<shelf>" check`. A book it reports as indexed without line ranges (a Markdown or text book indexed before ranges existed) counts as not indexed: L1 rebuilds it.
+
+1. **L1 (outline)**: for any in-scope book with no `BK-` node yet, or flagged by `check` above, build one (a rebuild uses the same `add` commands and IDs, so it updates in place; keep each old section's `number` where its title matches, so its citations stay attached, and never delete a section: one you can't place keeps its record, and `check` keeps naming it until it gets `lines`): title, page count, chapters and sections with PDF page ranges, or line ranges for Markdown and text. Use `pdfinfo`, the PDF outline, or `pdftotext -f 1 -l 20` for the table of contents. For Markdown and text, read the file with line numbers and take each section from its heading line to the line before the next heading of the same or higher level; this index is the only place that decides where a section starts and ends (`#` lines inside code fences are not headings). Several books missing → one background agent for all (`model: haiku`). Write with `wise.py --root "<shelf>" add book slug=<book-slug> title="…" file=<folder>/<file> folder=<folder> pages=<n> l1=<date>`, then one `add section book=<book-slug> number=<1 or 1.2> title="…" pages=<a>-<b> printed=<x>-<y>` per chapter and section (`lines=<a>-<b>` instead of `pages` and `printed` for Markdown and text). Stable IDs: adding the same book or section again updates it.
 2. Match the question against the index: `wise.py --root "<shelf>" find <key words> --type section`, and `list section --where book=<slug> --limit 40` for one book's outline. Pick at most **2 sections** from at most 2 books.
-3. **L2 (section detail)**: if a matched chapter has no `l2` yet, one background agent (`model: sonnet`) reads only those pages (`pdftotext -layout -f <a> -l <b>`) and returns: the section that answers the question, its pages, up to 2 verbatim quotes (≤ 25 words each, with page), and 3–6 key concepts per section of that chapter. Store them: `set SEC-… concepts+="…" l2=<date>` for each section.
+3. **L2 (section detail)**: if a matched chapter has no `l2` yet, one background agent (`model: sonnet`) reads only those pages (`pdftotext -layout -f <a> -l <b>`) or lines and returns: the section that answers the question, its pages or lines, up to 2 verbatim quotes (≤ 25 words each, with page), and 3–6 key concepts per section of that chapter. Store them: `set SEC-… concepts+="…" l2=<date>` for each section.
 4. No section matches → say in one line that the shelf has nothing on it. Then answer normally, searching the web when facts matter. Suggest `/wise-code:research` only when a decision waits on an external fact.
 
 **Agent rules.** The prompt starts: "You are the shelf worker. Do the reading yourself. Do NOT spawn other agents or delegate." Already a subagent → do it yourself. Copy quotes from the extracted text, never from memory.
@@ -105,17 +118,19 @@ The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book
 **Quote check.** Before showing any quote, run:
 
 ```sh
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" <page> "<quote>"
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" "<where>" "<quote>"
 ```
 
-Exit 0 = found (it prints the page). 1 = missing → drop the quote, keep the page reference. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
+`<where>` is the PDF page, or for a Markdown or text book the section's `lines` from the index (`12-40`). The script never parses Markdown: it searches only those lines.
+
+Exit 0 = found (it prints the page or `lines <a>-<b>`). 1 = `MISSING` → drop the quote, keep the page or line reference; `TOO_LONG` → over 25 words: cut it to the hook and check again; `OUT_OF_RANGE` → the book changed after it was indexed: rebuild its L1 (same `add` commands, same IDs), then check again. A `MISSING` on a text book edited since its `l1` date means the same. 2 = unreadable or a malformed range → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
 
 ## Step 3: Read first
 
 Read first: the learner reads the section before you explain it.
 
 Reply with:
-- Book, section, pages (PDF page numbers; printed page in brackets when it differs).
+- Book, section, pages (PDF page numbers; printed page in brackets when it differs), or the lines for a Markdown or text book.
 - The checked quote(s), at most 2, as the hook.
 - One guiding question to answer after reading. Ask for their explanation in their own words.
 
@@ -123,7 +138,7 @@ Don't summarize, paraphrase or explain the section in this reply. The parts of t
 
 If the learner says "just tell me", "skip reading" or similar: explain it, and record the citation as `skipped-read`. That gives no understanding credit.
 
-Then record and push (Step 5): one new citation, status `sent`.
+Then record (Step 5): one new citation, status `sent`. Nothing is committed yet.
 
 ## Step 4: Check the explanation
 
@@ -132,18 +147,18 @@ When the learner explains:
 2. Feedback: what holds, what is missing or wrong, each gap pointing back to a page. Never rewrite their explanation into a model answer. Ask them to fix the gap, unless they ask for the answer.
 3. Verdict: `understood` (core idea correct, in their words), `partial` (gaps named), or `misread` (wrong idea). Base it on what they wrote, not on effort.
 
-Then record and push (Step 5).
+Then record, commit and push (Step 5).
 
-## Step 5: Record and push (after every cite and every explanation)
+## Step 5: Record, then commit and push once per citation cycle
 
 In the shelf graph (`wise.py --root "<shelf>"`, where `<shelf>` is `<state>/shelf-repo` in project mode and the repo itself in shelf mode). `<Project>` is `Project:` from `shelf.md` (required; missing → ask the learner for a stable name and add it); every record carries it, which is what makes a book's use across projects visible:
-- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`). The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
+- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`); a Markdown or text book takes `lines=<a>-<b>` (the section's range) instead of `page`. The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
 - After the learner reads: `add read project=<Project> --on SEC-… --for CIT-…` (or `set CIT-… status=skipped-read` when they skipped reading).
 - After an explanation: `add explainback project=<Project> text="<gist of what they wrote>" verdict=<understood|partial|misread> --on SEC-… --for CIT-…` and `set CIT-… status=<verdict>`.
 - After `understood` or `partial`: up to 2 questions and up to 2 cards about the section, `--from SEC-…`, formats from [../learn/materials.md](../learn/materials.md). Book questions live in the shelf graph, not in the project.
 - Any index you built (Step 2).
 
-Then:
+A citation cycle is cite → read → explain-back. Don't commit after a cite or a read: those records stay in the working tree. The cycle ends at the explain-back, or `skipped-read` when the learner skips reading; then commit everything it wrote in one commit and push:
 
 ```sh
 git -C <shelf> add .wise-code
@@ -152,9 +167,9 @@ git -C <shelf> pull --rebase --quiet
 git -C <shelf> push --quiet
 ```
 
-(One call per line; run `push` only if `pull` succeeded.)
+(One call per line; run `push` only if `pull` succeeded.) A second explain-back on the same citation (after fixing a gap) is a new cycle end: one more commit. Never amend, squash or force-push: the shelf is shared between machines and projects, and a rewritten pushed commit breaks every other clone. A cycle left open at session end is committed by the next sync's flush (Step 1).
 
-The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → abort the rebase, keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next record.
+The graph files merge with git's `union` driver (`.wise-code/graph/.gitattributes`), so records from two projects never conflict; `wise.py` resolves a node changed on both sides by taking the newer change. A rebase conflict in any other file → **Failed pull** (Step 1), keep the local commit, and tell the learner the push is pending. Push fails → keep the commit, say so in one line, retry at the next cycle end.
 
 In the project: one `shelf` QA pointing to the citation, not a copy of it (`wise.py add qa source=shelf q="<question>" a="<CIT-id> <book> <section>" verdict=n/a --about <concept>`), and `set <concept> shelf+=SEC-…` so the concept points to the section. Learn's rules decide whether the concept's status changes.
 
@@ -166,6 +181,8 @@ Run in the shelf repo with no question (`/wise-code:shelf`): report, from the gr
 - books, how far each is indexed, and their impact across projects: `wise.py impact` (one book: `wise.py impact <book-slug>`: projects, sections cited per project, understood vs not yet, concepts),
 - citations still `sent` (never explained) or `partial`: `wise.py list citation --where status=sent` (and `=partial`),
 - due questions (`wise.py due`) → suggest `/wise-code:quiz`.
+
+Quiz on the shelf graph needs no Shelf step: in the shelf repo, Quiz commits and pushes each answer itself ([../quiz/SKILL.md](../quiz/SKILL.md), step 7), since `/wise-code:quiz` doesn't load this skill.
 
 Report from the records only; don't invent progress. Learn, Teach and Quiz run in the shelf repo as in any project, with its `.wise-code/` as their state.
 

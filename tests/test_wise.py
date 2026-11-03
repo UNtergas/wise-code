@@ -769,6 +769,43 @@ class ShelfTests(WiseTestCase):
         self.assertIn("p: 1 citations · 1 sections · understood 1 · not yet 0",
                       self.out("impact", "ddia", **s))
 
+    def test_text_book_sections_and_citations_carry_line_ranges(self):
+        s = {"root": self.shelf}
+        self.run_wise("add", "book", "slug=notes", "title=Notes", "file=shared/notes.md", **s)
+        self.run_wise("add", "section", "book=notes", "number=2", "title=Backoff",
+                      "lines=12-40", **s)
+        cid = self.out("add", "citation", "project=p", "question=Q", "lines=14-15",
+                       "--on", "SEC-notes-2", **s).strip()
+        nodes = {n["id"]: n for n in self.nodes(self.shelf)}
+        self.assertEqual(nodes["SEC-notes-2"]["lines"], "12-40")
+        self.assertEqual(nodes[cid]["lines"], "14-15")
+        self.assertNotIn("page", nodes[cid])
+        self.run_wise("set", "SEC-notes-2", "lines=7", **s)  # one line is a range too
+        for bad in ("40-12", "0-3", "12 - 40", "abc"):
+            result = self.run_wise("set", "SEC-notes-2", f"lines={bad}", check=False, **s)
+            self.assertNotEqual(result.returncode, 0, bad)
+            self.assertIn("section.lines must be a line range", result.stderr + result.stdout)
+        # The location is the index's line range; the heading field is gone.
+        result = self.run_wise("add", "citation", "project=p", "question=Q",
+                               "heading=Backoff", check=False, **s)
+        self.assertIn("citation has no field 'heading'", result.stderr + result.stdout)
+
+    def test_check_flags_text_books_indexed_before_line_ranges(self):
+        s = {"root": self.shelf}
+        # An index built before line ranges: a Markdown section with pages only.
+        self.run_wise("add", "book", "slug=notes", "title=Notes", "file=shared/notes.md", **s)
+        self.run_wise("add", "section", "book=notes", "number=1", "title=Intro",
+                      "pages=1-1", **s)
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf", **s)
+        self.run_wise("add", "section", "book=ddia", "number=1", "title=Reliable",
+                      "pages=3-9", **s)
+        report = self.out("check", **s)
+        self.assertIn("warning: BK-notes: Markdown or text book indexed without line ranges "
+                      "(SEC-notes-1); rebuild its L1", report)
+        self.assertNotIn("BK-ddia", report)  # a PDF is located by pages
+        self.run_wise("set", "SEC-notes-1", "lines=1-12", **s)
+        self.assertNotIn("BK-notes", self.out("check", **s))
+
     def test_project_check_warns_on_dead_shelf_ids(self):
         self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf",
                       root=self.shelf)

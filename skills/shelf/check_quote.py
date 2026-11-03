@@ -1,14 +1,21 @@
 """Check that a quote really appears in a shelf book, near the cited page.
 
-Usage: check_quote.py <book file> <page|-> "<quote>"
+Usage: check_quote.py <book file> <page|lines|-> "<quote>"
 
 PDF pages are read with pdftotext (page, then the page before and after, since a
-quote can cross a page break). Markdown and text files are searched whole; pass
-"-" as the page. Matching ignores case, whitespace, line-break hyphenation,
+quote can cross a page break). A Markdown or text book takes the section's line
+range from the shelf index ("12-40", or "7"), and only those lines are searched:
+the index, built once, decides where a section starts and ends, so this script
+never parses Markdown. OUT_OF_RANGE when the range runs past the end of the book
+(it changed after indexing). "-" searches the whole book. Matching ignores case, whitespace, line-break hyphenation,
 typographic quotes and dashes, and common ligatures.
 
-Exit 0: found (prints the page). 1: not found. 2: the book can't be read
-(LFS_POINTER when the file is a Git LFS pointer that was never downloaded).
+A quote over MAX_WORDS words is refused as TOO_LONG before any search: the shelf
+shows short hooks, never passages.
+
+Exit 0: found (prints the page or line range). 1: MISSING, OUT_OF_RANGE or
+TOO_LONG. 2: the book can't be read, or the range is malformed (LFS_POINTER when
+the file is a Git LFS pointer that was never downloaded).
 """
 
 from pathlib import Path
@@ -46,6 +53,8 @@ def pdf_page(path, page):
     return result.stdout.decode("utf-8", errors="replace")
 
 
+MAX_WORDS = 25
+
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
 
 
@@ -58,20 +67,44 @@ def is_lfs_pointer(path):
         return False
 
 
+# Same format as wise.py's "range" field: "12-40", or "7" for one line.
+RANGE_RE = re.compile(r"^([1-9][0-9]*)(?:-([1-9][0-9]*))?$")
+
+
+def check_text(path, where, needle):
+    """Search a Markdown or text book in the line range its index gives."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "UNREADABLE", None
+    if where == "-":
+        return ("FOUND" if needle in normalize(text) else "MISSING"), None
+    match = RANGE_RE.match(where)
+    if not match:
+        return "UNREADABLE", None
+    first, last = int(match.group(1)), int(match.group(2) or match.group(1))
+    lines = text.splitlines()
+    if first > last:
+        return "UNREADABLE", None
+    if last > len(lines):
+        return "OUT_OF_RANGE", None
+    block = "\n".join(lines[first - 1:last])
+    return ("FOUND", where) if needle in normalize(block) else ("MISSING", None)
+
+
 def check(path, page, quote, read_page=pdf_page):
-    """Return (status, page). status is FOUND, MISSING, LFS_POINTER or UNREADABLE."""
+    """Return (status, where): FOUND, MISSING, OUT_OF_RANGE, TOO_LONG, LFS_POINTER or
+    UNREADABLE. `where` is the page (int) for a PDF, the line range for a text book."""
     path = Path(path)
     needle = normalize(quote)
+    if len(needle.split()) > MAX_WORDS:
+        return "TOO_LONG", None
     if not needle or not path.is_file():
         return "UNREADABLE", None
     if is_lfs_pointer(path):
         return "LFS_POINTER", None
     if path.suffix.lower() != ".pdf":
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return "UNREADABLE", None
-        return ("FOUND" if needle in normalize(text) else "MISSING"), None
+        return check_text(path, str(page), needle)
     if read_page is pdf_page and shutil.which("pdftotext") is None:
         return "UNREADABLE", None
     page = int(page)
@@ -100,8 +133,9 @@ def main(argv):
         print("UNREADABLE: a PDF needs a page number")
         return 2
     status, found = check(path, page, quote)
-    print(status if found is None else f"{status} p. {found}")
-    return {"FOUND": 0, "MISSING": 1}.get(status, 2)
+    where = "" if found is None else (f" lines {found}" if isinstance(found, str) else f" p. {found}")
+    print(status + where)
+    return {"FOUND": 0, "MISSING": 1, "OUT_OF_RANGE": 1, "TOO_LONG": 1}.get(status, 2)
 
 
 if __name__ == "__main__":

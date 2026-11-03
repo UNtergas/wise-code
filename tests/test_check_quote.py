@@ -78,6 +78,57 @@ class CheckQuoteTests(unittest.TestCase):
                          ("FOUND", None))
         self.assertEqual(cq.check(book, "-", "backoff stops retries"), ("MISSING", None))
 
+    def test_quote_over_word_cap_is_too_long_even_if_present(self):
+        long_text = " ".join(f"w{i}" for i in range(30))
+        book = Path(self.temp.name) / "long.txt"
+        book.write_text(long_text, encoding="utf-8")
+        cap = " ".join(f"w{i}" for i in range(cq.MAX_WORDS))
+        self.assertEqual(cq.check(book, "-", cap), ("FOUND", None))
+        self.assertEqual(cq.check(book, "-", cap + " w25"), ("TOO_LONG", None))
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), str(book), "-", long_text],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout.strip()), (1, "TOO_LONG"))
+
+    def test_text_book_is_searched_only_in_the_indexed_line_range(self):
+        book = Path(self.temp.name) / "guide.md"
+        # Headings only matter to whoever builds the index: the checker counts lines.
+        book.write_text("# Retries\n"           # 1
+                        "Backoff spreads\n"      # 2
+                        "retries over time.\n"   # 3
+                        "```\n# not a heading\n```\n"  # 4-6
+                        "Queues\n======\n"      # 7-8
+                        "Queues absorb bursts.\n",  # 9
+                        encoding="utf-8")
+        check = lambda where, quote: cq.check(book, where, quote)
+        self.assertEqual(check("1-6", "backoff spreads retries over time"), ("FOUND", "1-6"))
+        self.assertEqual(check("1-6", "queues absorb bursts"), ("MISSING", None))
+        self.assertEqual(check("7-9", "queues absorb bursts"), ("FOUND", "7-9"))
+        self.assertEqual(check("9", "queues absorb bursts"), ("FOUND", "9"))
+        # A range past the end means the book changed after it was indexed.
+        self.assertEqual(check("7-12", "queues absorb bursts"), ("OUT_OF_RANGE", None))
+        for bad in ("Queues", "9-7", "0-3"):
+            self.assertEqual(check(bad, "queues"), ("UNREADABLE", None), bad)
+
+    def test_documented_command_checks_a_line_range(self):
+        skill = (ROOT / "skills/shelf/SKILL.md").read_text(encoding="utf-8")
+        line = next(l for l in skill.splitlines() if "check_quote.py" in l and "python3" in l)
+        self.assertIn('"<where>"', line)
+        book = Path(self.temp.name) / "notes.txt"
+        book.write_text("Intro.\nJitter breaks up\nthundering herds.\nOutro.\n", encoding="utf-8")
+        # Run the documented line through a shell, as the skill does.
+        command = (line.strip().replace('"${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py"',
+                                        f'"{SCRIPT}"')
+                   .replace("python3", f'"{sys.executable}" -I', 1)
+                   .replace("<book file>", str(book))
+                   .replace("<where>", "2-3")
+                   .replace("<quote>", "jitter breaks up thundering herds"))
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "FOUND lines 2-3"))
+        run = lambda *args: subprocess.run([sys.executable, "-I", str(SCRIPT), *args],
+                                           capture_output=True, text=True, timeout=10)
+        self.assertEqual(run(str(book), "2-9", "thundering").returncode, 1)  # OUT_OF_RANGE
+        self.assertEqual(run(str(book), "Jitter", "thundering").returncode, 2)
+
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
         book.write_text("Idempotent requests can be retried safely.", encoding="utf-8")
