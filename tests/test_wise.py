@@ -544,6 +544,25 @@ class MergeConflictTests(WiseTestCase):
                 self.assertEqual(kept["rev"], 2)  # beats both sides in later merges
                 self.assertIn("ok · ", self.out("check"))
 
+    def test_resolved_choice_beats_future_dated_versions(self):
+        # PR #20 review: versions dated ahead of today (another time zone,
+        # a clock ahead) must not outrank the learner's later choice.
+        base, ours, theirs = self.two_divergent()
+        ours, theirs = ({**n, "updated": "2026-10-30"} for n in (ours, theirs))
+        keep = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                if json.loads(l)["id"] != "alpha"]
+        self.nodes_file().write_text("\n".join(keep) + "\n", encoding="utf-8")
+        self.with_lines(self.line(ours), self.line(theirs))
+        self.out("resolve", "alpha", "--keep", "1", day="2026-10-28")
+        [kept] = self.versions("alpha")
+        for rejected in (ours, theirs):
+            self.assertGreater(wise.stamp(kept), wise.stamp(rejected))
+        # A later merge that brings the rejected version back loses to it.
+        self.with_lines(self.line(theirs))
+        self.run_wise("set", "other", "definition=x")
+        [after] = self.versions("alpha")
+        self.assertEqual(after["notes"], kept["notes"])
+
     def test_identical_duplicates_collapse_silently(self):
         self.run_wise("add", "concept", "name=Alpha")
         self.with_lines(self.line(self.versions("alpha")[0]))

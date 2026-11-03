@@ -561,7 +561,10 @@ class Graph:
     def touch(self, node):
         """Mark a changed node so a later union merge can tell which side is newer."""
         self._check_unresolved(node["id"])
-        node["updated"] = iso(today())
+        # Never move the date back: a node dated ahead of today (another
+        # time zone, a clock ahead) would otherwise outrank this change.
+        node["updated"] = max(iso(today()), node.get("updated") or "",
+                              node.get("created") or "")
         node["rev"] = int(node.get("rev", 0)) + 1
         self.dirty = True
 
