@@ -188,6 +188,21 @@ class PortableReviewRulesTests(unittest.TestCase):
                      "never resolved by", "codex/skills/"):
             self.assertIn(kept, local)
 
+    def test_rules_work_when_the_tool_writes_the_summary(self):
+        # Codex on GitHub posts a fixed receipt as the review body and only P0/P1
+        # inline comments, so nothing may depend on a summary it can't write.
+        rules, generic = self.sections()
+        canary = generic[generic.index("### Canary"):generic.index("### Priorities")]
+        self.assertIn("checked on inline comments only", canary)
+        self.assertIn("only P0 and P1", generic)
+        rereview = generic[generic.index("### Re-review"):]
+        self.assertIn("`Still not fixed: <title>`", rereview)
+        self.assertIn("@codex For every earlier review finding on this pull request", rereview)
+        # A not-fixed finding must not vanish when no summary holds the list.
+        self.assertNotIn("Don't post it again", rereview)
+        fmt = rules[rules.index("### Comment format"):]
+        self.assertIn("`PR description:`", fmt)
+
     def test_description_is_reviewed_against_the_diff(self):
         _, generic = self.sections()
         for check in ("matches the diff", "not run", "why"):

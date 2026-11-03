@@ -100,6 +100,9 @@ exact line, on its own, before anything else:
 A review without it means these rules were not loaded. Don't paraphrase it,
 translate it, or drop it when there are no findings.
 
+Where the review tool writes the summary itself (Codex on GitHub posts a fixed
+receipt as the review body), the canary is checked on inline comments only.
+
 ### Priorities
 
 `### This repository` adds its own P0 and P1 cases to these.
@@ -115,6 +118,8 @@ translate it, or drop it when there are no findings.
   notice for borrowed material.
 - **P2:** a design problem below that will cost the next change; a PR
   description missing why, decisions or evidence.
+- Codex on GitHub posts only P0 and P1 findings. P2 checks still apply, but they
+  surface only in reviews that report every priority.
 - Skip formatting, naming taste and wording nits unless they change meaning;
   CI owns lint. Raise a name only when it lies about what the code does.
 
@@ -176,18 +181,29 @@ The description is the change's log. Check it like code:
 
 ### Re-review
 
-When the pull request already has review findings (yours or anyone's), the
-summary opens, right after the canary, with a list of every earlier finding:
+When the pull request already has review findings (yours or anyone's), account
+for every earlier finding at the commit now reviewed:
 
 - the finding's title and a link to its thread;
-- **fixed**, **not fixed** or **can't tell**, at the commit now reviewed;
+- **fixed**, **not fixed** or **can't tell**;
 - the evidence: the `file:line` that now handles it, the test that covers it,
   or why the reasoning still fails.
 
+Where you write the summary, it opens with that list, right after the canary.
+
+Where you can only post inline findings (Codex on GitHub), the list has no
+place in the review, so:
+
+- Post every **not fixed** finding again, as an inline comment on the line that
+  still has the problem, titled `Still not fixed: <title>`, with a link to the
+  first thread and its original priority. A fixed finding needs no comment.
+- The full list comes from a follow-up comment on the pull request, which Codex
+  answers in a reply:
+  `@codex For every earlier review finding on this pull request, say fixed, not fixed or can't tell at the latest commit, with file:line evidence.`
+
 A reply in the thread that says "fixed" is a claim, not evidence: check the
-code. A finding marked **not fixed** keeps its priority. Don't post it again as
-a new inline comment; the list is where it lives. A silent re-review, where old
-findings are neither listed nor raised again, does not show they were fixed.
+code. A finding marked **not fixed** keeps its priority. A re-review that says
+nothing about an earlier finding has not shown it fixed; only the list does.
 
 ### This repository
 
@@ -212,5 +228,6 @@ WiseCode-specific checks, on top of everything above.
 
 One finding per comment: where it is, the concrete failure it causes, the
 requested change, and the evidence that would show it fixed. Findings on the
-PR description go in the summary. When there are no findings, say what was
+PR description go in the summary or, where you can't write one, in an inline
+comment on the first changed line that starts with `PR description:`. When there are no findings, say what was
 checked.

@@ -121,8 +121,10 @@ senior-developer role you call in on purpose, never on its own:
   logged anywhere; your choice to step outside the learning loop for one answer.
 - `@codex review`: the Code Review Rules in `AGENTS.md` review as a senior
   (clean-code design checks, tests that prove something, and the PR
-  description checked against the diff). A re-review lists every earlier
-  finding as fixed, not fixed or can't tell, with evidence. They are portable: copy `AGENTS.md`
+  description checked against the diff). On GitHub, Codex posts only P0/P1
+  inline comments under a fixed summary, so a re-review posts every unfixed
+  earlier finding again (`Still not fixed: …`), and the full fixed / not fixed
+  list comes from a follow-up `@codex` comment (exact text in `AGENTS.md`). They are portable: copy `AGENTS.md`
   to another repository and replace its `## Repository facts` and
   `### This repository` sections with that repository's own.
 
@@ -147,8 +149,9 @@ marks a complete, on-instruction reply, not a true one; facts are guarded by
 research's span check.
 
 PR reviews of this repository (`@codex review`) carry their own canary: every
-review message starts with `=>> Incoming harsh truth <<=`. A review without it
-means the Code Review Rules in `AGENTS.md` were not loaded.
+inline comment starts with `=>> Incoming harsh truth <<=` (the review summary
+is Codex's own template). A comment without it means the Code Review Rules in
+`AGENTS.md` were not loaded.
 
 ## Principles
 
