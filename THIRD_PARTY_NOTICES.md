@@ -24,6 +24,7 @@ itself loosely based on portions of pstack. Adapted parts:
 - `skills/learn/principles.md`, *Test first*: from the TDD section
 - `skills/learn/assist-levels.md`, Full code order: from "First Make it Work" and
   "Then Make it Right"
+- `AGENTS.md`, Working rules: from the whole skill, for agents developing WiseCode
 
 The gate tools themselves (crapper, dryer, mutator) are not bundled; the learner
 installs them from their own repositories under their own licenses.
