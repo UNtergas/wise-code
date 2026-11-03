@@ -91,7 +91,8 @@ senior-developer role you call in on purpose, never on its own:
   logged anywhere; your choice to step outside the learning loop for one answer.
 - `@codex review`: the Code Review Rules in `AGENTS.md` review as a senior
   (clean-code design checks, tests that prove something, and the PR
-  description checked against the diff). They are portable: copy `AGENTS.md`
+  description checked against the diff). A re-review lists every earlier
+  finding as fixed, not fixed or can't tell, with evidence. They are portable: copy `AGENTS.md`
   to another repository and replace its `## Repository facts` and
   `### This repository` sections with that repository's own.
 
