@@ -4,8 +4,10 @@ Usage: check_quote.py <book file> <page|heading|-> "<quote>"
 
 PDF pages are read with pdftotext (page, then the page before and after, since a
 quote can cross a page break). A Markdown book takes the cited heading instead of
-a page and is searched only under that heading, subsections included (NO_HEADING
-when the book has no such heading). Plain text has no structure: pass "-" and it
+a page ("Summary", or "Two > Summary" when the title repeats) and is searched only
+under it, subsections included; every occurrence of a repeated title is checked,
+and FOUND prints the full heading path. NO_HEADING when the book has no such
+heading. Plain text has no structure: pass "-" and it
 is searched whole. Matching ignores case, whitespace, line-break hyphenation,
 typographic quotes and dashes, and common ligatures.
 
@@ -104,18 +106,23 @@ def headings(lines):
             paragraph = index if line.strip() else None
 
 
-def heading_block(text, heading):
-    """Return (heading as written, its text up to the next same-or-higher heading)."""
-    wanted = normalize(heading)
+def heading_blocks(text, location):
+    """Yield (heading path, its text up to the next same-or-higher heading) for each
+    heading whose path ends with `location` ("Title" or "Parent > Title")."""
+    wanted = [normalize(part) for part in location.split(">")]
     lines = text.splitlines()
     found = list(headings(lines))
+    parents = []  # (level, title) of the headings above the current one
     for position, (_, body, level, title) in enumerate(found):
-        if normalize(title) != wanted:
+        while parents and parents[-1][0] >= level:
+            parents.pop()
+        parents.append((level, title))
+        path = [name for _, name in parents]
+        if [normalize(name) for name in path[-len(wanted):]] != wanted:
             continue
         end = next((start for start, _, other, _ in found[position + 1:] if other <= level),
                    len(lines))
-        return title, "\n".join(lines[body:end])
-    return None, None
+        yield " > ".join(path), "\n".join(lines[body:end])
 
 
 def check_text(path, heading, needle):
@@ -125,15 +132,19 @@ def check_text(path, heading, needle):
         return "UNREADABLE", None
     if heading in ("", "-") or path.suffix.lower() != ".md":
         return ("FOUND" if needle in normalize(text) else "MISSING"), None
-    title, block = heading_block(text, heading)
-    if title is None:
-        return "NO_HEADING", None
-    return ("FOUND", title) if needle in normalize(block) else ("MISSING", None)
+    status = "NO_HEADING"
+    # A title can repeat ("Summary" in every chapter): check each occurrence.
+    for where, block in heading_blocks(text, heading):
+        if needle in normalize(block):
+            return "FOUND", where
+        status = "MISSING"
+    return status, None
 
 
 def check(path, page, quote, read_page=pdf_page):
     """Return (status, where): FOUND, MISSING, NO_HEADING, TOO_LONG, LFS_POINTER or
-    UNREADABLE. `where` is the page for a PDF, the heading for Markdown, else None."""
+    UNREADABLE. `where` is the page for a PDF, the heading path ("Two > Summary") for
+    Markdown, else None."""
     path = Path(path)
     needle = normalize(quote)
     if len(needle.split()) > MAX_WORDS:

@@ -119,9 +119,9 @@ The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" "<where>" "<quote>"
 ```
 
-`<where>` is the PDF page, the section's heading for a Markdown book, or `-` for plain text (searched whole; cite the section title only).
+`<where>` is the PDF page, the section's heading for a Markdown book (`Parent > Title` when the title repeats, as `Two > Summary`), or `-` for plain text (searched whole; cite the section title only).
 
-Exit 0 = found (it prints the page or `§ <heading>`). 1 = `MISSING` → drop the quote, keep the page or heading reference; `TOO_LONG` → over 25 words: cut it to the hook and check again; `NO_HEADING` → the heading isn't in the book: fix it from the index and check again. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
+Exit 0 = found (it prints the page, or `§ <heading path>`: every occurrence of a repeated title is checked, and the path names the one that holds the quote). 1 = `MISSING` → drop the quote, keep the page or heading reference; `TOO_LONG` → over 25 words: cut it to the hook and check again; `NO_HEADING` → the heading isn't in the book: fix it from the index and check again. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
 
 ## Step 3: Read first
 
@@ -150,7 +150,7 @@ Then record, commit and push (Step 5).
 ## Step 5: Record, then commit and push once per citation cycle
 
 In the shelf graph (`wise.py --root "<shelf>"`, where `<shelf>` is `<state>/shelf-repo` in project mode and the repo itself in shelf mode). `<Project>` is `Project:` from `shelf.md` (required; missing → ask the learner for a stable name and add it); every record carries it, which is what makes a book's use across projects visible:
-- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`); a Markdown book takes `heading="…"` instead of `page`. The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
+- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`); a Markdown book takes `heading="<path the check printed>"` instead of `page`. The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
 - After the learner reads: `add read project=<Project> --on SEC-… --for CIT-…` (or `set CIT-… status=skipped-read` when they skipped reading).
 - After an explanation: `add explainback project=<Project> text="<gist of what they wrote>" verdict=<understood|partial|misread> --on SEC-… --for CIT-…` and `set CIT-… status=<verdict>`.
 - After `understood` or `partial`: up to 2 questions and up to 2 cards about the section, `--from SEC-…`, formats from [../learn/materials.md](../learn/materials.md). Book questions live in the shelf graph, not in the project.

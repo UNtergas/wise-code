@@ -98,7 +98,7 @@ class CheckQuoteTests(unittest.TestCase):
         self.assertEqual(check("Retries", "backoff spreads retries"), ("FOUND", "Retries"))
         # A subsection belongs to its parent heading's block.
         self.assertEqual(check("Retries", "thundering herds"), ("FOUND", "Retries"))
-        self.assertEqual(check("jitter", "thundering herds"), ("FOUND", "Jitter"))
+        self.assertEqual(check("jitter", "thundering herds"), ("FOUND", "Retries > Jitter"))
         # Present in the book, but under another heading: the cited place is wrong.
         self.assertEqual(check("Jitter", "queues absorb bursts"), ("MISSING", None))
         self.assertEqual(check("Caching", "queues absorb bursts"), ("NO_HEADING", None))
@@ -148,7 +148,7 @@ class CheckQuoteTests(unittest.TestCase):
         self.assertEqual(run("Queues", "queues absorb bursts"), "FOUND § Queues")
         # A level-2 Setext heading sits inside the level-1 one above it.
         self.assertEqual(run("Queues", "buffers fill up"), "FOUND § Queues")
-        self.assertEqual(run("Buffers", "buffers fill up"), "FOUND § Buffers")
+        self.assertEqual(run("Buffers", "buffers fill up"), "FOUND § Queues > Buffers")
         # "---" after a blank line is a thematic break, not a heading.
         self.assertEqual(run("Not a heading", "after a thematic break"), "NO_HEADING")
 
@@ -160,6 +160,16 @@ class CheckQuoteTests(unittest.TestCase):
         self.assertEqual(cq.check(book, "Retries", "queues absorb bursts"), ("MISSING", None))
         # Four spaces make an indented code block, not a heading.
         self.assertEqual(cq.check(book, "Code", "indented four is code"), ("NO_HEADING", None))
+
+    def test_repeated_heading_checks_every_occurrence_and_names_the_path(self):
+        book = Path(self.temp.name) / "repeat.md"
+        book.write_text("# One\n\n## Summary\n\nFirst.\n\n# Two\n\n## Summary\n\n"
+                        "Queues absorb bursts.\n", encoding="utf-8")
+        check = lambda where: cq.check(book, where, "queues absorb bursts")
+        self.assertEqual(check("Summary"), ("FOUND", "Two > Summary"))
+        self.assertEqual(check("two > summary"), ("FOUND", "Two > Summary"))
+        self.assertEqual(check("One > Summary"), ("MISSING", None))
+        self.assertEqual(check("Three > Summary"), ("NO_HEADING", None))
 
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
