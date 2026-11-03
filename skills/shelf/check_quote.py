@@ -1,21 +1,21 @@
 """Check that a quote really appears in a shelf book, near the cited page.
 
-Usage: check_quote.py <book file> <page|heading|-> "<quote>"
+Usage: check_quote.py <book file> <page|lines|-> "<quote>"
 
 PDF pages are read with pdftotext (page, then the page before and after, since a
-quote can cross a page break). A Markdown book takes the cited heading instead of
-a page ("Summary", or "Two > Summary" when the title repeats) and is searched only
-under it, subsections included; every occurrence of a repeated title is checked,
-and FOUND prints the full heading path. NO_HEADING when the book has no such
-heading. Plain text has no structure: pass "-" and it
-is searched whole. Matching ignores case, whitespace, line-break hyphenation,
+quote can cross a page break). A Markdown or text book takes the section's line
+range from the shelf index ("12-40", or "7"), and only those lines are searched:
+the index, built once, decides where a section starts and ends, so this script
+never parses Markdown. OUT_OF_RANGE when the range runs past the end of the book
+(it changed after indexing). "-" searches the whole book. Matching ignores case, whitespace, line-break hyphenation,
 typographic quotes and dashes, and common ligatures.
 
 A quote over MAX_WORDS words is refused as TOO_LONG before any search: the shelf
 shows short hooks, never passages.
 
-Exit 0: found (prints the page or heading). 1: MISSING, NO_HEADING or TOO_LONG. 2: the book can't be
-read (LFS_POINTER when the file is a Git LFS pointer that was never downloaded).
+Exit 0: found (prints the page or line range). 1: MISSING, OUT_OF_RANGE or
+TOO_LONG. 2: the book can't be read, or the range is malformed (LFS_POINTER when
+the file is a Git LFS pointer that was never downloaded).
 """
 
 from pathlib import Path
@@ -67,84 +67,34 @@ def is_lfs_pointer(path):
         return False
 
 
-HEADING_RE = re.compile(r"^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+# Same format as wise.py's "range" field: "12-40", or "7" for one line.
+RANGE_RE = re.compile(r"^([1-9][0-9]*)(?:-([1-9][0-9]*))?$")
 
 
-FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
-SETEXT_RE = re.compile(r"^\s{0,3}(=+|-+)\s*$")
-
-
-def headings(lines):
-    """Yield (title line, body start, level, title) for each ATX or Setext heading
-    outside fenced code."""
-    fence = None
-    paragraph = None  # index of the last plain text line, if the paragraph is open
-    for index, line in enumerate(lines):
-        match = FENCE_RE.match(line)
-        if match:
-            marker = match.group(1)
-            if fence is None:
-                fence = marker
-            elif marker[0] == fence[0] and len(marker) >= len(fence):
-                fence = None
-            paragraph = None
-            continue
-        if fence is not None:
-            continue
-        atx = HEADING_RE.match(line)
-        setext = SETEXT_RE.match(line)
-        if atx:
-            yield index, index + 1, len(atx.group(1)), atx.group(2)
-            paragraph = None
-        elif setext and paragraph is not None:
-            # "Title\n===" is level 1, "Title\n---" level 2. Without a text line
-            # just above, "---" is a thematic break.
-            level = 1 if setext.group(1)[0] == "=" else 2
-            yield paragraph, index + 1, level, lines[paragraph].strip()
-            paragraph = None
-        else:
-            paragraph = index if line.strip() else None
-
-
-def heading_blocks(text, location):
-    """Yield (heading path, its text up to the next same-or-higher heading) for each
-    heading whose path ends with `location` ("Title" or "Parent > Title")."""
-    wanted = [normalize(part) for part in location.split(">")]
-    lines = text.splitlines()
-    found = list(headings(lines))
-    parents = []  # (level, title) of the headings above the current one
-    for position, (_, body, level, title) in enumerate(found):
-        while parents and parents[-1][0] >= level:
-            parents.pop()
-        parents.append((level, title))
-        path = [name for _, name in parents]
-        if [normalize(name) for name in path[-len(wanted):]] != wanted:
-            continue
-        end = next((start for start, _, other, _ in found[position + 1:] if other <= level),
-                   len(lines))
-        yield " > ".join(path), "\n".join(lines[body:end])
-
-
-def check_text(path, heading, needle):
+def check_text(path, where, needle):
+    """Search a Markdown or text book in the line range its index gives."""
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return "UNREADABLE", None
-    if heading in ("", "-") or path.suffix.lower() != ".md":
+    if where == "-":
         return ("FOUND" if needle in normalize(text) else "MISSING"), None
-    status = "NO_HEADING"
-    # A title can repeat ("Summary" in every chapter): check each occurrence.
-    for where, block in heading_blocks(text, heading):
-        if needle in normalize(block):
-            return "FOUND", where
-        status = "MISSING"
-    return status, None
+    match = RANGE_RE.match(where)
+    if not match:
+        return "UNREADABLE", None
+    first, last = int(match.group(1)), int(match.group(2) or match.group(1))
+    lines = text.splitlines()
+    if first > last:
+        return "UNREADABLE", None
+    if last > len(lines):
+        return "OUT_OF_RANGE", None
+    block = "\n".join(lines[first - 1:last])
+    return ("FOUND", where) if needle in normalize(block) else ("MISSING", None)
 
 
 def check(path, page, quote, read_page=pdf_page):
-    """Return (status, where): FOUND, MISSING, NO_HEADING, TOO_LONG, LFS_POINTER or
-    UNREADABLE. `where` is the page for a PDF, the heading path ("Two > Summary") for
-    Markdown, else None."""
+    """Return (status, where): FOUND, MISSING, OUT_OF_RANGE, TOO_LONG, LFS_POINTER or
+    UNREADABLE. `where` is the page (int) for a PDF, the line range for a text book."""
     path = Path(path)
     needle = normalize(quote)
     if len(needle.split()) > MAX_WORDS:
@@ -183,9 +133,9 @@ def main(argv):
         print("UNREADABLE: a PDF needs a page number")
         return 2
     status, found = check(path, page, quote)
-    where = "" if found is None else (f" § {found}" if isinstance(found, str) else f" p. {found}")
+    where = "" if found is None else (f" lines {found}" if isinstance(found, str) else f" p. {found}")
     print(status + where)
-    return {"FOUND": 0, "MISSING": 1, "NO_HEADING": 1, "TOO_LONG": 1}.get(status, 2)
+    return {"FOUND": 0, "MISSING": 1, "OUT_OF_RANGE": 1, "TOO_LONG": 1}.get(status, 2)
 
 
 if __name__ == "__main__":

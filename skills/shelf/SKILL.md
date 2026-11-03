@@ -106,9 +106,9 @@ Read only files under `shared/` and the mapped folders. This boundary keeps a pr
 
 The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book-slug>-<number>`), built lazily and kept forever. `wise.py --root "<shelf>" list book` lists indexed books.
 
-1. **L1 (outline)**: for any in-scope book with no `BK-` node yet, build one: title, page count, chapters and sections with PDF page ranges. Use `pdfinfo`, the PDF outline, or `pdftotext -f 1 -l 20` for the table of contents; headings for Markdown and text. Several books missing → one background agent for all (`model: haiku`). Write with `wise.py --root "<shelf>" add book slug=<book-slug> title="…" file=<folder>/<file> folder=<folder> pages=<n> l1=<date>`, then one `add section book=<book-slug> number=<1 or 1.2> title="…" pages=<a>-<b> printed=<x>-<y>` per chapter and section. Stable IDs: adding the same book or section again updates it.
+1. **L1 (outline)**: for any in-scope book with no `BK-` node yet, build one: title, page count, chapters and sections with PDF page ranges, or line ranges for Markdown and text. Use `pdfinfo`, the PDF outline, or `pdftotext -f 1 -l 20` for the table of contents. For Markdown and text, read the file with line numbers and take each section from its heading line to the line before the next heading of the same or higher level; this index is the only place that decides where a section starts and ends (`#` lines inside code fences are not headings). Several books missing → one background agent for all (`model: haiku`). Write with `wise.py --root "<shelf>" add book slug=<book-slug> title="…" file=<folder>/<file> folder=<folder> pages=<n> l1=<date>`, then one `add section book=<book-slug> number=<1 or 1.2> title="…" pages=<a>-<b> printed=<x>-<y>` per chapter and section (`lines=<a>-<b>` instead of `pages` and `printed` for Markdown and text). Stable IDs: adding the same book or section again updates it.
 2. Match the question against the index: `wise.py --root "<shelf>" find <key words> --type section`, and `list section --where book=<slug> --limit 40` for one book's outline. Pick at most **2 sections** from at most 2 books.
-3. **L2 (section detail)**: if a matched chapter has no `l2` yet, one background agent (`model: sonnet`) reads only those pages (`pdftotext -layout -f <a> -l <b>`) and returns: the section that answers the question, its pages, up to 2 verbatim quotes (≤ 25 words each, with page), and 3–6 key concepts per section of that chapter. Store them: `set SEC-… concepts+="…" l2=<date>` for each section.
+3. **L2 (section detail)**: if a matched chapter has no `l2` yet, one background agent (`model: sonnet`) reads only those pages (`pdftotext -layout -f <a> -l <b>`) or lines and returns: the section that answers the question, its pages or lines, up to 2 verbatim quotes (≤ 25 words each, with page), and 3–6 key concepts per section of that chapter. Store them: `set SEC-… concepts+="…" l2=<date>` for each section.
 4. No section matches → say in one line that the shelf has nothing on it. Then answer normally, searching the web when facts matter. Suggest `/wise-code:research` only when a decision waits on an external fact.
 
 **Agent rules.** The prompt starts: "You are the shelf worker. Do the reading yourself. Do NOT spawn other agents or delegate." Already a subagent → do it yourself. Copy quotes from the extracted text, never from memory.
@@ -119,16 +119,16 @@ The index is books and sections in the shelf graph (`BK-<book-slug>`, `SEC-<book
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py" "<book file>" "<where>" "<quote>"
 ```
 
-`<where>` is the PDF page, the section's heading for a Markdown book (`Parent > Title` when the title repeats, as `Two > Summary`), or `-` for plain text (searched whole; cite the section title only).
+`<where>` is the PDF page, or for a Markdown or text book the section's `lines` from the index (`12-40`). The script never parses Markdown: it searches only those lines.
 
-Exit 0 = found (it prints the page, or `§ <heading path>`: every occurrence of a repeated title is checked, and the path names the one that holds the quote). 1 = `MISSING` → drop the quote, keep the page or heading reference; `TOO_LONG` → over 25 words: cut it to the hook and check again; `NO_HEADING` → the heading isn't in the book: fix it from the index and check again. 2 = unreadable → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
+Exit 0 = found (it prints the page or `lines <a>-<b>`). 1 = `MISSING` → drop the quote, keep the page or line reference; `TOO_LONG` → over 25 words: cut it to the hook and check again; `OUT_OF_RANGE` → the book changed after it was indexed: rebuild its L1 (same `add` commands, same IDs), then check again. A `MISSING` on a text book edited since its `l1` date means the same. 2 = unreadable or a malformed range → say why, cite pages only. Output `LFS_POINTER` means the book was never downloaded: run the Git LFS step in Step 1 (and the install prompt if git-lfs is missing), then check again. Any other `UNREADABLE` means a scanned PDF without text, or no `pdftotext`.
 
 ## Step 3: Read first
 
 Read first: the learner reads the section before you explain it.
 
 Reply with:
-- Book, section, pages (PDF page numbers; printed page in brackets when it differs), or the heading for a Markdown book.
+- Book, section, pages (PDF page numbers; printed page in brackets when it differs), or the lines for a Markdown or text book.
 - The checked quote(s), at most 2, as the hook.
 - One guiding question to answer after reading. Ask for their explanation in their own words.
 
@@ -150,7 +150,7 @@ Then record, commit and push (Step 5).
 ## Step 5: Record, then commit and push once per citation cycle
 
 In the shelf graph (`wise.py --root "<shelf>"`, where `<shelf>` is `<state>/shelf-repo` in project mode and the repo itself in shelf mode). `<Project>` is `Project:` from `shelf.md` (required; missing → ask the learner for a stable name and add it); every record carries it, which is what makes a book's use across projects visible:
-- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`); a Markdown book takes `heading="<path the check printed>"` instead of `page`. The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
+- After a cite: `add citation project=<Project> question="…" quote="…" page=<n> --on SEC-…` (status `sent`); a Markdown or text book takes `lines=<a>-<b>` (the section's range) instead of `page`. The book records `<Project>` as a project that uses it. The new id (`CIT-…`) is the citation.
 - After the learner reads: `add read project=<Project> --on SEC-… --for CIT-…` (or `set CIT-… status=skipped-read` when they skipped reading).
 - After an explanation: `add explainback project=<Project> text="<gist of what they wrote>" verdict=<understood|partial|misread> --on SEC-… --for CIT-…` and `set CIT-… status=<verdict>`.
 - After `understood` or `partial`: up to 2 questions and up to 2 cards about the section, `--from SEC-…`, formats from [../learn/materials.md](../learn/materials.md). Book questions live in the shelf graph, not in the project.

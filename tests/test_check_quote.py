@@ -89,87 +89,45 @@ class CheckQuoteTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual((result.returncode, result.stdout.strip()), (1, "TOO_LONG"))
 
-    def test_markdown_heading_scopes_the_search(self):
+    def test_text_book_is_searched_only_in_the_indexed_line_range(self):
         book = Path(self.temp.name) / "guide.md"
-        book.write_text("# Retries\n\nBackoff spreads retries over time.\n\n"
-                        "## Jitter\n\nJitter breaks up thundering herds.\n\n"
-                        "# Queues\n\nQueues absorb bursts.\n", encoding="utf-8")
-        check = lambda heading, quote: cq.check(book, heading, quote)
-        self.assertEqual(check("Retries", "backoff spreads retries"), ("FOUND", "Retries"))
-        # A subsection belongs to its parent heading's block.
-        self.assertEqual(check("Retries", "thundering herds"), ("FOUND", "Retries"))
-        self.assertEqual(check("jitter", "thundering herds"), ("FOUND", "Retries > Jitter"))
-        # Present in the book, but under another heading: the cited place is wrong.
-        self.assertEqual(check("Jitter", "queues absorb bursts"), ("MISSING", None))
-        self.assertEqual(check("Caching", "queues absorb bursts"), ("NO_HEADING", None))
-        result = subprocess.run([sys.executable, "-I", str(SCRIPT), str(book), "Queues",
-                                 "absorb bursts"], capture_output=True, text=True, timeout=10)
-        self.assertEqual((result.returncode, result.stdout.strip()), (0, "FOUND § Queues"))
+        # Headings only matter to whoever builds the index: the checker counts lines.
+        book.write_text("# Retries\n"           # 1
+                        "Backoff spreads\n"      # 2
+                        "retries over time.\n"   # 3
+                        "```\n# not a heading\n```\n"  # 4-6
+                        "Queues\n======\n"      # 7-8
+                        "Queues absorb bursts.\n",  # 9
+                        encoding="utf-8")
+        check = lambda where, quote: cq.check(book, where, quote)
+        self.assertEqual(check("1-6", "backoff spreads retries over time"), ("FOUND", "1-6"))
+        self.assertEqual(check("1-6", "queues absorb bursts"), ("MISSING", None))
+        self.assertEqual(check("7-9", "queues absorb bursts"), ("FOUND", "7-9"))
+        self.assertEqual(check("9", "queues absorb bursts"), ("FOUND", "9"))
+        # A range past the end means the book changed after it was indexed.
+        self.assertEqual(check("7-12", "queues absorb bursts"), ("OUT_OF_RANGE", None))
+        for bad in ("Queues", "9-7", "0-3"):
+            self.assertEqual(check(bad, "queues"), ("UNREADABLE", None), bad)
 
-    def test_documented_command_takes_a_multiword_heading(self):
+    def test_documented_command_checks_a_line_range(self):
         skill = (ROOT / "skills/shelf/SKILL.md").read_text(encoding="utf-8")
         line = next(l for l in skill.splitlines() if "check_quote.py" in l and "python3" in l)
         self.assertIn('"<where>"', line)
-        book = Path(self.temp.name) / "guide.md"
-        book.write_text("## Retry strategies\n\nJitter helps.\n", encoding="utf-8")
+        book = Path(self.temp.name) / "notes.txt"
+        book.write_text("Intro.\nJitter breaks up\nthundering herds.\nOutro.\n", encoding="utf-8")
         # Run the documented line through a shell, as the skill does.
         command = (line.strip().replace('"${CLAUDE_PLUGIN_ROOT}/skills/shelf/check_quote.py"',
                                         f'"{SCRIPT}"')
                    .replace("python3", f'"{sys.executable}" -I', 1)
                    .replace("<book file>", str(book))
-                   .replace("<where>", "Retry strategies")
-                   .replace("<quote>", "jitter helps"))
+                   .replace("<where>", "2-3")
+                   .replace("<quote>", "jitter breaks up thundering herds"))
         result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
-        self.assertEqual((result.returncode, result.stdout.strip()),
-                         (0, "FOUND § Retry strategies"))
-
-    def test_fenced_code_comments_are_not_headings(self):
-        book = Path(self.temp.name) / "fence.md"
-        book.write_text("# Retries\n\nIntro.\n\n```python\n# Example\nx = 1\n```\n\n"
-                        "~~~\n## Tilde\n~~~\n\nBackoff spreads retries over time.\n",
-                        encoding="utf-8")
-        self.assertEqual(cq.check(book, "Retries", "backoff spreads retries"),
-                         ("FOUND", "Retries"))
-        self.assertEqual(cq.check(book, "Example", "backoff spreads retries"),
-                         ("NO_HEADING", None))
-        self.assertEqual(cq.check(book, "Tilde", "backoff spreads retries"),
-                         ("NO_HEADING", None))
-
-    def test_setext_headings_scope_the_search(self):
-        book = Path(self.temp.name) / "setext.md"
-        book.write_text("# Retries\n\nBackoff spreads retries.\n\nQueues\n======\n\n"
-                        "Queues absorb bursts.\n\nBuffers\n-------\n\nBuffers fill up.\n\n"
-                        "Not a heading\n\n---\n\nAfter a thematic break.\n",
-                        encoding="utf-8")
-        run = lambda where, quote: subprocess.run(
-            [sys.executable, "-I", str(SCRIPT), str(book), where, quote],
-            capture_output=True, text=True, timeout=10).stdout.strip()
-        self.assertEqual(run("Retries", "queues absorb bursts"), "MISSING")
-        self.assertEqual(run("Queues", "queues absorb bursts"), "FOUND § Queues")
-        # A level-2 Setext heading sits inside the level-1 one above it.
-        self.assertEqual(run("Queues", "buffers fill up"), "FOUND § Queues")
-        self.assertEqual(run("Buffers", "buffers fill up"), "FOUND § Queues > Buffers")
-        # "---" after a blank line is a thematic break, not a heading.
-        self.assertEqual(run("Not a heading", "after a thematic break"), "NO_HEADING")
-
-    def test_atx_headings_indented_up_to_three_spaces(self):
-        book = Path(self.temp.name) / "indent.md"
-        book.write_text("# Retries\n\nBackoff.\n\n  # Queues\n\nQueues absorb bursts.\n\n"
-                        "    # Code\n\nIndented four is code.\n", encoding="utf-8")
-        self.assertEqual(cq.check(book, "Queues", "queues absorb bursts"), ("FOUND", "Queues"))
-        self.assertEqual(cq.check(book, "Retries", "queues absorb bursts"), ("MISSING", None))
-        # Four spaces make an indented code block, not a heading.
-        self.assertEqual(cq.check(book, "Code", "indented four is code"), ("NO_HEADING", None))
-
-    def test_repeated_heading_checks_every_occurrence_and_names_the_path(self):
-        book = Path(self.temp.name) / "repeat.md"
-        book.write_text("# One\n\n## Summary\n\nFirst.\n\n# Two\n\n## Summary\n\n"
-                        "Queues absorb bursts.\n", encoding="utf-8")
-        check = lambda where: cq.check(book, where, "queues absorb bursts")
-        self.assertEqual(check("Summary"), ("FOUND", "Two > Summary"))
-        self.assertEqual(check("two > summary"), ("FOUND", "Two > Summary"))
-        self.assertEqual(check("One > Summary"), ("MISSING", None))
-        self.assertEqual(check("Three > Summary"), ("NO_HEADING", None))
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "FOUND lines 2-3"))
+        run = lambda *args: subprocess.run([sys.executable, "-I", str(SCRIPT), *args],
+                                           capture_output=True, text=True, timeout=10)
+        self.assertEqual(run(str(book), "2-9", "thundering").returncode, 1)  # OUT_OF_RANGE
+        self.assertEqual(run(str(book), "Jitter", "thundering").returncode, 2)
 
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"

@@ -39,18 +39,17 @@ wise-code-shelf/
 ```
 
 Book slug: file name without extension, lowercase, spaces and underscores to `-`.
-Supported files: `.pdf` with a text layer, `.md`, `.txt`. A PDF citation names a
-page; a Markdown citation names its heading path (`Two > Summary`, as the quote
-check prints it), and quotes are checked under it;
-plain text has neither, so a `.txt` citation names only its section.
+Supported files: `.pdf` with a text layer, `.md`, `.txt`. A PDF section and citation name
+pages; a Markdown or text one names a line range (`lines`), which the L1 index
+sets and the quote check searches.
 
 ## Nodes
 
 | Type | ID | Fields | Edges |
 |---|---|---|---|
 | `book` | `BK-<book-slug>` (stable) | `slug`, `title`, `file`, `folder`, `pages`, `l1` (outline date), `projects` (every project that cited it, kept by the script) | |
-| `section` | `SEC-<book-slug>-<number>` (stable; `1` a chapter, `1.2` a section) | `book`, `number`, `title`, `pages` (`32-40`), `printed`, `concepts` (key concepts), `l2` (detail date) | `of` → book; `covers` → concept |
-| `citation` | `CIT-YYYYMMDD-xxxx` | `project`, `question`, `quote`, `page` (PDF) or `heading` (Markdown heading path), `status`: `sent` → `understood` \| `partial` \| `misread`, or `skipped-read` | `on` → section |
+| `section` | `SEC-<book-slug>-<number>` (stable; `1` a chapter, `1.2` a section) | `book`, `number`, `title`, `pages` (`32-40`), `printed`, or `lines` (`12-40`, Markdown and text), `concepts` (key concepts), `l2` (detail date) | `of` → book; `covers` → concept |
+| `citation` | `CIT-YYYYMMDD-xxxx` | `project`, `question`, `quote`, `page` (PDF) or `lines` (Markdown and text), `status`: `sent` → `understood` \| `partial` \| `misread`, or `skipped-read` | `on` → section |
 | `read` | `RD-…` | `project`, `verdict`, `evidence` | `on` → section, `for` → citation |
 | `explainback` | `EB-…` | `project`, `text` (gist of the learner's explanation, never a transcript), `verdict` | `on` → section, `for` → citation |
 
