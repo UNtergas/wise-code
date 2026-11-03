@@ -16,6 +16,36 @@ or Full code; see assist-levels.md). Suggestions aren't an automatic next step.
 Notes live in .wise-code/. Recommend ignoring that directory in Git. Don't
 change .gitignore unless requested; announce the edit first.
 
+## Sandbox setup
+
+Before the first onboarding question, check the sandbox setup from the project
+folder:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup.py" check
+```
+
+Exit 0: say nothing about it and continue with Project. Otherwise show the
+learner the `missing` and `conflict` lines as printed, in one short message:
+it turns on Claude Code's shell sandbox for this project
+(`.claude/settings.local.json`), creates `.wise-code/consult/`, and, if Codex is
+installed, writes the read-only senior profile (`~/.codex/senior.config.toml`).
+Then give the command the learner runs, and wait:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup.py" apply
+```
+
+You never run `apply` yourself: it changes your own sandbox and permissions,
+so the learner runs it. Settings take effect in the next Claude Code session.
+After they say it's done, run `check` again. Conflicts are theirs to resolve
+(the line says how); don't edit those files for them.
+
+Onboarding waits here until `check` exits 0, unless the learner explicitly
+asks to skip setup. Then record `Sandbox setup: skipped` in `profile.md` and
+continue; don't ask again in later sessions. When `check` passes, record
+`Sandbox setup: done`.
+
 ## Project
 
 Unless already answered, first ask “What are we doing?” using a native picker:

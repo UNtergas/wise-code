@@ -71,6 +71,28 @@ Switch levels in chat at any time:
 - `pseudo for Rust`, `hint for FastAPI`, `pseudo for writing` — per-topic override.
 - `full code for this step` — one step only.
 
+## Sandbox setup
+
+Learn's first onboarding starts with `scripts/setup.py check`. If anything is
+missing, you run `scripts/setup.py apply` yourself (Claude never changes its own
+sandbox), then onboarding continues. It sets up:
+
+- **Claude** — this project's `.claude/settings.local.json` (not committed):
+  shell sandbox on, `~/.ssh`, `~/.aws`, `~/.config/gh` and `.env` files
+  unreadable, network limited to GitHub and package registries.
+- **Codex senior** — `~/.codex/senior.config.toml`, used with
+  `codex --profile senior`: filesystem denied except the project and the plugin
+  (read) and `.wise-code/consult/` (write); shell network only to docs hosts;
+  live web search (hosted search isn't limited by the host list). Skipped when
+  Codex isn't installed.
+- **`.wise-code/consult/`** — created up front, so the senior never needs write
+  access to `.wise-code/` itself.
+
+`apply` merges into existing settings and never overwrites a file it didn't
+write: a differing file is reported as a conflict. `show-codex` prints the
+profile it would write. Skipping is allowed (`Sandbox setup: skipped` in the
+profile).
+
 ## Codex: the senior developer
 
 The skills above are Claude-only: Claude is the teacher. Codex installs from the
