@@ -152,6 +152,48 @@ class AgentRulesTests(unittest.TestCase):
         self.assertEqual((ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip(), "@AGENTS.md")
 
 
+class PortableReviewRulesTests(unittest.TestCase):
+    """AGENTS.md's Code Review Rules travel to other repositories with the file."""
+
+    def sections(self):
+        text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        start = re.search(r"^## Code Review Rules$", text, re.MULTILINE)
+        local = re.search(r"^### This repository$", text, re.MULTILINE)
+        self.assertIsNotNone(start)
+        self.assertIsNotNone(local)
+        rules = text[start.start():]
+        generic = text[start.start():local.start()]
+        return rules, generic
+
+    def test_rules_keep_the_canary_and_every_section(self):
+        rules, _ = self.sections()
+        lines = rules.splitlines()
+        self.assertIn("=>> Incoming harsh truth <<=", lines)
+        for heading in ("### Canary", "### Priorities", "### Evidence", "### Design",
+                        "### Tests", "### PR description", "### This repository",
+                        "### Comment format"):
+            self.assertIn(heading, lines)
+
+    def test_generic_part_names_nothing_specific_to_this_repository(self):
+        _, generic = self.sections()
+        body = generic.lower().replace("### this repository", "")
+        for specific in ("wise", "learner", "assist level", "hint", "pseudo",
+                         "python 3.9", "skills/", "graph"):
+            self.assertNotIn(specific, body)
+
+    def test_repository_checks_survive_the_merge(self):
+        rules, _ = self.sections()
+        local = rules[rules.index("### This repository"):]
+        for kept in ("learner data", "Hint and Pseudo", "wise.py", "Python 3.9",
+                     "never resolved by", "codex/skills/"):
+            self.assertIn(kept, local)
+
+    def test_description_is_reviewed_against_the_diff(self):
+        _, generic = self.sections()
+        for check in ("matches the diff", "not run", "why"):
+            self.assertIn(check, generic)
+
+
 class SharedPluginTests(unittest.TestCase):
     """The plugin is shared by every project, so it must not ship learner data."""
 

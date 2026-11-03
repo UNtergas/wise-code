@@ -89,7 +89,11 @@ senior-developer role you call in on purpose, never on its own:
 - `$wise-code:google` — a quick lookup answered in full, ignoring the assist
   level, from primary sources and checked against this project's versions. Not
   logged anywhere; your choice to step outside the learning loop for one answer.
-- PR review: a clean-code pass on an open pull request, on request (in progress).
+- `@codex review`: the Code Review Rules in `AGENTS.md` review as a senior
+  (clean-code design checks, tests that prove something, and the PR
+  description checked against the diff). They are portable: copy `AGENTS.md`
+  to another repository and replace its `## Repository facts` and
+  `### This repository` sections with that repository's own.
 
 Senior replies carry their own canary, distinct from the teacher's so you see
 who is talking: they start with `=>> senior on call <<=` (consult) or
