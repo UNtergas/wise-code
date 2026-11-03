@@ -1888,6 +1888,20 @@ def cmd_check_said(graph, args):
     return 0
 
 
+def unranged_text_sections(nodes):
+    """{book id: [section ids]} for Markdown or text books with sections that have
+    no line range: indexed before ranges existed, so quotes can't be located."""
+    text_books = {node["slug"]: node["id"] for node in nodes
+                  if node["type"] == "book"
+                  and not str(node.get("file", "")).lower().endswith(".pdf")}
+    found = {}
+    for node in nodes:
+        if node["type"] == "section" and node.get("book") in text_books \
+                and not node.get("lines"):
+            found.setdefault(text_books[node["book"]], []).append(node["id"])
+    return found
+
+
 def cmd_check(graph, args):
     problems, warnings = [], []
     for node_id, versions in sorted(graph.conflicts.items()):
@@ -1924,6 +1938,9 @@ def cmd_check(graph, args):
         finally:
             if not same:
                 shelf.close()
+    for book, sections in sorted(unranged_text_sections(list(graph.nodes.values())).items()):
+        warnings.append(f"{book}: Markdown or text book indexed without line ranges "
+                        f"({', '.join(sorted(sections))}); rebuild its L1")
     seen = {}
     for node in graph.of_type("concept"):
         for name in [node["id"], *node.get("aliases", [])]:

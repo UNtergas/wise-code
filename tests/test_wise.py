@@ -790,6 +790,22 @@ class ShelfTests(WiseTestCase):
                                "heading=Backoff", check=False, **s)
         self.assertIn("citation has no field 'heading'", result.stderr + result.stdout)
 
+    def test_check_flags_text_books_indexed_before_line_ranges(self):
+        s = {"root": self.shelf}
+        # An index built before line ranges: a Markdown section with pages only.
+        self.run_wise("add", "book", "slug=notes", "title=Notes", "file=shared/notes.md", **s)
+        self.run_wise("add", "section", "book=notes", "number=1", "title=Intro",
+                      "pages=1-1", **s)
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf", **s)
+        self.run_wise("add", "section", "book=ddia", "number=1", "title=Reliable",
+                      "pages=3-9", **s)
+        report = self.out("check", **s)
+        self.assertIn("warning: BK-notes: Markdown or text book indexed without line ranges "
+                      "(SEC-notes-1); rebuild its L1", report)
+        self.assertNotIn("BK-ddia", report)  # a PDF is located by pages
+        self.run_wise("set", "SEC-notes-1", "lines=1-12", **s)
+        self.assertNotIn("BK-notes", self.out("check", **s))
+
     def test_project_check_warns_on_dead_shelf_ids(self):
         self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf",
                       root=self.shelf)

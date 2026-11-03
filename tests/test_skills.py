@@ -516,6 +516,13 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("Quiz commits and pushes each answer itself", extras)
         self.assertNotIn("shelf: quiz <QB-id>", extras)
 
+    def test_text_books_without_line_ranges_are_reindexed(self):
+        step2 = self.text().split("## Step 2:")[1].split("\n## ")[0]
+        self.assertIn('wise.py --root "<shelf>" check', step2)
+        self.assertIn("indexed without line ranges", step2)
+        l1 = step2[step2.index("**L1 (outline)**"):step2.index("2. Match")]
+        self.assertIn("rebuild", l1)
+
     def test_quotes_are_checked_and_capped(self):
         text = self.text()
         self.assertIn("skills/shelf/check_quote.py", text)
