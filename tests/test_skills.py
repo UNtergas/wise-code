@@ -495,9 +495,22 @@ class ShelfTests(unittest.TestCase):
         self.assertIn("After the sync pull succeeds", flush)
         self.assertIn('git -C "<shelf>" push --quiet', flush)
 
-    def test_shelf_mode_quiz_answers_are_pushed(self):
+    def test_quiz_in_the_shelf_repo_pushes_each_answer(self):
+        # /wise-code:quiz never loads the Shelf skill, so Quiz itself must sync.
+        quiz = (ROOT / "skills/quiz/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("wise.py list book", quiz)
+        self.assertIn("**Shelf repo:**", quiz)
+        sync = quiz[quiz.index("**Shelf repo:**"):]
+        for command in ('git -C "<root>" add .wise-code',
+                        'git -C "<root>" commit -m "shelf: quiz <QB-id> <verdict>"',
+                        'git -C "<root>" pull --rebase --quiet',
+                        'git -C "<root>" push --quiet'):
+            self.assertIn(command, sync)
+        self.assertLess(sync.index("pull --rebase"), sync.index("push --quiet"))
+        # One rule, one place: Shelf points to Quiz instead of restating it.
         extras = self.text().split("## Shelf mode extras")[1].split("\n## ")[0]
-        self.assertIn("after each answered book question", extras)
+        self.assertIn("Quiz commits and pushes each answer itself", extras)
+        self.assertNotIn("shelf: quiz <QB-id>", extras)
 
     def test_quotes_are_checked_and_capped(self):
         text = self.text()

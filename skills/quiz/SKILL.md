@@ -33,6 +33,8 @@ the learner's source files.
    (nearest `.wise-code/` up to the Git root, no symlinks; without Git, the
    current directory only). If there is none, say so and suggest
    `/wise-code:learn` or `/wise-code:teach`; don't create state here.
+   Then run `wise.py list book` once: any `BK-` line means this is a shelf repo
+   (book records live only in the shelf's graph), so step 5 also syncs.
 2. Parse the arguments, ignoring case: an optional topic filter and an optional
    count (default 5, at most 10). Run `wise.py due --limit <count> [--topic <topic>]`:
    due questions, oldest first, topics interleaved. Read the ones you ask with
@@ -57,6 +59,17 @@ the learner's source files.
    next build step on that concept starts with a repair. That
    logs a `quiz` QA and reschedules the question by the Leitner rules. Run it after
    each answer, not at the end, so an interrupted quiz keeps its progress.
+   **Shelf repo:** after each recorded answer, commit and push so another machine
+   sees the new schedule. `<root>` is the repo's Git root; one call per line, no
+   `cd` or `&&`, and run `push` only if `pull` succeeded:
+   ```sh
+   git -C "<root>" add .wise-code
+   git -C "<root>" commit -m "shelf: quiz <QB-id> <verdict>"
+   git -C "<root>" pull --rebase --quiet
+   git -C "<root>" push --quiet
+   ```
+   Pull or push fails → keep the commit, say once that the push is pending, and
+   go on; the next answer's push sends it. Never force-push.
 6. If a `wrong` answer reveals a gap in a concept the graph tracks, mark it
    (`wise.py set <concept> status=reinforce notes+="…"`). Don't create concepts
    or touch pending decisions.
