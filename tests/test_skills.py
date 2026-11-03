@@ -74,6 +74,20 @@ class SkillLayoutTests(unittest.TestCase):
         self.assertEqual(claude["version"], codex["version"])
 
 
+class AgentRulesTests(unittest.TestCase):
+    """AGENTS.md is the one rule file for agents developing this repository."""
+
+    def test_codex_finds_review_rules_and_claude_imports_them(self):
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        # Codex review reads this exact heading.
+        self.assertIn("\n## Code Review Rules\n", agents)
+        for heading in ("### First make it work", "### Then make it right", "### Practice"):
+            self.assertIn(heading, agents)
+        self.assertIn("python3 -m pytest -q tests", agents)
+        # Claude Code reads CLAUDE.md; it imports AGENTS.md instead of copying it.
+        self.assertEqual((ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip(), "@AGENTS.md")
+
+
 class SharedPluginTests(unittest.TestCase):
     """The plugin is shared by every project, so it must not ship learner data."""
 
