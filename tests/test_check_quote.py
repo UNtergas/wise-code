@@ -78,6 +78,17 @@ class CheckQuoteTests(unittest.TestCase):
                          ("FOUND", None))
         self.assertEqual(cq.check(book, "-", "backoff stops retries"), ("MISSING", None))
 
+    def test_quote_over_word_cap_is_too_long_even_if_present(self):
+        long_text = " ".join(f"w{i}" for i in range(30))
+        book = Path(self.temp.name) / "long.txt"
+        book.write_text(long_text, encoding="utf-8")
+        cap = " ".join(f"w{i}" for i in range(cq.MAX_WORDS))
+        self.assertEqual(cq.check(book, "-", cap), ("FOUND", None))
+        self.assertEqual(cq.check(book, "-", cap + " w25"), ("TOO_LONG", None))
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), str(book), "-", long_text],
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout.strip()), (1, "TOO_LONG"))
+
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
         book.write_text("Idempotent requests can be retried safely.", encoding="utf-8")

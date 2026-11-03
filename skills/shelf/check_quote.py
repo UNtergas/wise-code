@@ -7,8 +7,11 @@ quote can cross a page break). Markdown and text files are searched whole; pass
 "-" as the page. Matching ignores case, whitespace, line-break hyphenation,
 typographic quotes and dashes, and common ligatures.
 
-Exit 0: found (prints the page). 1: not found. 2: the book can't be read
-(LFS_POINTER when the file is a Git LFS pointer that was never downloaded).
+A quote over MAX_WORDS words is refused as TOO_LONG before any search: the shelf
+shows short hooks, never passages.
+
+Exit 0: found (prints the page). 1: not found, or TOO_LONG. 2: the book can't be
+read (LFS_POINTER when the file is a Git LFS pointer that was never downloaded).
 """
 
 from pathlib import Path
@@ -46,6 +49,8 @@ def pdf_page(path, page):
     return result.stdout.decode("utf-8", errors="replace")
 
 
+MAX_WORDS = 25
+
 LFS_POINTER = b"version https://git-lfs.github.com/spec/v1"
 
 
@@ -59,9 +64,11 @@ def is_lfs_pointer(path):
 
 
 def check(path, page, quote, read_page=pdf_page):
-    """Return (status, page). status is FOUND, MISSING, LFS_POINTER or UNREADABLE."""
+    """Return (status, page): FOUND, MISSING, TOO_LONG, LFS_POINTER or UNREADABLE."""
     path = Path(path)
     needle = normalize(quote)
+    if len(needle.split()) > MAX_WORDS:
+        return "TOO_LONG", None
     if not needle or not path.is_file():
         return "UNREADABLE", None
     if is_lfs_pointer(path):
@@ -101,7 +108,7 @@ def main(argv):
         return 2
     status, found = check(path, page, quote)
     print(status if found is None else f"{status} p. {found}")
-    return {"FOUND": 0, "MISSING": 1}.get(status, 2)
+    return {"FOUND": 0, "MISSING": 1, "TOO_LONG": 1}.get(status, 2)
 
 
 if __name__ == "__main__":
