@@ -103,7 +103,8 @@ def reset(cwd, confirmation=None):
         for name in fresh:
             os.replace(backup / (".new-" + name), state / name)
         if GRAPH_FILES[0] in notes:
-            wise.reset_progress(wise.Graph(state))
+            with wise.Graph(state, write=True) as graph:
+                wise.reset_progress(graph)
     except (OSError, ValueError, wise.WiseError) as error:
         raise ValueError(
             "Reset did not complete. Backup location: {}. "

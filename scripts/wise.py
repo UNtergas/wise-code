@@ -25,7 +25,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
+
+try:  # Graph lock: flock on Unix, byte-range locking on Windows.
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+    import msvcrt
 
 if sys.version_info < (3, 9):  # pragma: no cover - checked by the caller's interpreter
     sys.stderr.write("wise.py needs Python 3.9 or newer\n")
@@ -165,8 +172,16 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7}|\|{7})( |$)")
 # Git keeps both sides' lines when two clones add records, instead of a conflict.
 GITATTRIBUTES = "*.jsonl merge=union\n"
+# Process-local files in graph/: the lock, the commit journal, and temp files
+# (named .<file>.<random>.tmp). Git ignores them; they never merge.
+LOCK_NAME = ".lock"
+JOURNAL_NAME = ".commit"
+GRAPH_IGNORE = f"{LOCK_NAME}\n{JOURNAL_NAME}\n.*.tmp\n"
+DATA_FILES = ("nodes.jsonl", "edges.jsonl")
 # Every file wise.py keeps inside graph/; none of them may be a symlink.
-GRAPH_FILES = ("nodes.jsonl", "edges.jsonl", ".gitattributes")
+GRAPH_FILES = (*DATA_FILES, ".gitattributes", ".gitignore", LOCK_NAME, JOURNAL_NAME)
+# How long a command waits for another wise.py using the same graph.
+LOCK_TIMEOUT = 20.0
 
 
 def stamp(node):
@@ -246,19 +261,136 @@ def find_state(start, create=False):
 # ---------------------------------------------------------------- store
 
 class Graph:
-    def __init__(self, state):
+    """The learning graph, locked from load to close.
+
+    Every command that opens a graph holds an exclusive lock on graph/.lock
+    until close(), so a save always writes the snapshot it loaded: two
+    processes take turns instead of overwriting each other (review #19, 1).
+    Use it as a context manager. A save publishes both files through a commit
+    journal, so a crash leaves the old graph or the new one, never a mix (6).
+    """
+
+    def __init__(self, state, write=False, timeout=LOCK_TIMEOUT):
         self.state = state
         self.dir = state / "graph"
         self.nodes = {}
         self.edges = set()
         self.dirty = False
+        self._lock = None
         # The state boundary holds for every path wise.py reads or writes: a
         # symlinked folder would move the files outside it as surely as a
         # symlinked file.
         for path in (state, self.dir, *(self.dir / name for name in GRAPH_FILES)):
             if path.is_symlink():
                 raise WiseError(f"{path} is a symlink; refusing")
-        self._load()
+        # No graph/ yet: nothing to read or lock. save() creates it and
+        # refuses if another process got there first.
+        if self.dir.is_dir():
+            try:
+                self._acquire(timeout)
+            except PermissionError:
+                if write:
+                    raise WiseError(f"can't lock {self.dir}: not writable") from None
+                # A read-only checkout: read without the lock, but never a
+                # half-committed save.
+            try:
+                self._recover()
+                self._load()
+            except BaseException:
+                self.close()
+                raise
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        lock, self._lock = getattr(self, "_lock", None), None
+        if lock is not None:
+            os.close(lock)  # closing the descriptor releases the lock
+
+    # -- lock and commit
+
+    def _acquire(self, timeout):
+        path = self.dir / LOCK_NAME
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o644)
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if fcntl:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:  # pragma: no cover - Windows
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    os.close(fd)
+                    raise WiseError(f"{self.dir} is busy: another wise.py is using it; "
+                                    "retry when it finishes") from None
+                time.sleep(0.05)
+        self._lock = fd
+        ignore = self.dir / ".gitignore"
+        if not ignore.exists():
+            self._publish(".gitignore", GRAPH_IGNORE)
+
+    def _fsync_dir(self):
+        if hasattr(os, "O_DIRECTORY"):  # POSIX: make renames survive power loss
+            fd = os.open(self.dir, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+
+    def _temp(self, name, text):
+        """Write text to a durable temp file beside name; return its file name."""
+        handle, temp = tempfile.mkstemp(dir=self.dir, prefix=f".{name}.", suffix=".tmp")
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        return Path(temp).name
+
+    def _publish(self, name, text):
+        os.replace(self.dir / self._temp(name, text), self.dir / name)
+        self._fsync_dir()
+
+    def _checkpoint(self, step):
+        """No-op; tests replace it to interrupt a save after each step."""
+
+    def _recover(self):
+        """Finish a save that stopped after its journal was published."""
+        journal = self.dir / JOURNAL_NAME
+        if journal.exists():
+            if self._lock is None:
+                raise WiseError(f"{self.dir} has an unfinished save; run any write "
+                                "command where the graph is writable to finish it")
+            try:
+                moves = json.loads(journal.read_text(encoding="utf-8"))
+                valid = isinstance(moves, list) and all(
+                    isinstance(m, list) and len(m) == 2 and m[1] in DATA_FILES
+                    and isinstance(m[0], str) and re.fullmatch(r"\.[\w.-]+\.tmp", m[0])
+                    for m in moves)
+            except ValueError:
+                valid = False
+            if not valid:
+                raise WiseError(f"{journal} is unreadable; restore graph/ from Git")
+            # Roll forward: a temp already moved is already in place.
+            for temp, name in moves:
+                if (self.dir / temp).exists():
+                    os.replace(self.dir / temp, self.dir / name)
+            self._fsync_dir()
+            journal.unlink()
+            self._fsync_dir()
+        if self._lock is not None:
+            # Temps no journal names come from a save that stopped before
+            # publishing; the old graph is intact, so they are garbage.
+            for leftover in self.dir.glob(".*.tmp"):
+                leftover.unlink()
 
     def _load(self):
         nodes_path = self.dir / "nodes.jsonl"
@@ -294,22 +426,35 @@ class Graph:
     def save(self):
         if not self.dirty:
             return
-        self.dir.mkdir(parents=True, exist_ok=True)
-        attributes = self.dir / ".gitattributes"
-        if not attributes.exists():
-            attributes.write_text(GITATTRIBUTES, encoding="utf-8")
+        if self._lock is None:
+            # graph/ didn't exist at load: lock now, and refuse if another
+            # process created the graph in between (this snapshot is stale).
+            self.dir.mkdir(parents=True, exist_ok=True)
+            self._acquire(LOCK_TIMEOUT)
+            if any((self.dir / name).exists() for name in DATA_FILES):
+                raise WiseError("the graph was created by another wise.py meanwhile; "
+                                "nothing saved, retry the command")
+        if not (self.dir / ".gitattributes").exists():
+            self._publish(".gitattributes", GITATTRIBUTES)
         node_lines = [json.dumps(self.nodes[key], ensure_ascii=False, sort_keys=True)
                       for key in sorted(self.nodes)]
         edge_lines = [json.dumps({"from": a, "rel": r, "to": b}, ensure_ascii=False,
                                  sort_keys=True)
                       for a, r, b in sorted(self.edges)]
-        for name, lines in (("nodes.jsonl", node_lines), ("edges.jsonl", edge_lines)):
-            target = self.dir / name
-            # Write beside the target and rename: a crash never leaves half a file.
-            handle, temp = tempfile.mkstemp(dir=self.dir, prefix=f".{name}.")
-            with os.fdopen(handle, "w", encoding="utf-8") as stream:
-                stream.write("\n".join(lines) + ("\n" if lines else ""))
-            os.replace(temp, target)
+        # 1. Both new files, durable, beside their targets.
+        moves = [[self._temp(name, "\n".join(lines) + ("\n" if lines else "")), name]
+                 for name, lines in (("nodes.jsonl", node_lines), ("edges.jsonl", edge_lines))]
+        self._checkpoint("temps written")
+        # 2. The journal is the single commit point: once it exists, the new
+        #    graph is the graph, and _recover finishes the moves if we stop.
+        self._publish(JOURNAL_NAME, json.dumps(moves))
+        self._checkpoint("journal published")
+        for temp, name in moves:
+            os.replace(self.dir / temp, self.dir / name)
+            self._checkpoint(f"{name} replaced")
+        self._fsync_dir()
+        (self.dir / JOURNAL_NAME).unlink()
+        self._fsync_dir()
         self.dirty = False
 
     # -- lookup
@@ -1661,11 +1806,18 @@ def cmd_check(graph, args):
             if not (repo / node["path"]).exists():
                 warnings.append(f"{node['id']}: file gone: {node['path']}")
     if args.shelf:
-        shelf = Graph(Path(args.shelf).resolve() / ".wise-code")
-        for node in graph.of_type("concept"):
-            for ref in node.get("shelf", []):
-                if ref not in shelf.nodes:
-                    warnings.append(f"{node['id']}: shelf id not found: {ref}")
+        shelf_state = Path(args.shelf).resolve() / ".wise-code"
+        # Same graph: reuse it; a second lock in this process would wait forever.
+        same = shelf_state.resolve() == graph.state.resolve()
+        shelf = graph if same else Graph(shelf_state)
+        try:
+            for node in graph.of_type("concept"):
+                for ref in node.get("shelf", []):
+                    if ref not in shelf.nodes:
+                        warnings.append(f"{node['id']}: shelf id not found: {ref}")
+        finally:
+            if not same:
+                shelf.close()
     seen = {}
     for node in graph.of_type("concept"):
         for name in [node["id"], *node.get("aliases", [])]:
@@ -2283,8 +2435,8 @@ def main(argv=None):
         if state is None:
             print("no .wise-code here; nothing recorded yet")
             return 0
-        graph = Graph(state)
-        return args.func(graph, args) or 0
+        with Graph(state, write=args.write) as graph:
+            return args.func(graph, args) or 0
     except WiseError as error:
         print(f"wise.py: {error}", file=sys.stderr)
         return 2

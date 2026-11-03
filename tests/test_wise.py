@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -335,6 +336,126 @@ class ValidationTests(WiseTestCase):
         fixture.build(self.project, qa=40, questions=20, sessions=2)
         self.run_wise("import-md")
         self.assertIn("ok · ", self.out("check"))
+
+
+class ConcurrencyTests(WiseTestCase):
+    """Review #19 finding 1: overlapping writers never silently lose records."""
+
+    def state(self):
+        return wise.find_state(self.project, create=True)
+
+    def spawn(self, *args):
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": "2026-10-28"}
+        return subprocess.Popen(
+            [sys.executable, str(SCRIPT), "--root", str(self.project), *args],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+
+    def add_concept(self, graph, name):
+        node_id = wise.slugify(name)
+        graph.nodes[node_id] = {"id": node_id, "type": "concept", "name": name,
+                                "created": "2026-10-28"}
+        graph.dirty = True
+        graph.save()
+
+    def test_second_process_waits_and_both_additions_survive(self):
+        self.run_wise("add", "concept", "name=Seed")
+        with wise.Graph(self.state(), write=True) as graph:
+            other = self.spawn("add", "concept", "name=Beta")
+            time.sleep(1.0)
+            self.assertIsNone(other.poll(), "the second writer must wait for the lock")
+            self.add_concept(graph, "Alpha")
+        _, err = other.communicate(timeout=30)
+        self.assertEqual(other.returncode, 0, err)
+        self.assertEqual({n["id"] for n in self.nodes()}, {"seed", "alpha", "beta"})
+
+    def test_parallel_independent_processes_keep_every_record(self):
+        self.run_wise("add", "concept", "name=Seed")
+        names = [f"Topic {chr(65 + i)} unique{i}" for i in range(8)]
+        procs = [self.spawn("add", "--force", "concept", f"name={n}") for n in names]
+        for proc in procs:
+            _, err = proc.communicate(timeout=60)
+            self.assertEqual(proc.returncode, 0, err)
+        self.assertEqual({n["id"] for n in self.nodes()},
+                         {"seed", *(wise.slugify(n) for n in names)})
+
+    def test_stale_writer_on_a_new_graph_fails_explicitly(self):
+        # No graph yet: A loads an empty graph, B creates it, A's save must refuse.
+        with wise.Graph(self.state(), write=True) as graph:
+            self.run_wise("add", "concept", "name=Beta")
+            with self.assertRaisesRegex(wise.WiseError, "created by another wise.py"):
+                self.add_concept(graph, "Alpha")
+        self.assertEqual({n["id"] for n in self.nodes()}, {"beta"})
+
+    def test_two_instances_in_one_process_do_not_overwrite(self):
+        self.run_wise("add", "concept", "name=Seed")
+        with wise.Graph(self.state(), write=True) as first:
+            with self.assertRaisesRegex(wise.WiseError, "busy"):
+                wise.Graph(self.state(), write=True, timeout=0.2)
+            self.add_concept(first, "Alpha")
+        self.assertEqual({n["id"] for n in self.nodes()}, {"seed", "alpha"})
+
+    def test_process_files_are_git_ignored(self):
+        self.run_wise("add", "concept", "name=Seed")
+        ignore = (self.project / ".wise-code" / "graph" / ".gitignore").read_text()
+        for name in (".lock", ".commit", ".*.tmp"):
+            self.assertIn(name, ignore.splitlines())
+
+
+class CommitTests(WiseTestCase):
+    """Review #19 finding 6: an interrupted save leaves one whole graph."""
+
+    class Stop(Exception):
+        pass
+
+    STEPS = ("temps written", "journal published", "nodes.jsonl replaced",
+             "edges.jsonl replaced")
+
+    def graph_state(self):
+        graph = self.project / ".wise-code" / "graph"
+        nodes = {n["id"] for n in self.nodes()}
+        edges = [json.loads(line) for line in
+                 (graph / "edges.jsonl").read_text(encoding="utf-8").splitlines()]
+        return nodes, {(e["from"], e["rel"], e["to"]) for e in edges}
+
+    def test_interrupted_delete_recovers_old_or_new_graph_in_a_new_process(self):
+        old = ({"alpha", "beta"}, {("alpha", "prereq", "beta")})
+        new = ({"alpha"}, set())
+        for step in self.STEPS:
+            with self.subTest(step=step):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                self.run_wise("add", "concept", "name=Alpha")
+                self.run_wise("add", "concept", "name=Beta")
+                self.run_wise("link", "alpha", "prereq", "beta")
+                self.assertEqual(self.graph_state(), old)
+
+                def stop_at(_, reached, step=step):
+                    if reached == step:
+                        raise self.Stop(step)
+                state = wise.find_state(self.project)
+                original = wise.Graph._checkpoint
+                wise.Graph._checkpoint = stop_at
+                try:
+                    with wise.Graph(state, write=True) as graph:
+                        graph.remove("beta")
+                        with self.assertRaises(self.Stop):
+                            graph.save()
+                finally:
+                    wise.Graph._checkpoint = original
+                # A new process loads (and, if needed, finishes) the graph.
+                self.assertIn("ok · ", self.out("check"))
+                expected = old if step == "temps written" else new
+                self.assertEqual(self.graph_state(), expected)
+                leftovers = [p.name for p in (state / "graph").iterdir()
+                             if p.name.endswith(".tmp") or p.name == ".commit"]
+                self.assertEqual(leftovers, [])
+
+    def test_unreadable_journal_stops_instead_of_guessing(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        (self.project / ".wise-code" / "graph" / ".commit").write_text(
+            '[["../../escape.tmp", "nodes.jsonl"]]', encoding="utf-8")
+        bad = self.run_wise("list", "concept", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("unreadable", bad.stderr)
 
 
 class ViewTests(WiseTestCase):

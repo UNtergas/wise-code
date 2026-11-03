@@ -33,6 +33,7 @@ The "before" column grows with history; the "after" column doesn't.
   nodes.jsonl     one JSON object per line, sorted by id
   edges.jsonl     {"from", "rel", "to"}, sorted
   .gitattributes  *.jsonl merge=union
+  .gitignore      .lock, .commit, .*.tmp (process-local, never merged)
 ```
 
 - JSONL is canonical. Sorted lines give line-level git diffs.
@@ -45,7 +46,19 @@ The "before" column grows with history; the "after" column doesn't.
   both sides changed the same node, the loader keeps the newer one and the next
   write drops the other line. Leftover conflict markers are ignored.
 - Writes go only through the script: it assigns IDs, validates fields and
-  edges, refuses near-duplicate concepts, and rewrites the files atomically.
+  edges (stored JSON types, not just CLI text), and refuses near-duplicate
+  concepts. `--force` overrides similarity, never an existing concept id.
+- One writer at a time: every command holds an exclusive lock on `graph/.lock`
+  from load to exit, so a save always writes the snapshot it loaded. A second
+  command waits (up to 20 s, then fails with "busy"). When the graph doesn't
+  exist yet, the first save creates it and a stale second save is refused.
+- Saves commit as one unit: both new files are written and synced, then the
+  journal `graph/.commit` is published, then the files are renamed into place.
+  Interrupted before the journal: the old graph stays, its temps are deleted.
+  After it: the next command finishes the renames. Readers never see a mix.
+  Process crashes are covered; files and the folder are fsynced, but power-loss
+  durability still depends on the file system honoring fsync.
+- Symlinks: the state folder, `graph/` and every file in it are refused.
 - If Python 3.9+ is missing or the command is blocked, Claude stops learning
   writes and guides the fix. There is no Markdown fallback.
 

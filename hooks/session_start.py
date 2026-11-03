@@ -88,8 +88,9 @@ def graph_start_check_pending(state):
     try:
         sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
         import wise  # noqa: PLC0415 - loaded only when a graph exists
-        graph = wise.Graph(state)
-        return any(n.get("start_check") == "pending" for n in graph.of_type("session"))
+        # Short wait: a session start never stalls behind a long write.
+        with wise.Graph(state, timeout=2) as graph:
+            return any(n.get("start_check") == "pending" for n in graph.of_type("session"))
     # SystemExit too: wise.py exits on Python < 3.9 at import time, and that
     # BaseException would otherwise escape and abort the hook.
     except (Exception, SystemExit):  # noqa: BLE001 - any failure stays silent
