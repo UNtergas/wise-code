@@ -25,6 +25,9 @@ class SetupCase(unittest.TestCase):
         # developer's machine can't change what setup detects.
         self.bin = base / "bin"
         self.bin.mkdir()
+        # Linux sandbox dependencies present unless a test removes them.
+        for tool in ("bwrap", "socat"):
+            self.tool(tool)
         self.project = base / "project"
         self.project.mkdir()
         (self.project / ".git").mkdir()
@@ -35,9 +38,14 @@ class SetupCase(unittest.TestCase):
         (self.codex_plugin / ".codex-plugin/plugin.json").write_text(
             json.dumps({"name": "wise-code"}), encoding="utf-8")
 
-    def setup(self, *args, cwd=None):
+    def tool(self, name):
+        path = self.bin / name
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(0o755)
+
+    def setup(self, *args, cwd=None, platform="linux"):
         env = {"PATH": str(self.bin), "HOME": str(self.home),
-               "CODEX_HOME": str(self.codex_home)}
+               "CODEX_HOME": str(self.codex_home), "WISE_SETUP_PLATFORM": platform}
         return subprocess.run([sys.executable, str(ROOT / "scripts/setup.py"), *args],
                               text=True, capture_output=True, env=env, timeout=30,
                               cwd=cwd or self.project)
@@ -67,6 +75,7 @@ class FreshProjectTests(SetupCase):
         self.assertTrue((self.project / ".wise-code/consult").is_dir())
         settings = self.claude()
         self.assertIs(settings["sandbox"]["enabled"], True)
+        self.assertIs(settings["sandbox"]["failIfUnavailable"], True)
         self.assertIn("~/.ssh", settings["sandbox"]["filesystem"]["denyRead"])
         self.assertIn("*.github.com", settings["sandbox"]["network"]["allowedDomains"])
         self.assertIn("Read(~/.ssh/**)", settings["permissions"]["deny"])
@@ -150,6 +159,38 @@ class ExistingClaudeSettingsTests(SetupCase):
         self.assertFalse(self.profile.is_symlink())
         self.assertIn("sandbox", self.claude())
 
+    def test_fail_open_left_on_purpose_is_a_conflict(self):
+        # Without failIfUnavailable the sandbox silently runs commands
+        # unsandboxed when it can't start (review on #26).
+        self.write({"sandbox": {"failIfUnavailable": False}})
+        before = self.settings.read_bytes()
+        result = self.setup("apply")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^conflict +Claude sandbox")
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_unavailable_sandbox_is_a_conflict_and_writes_nothing(self):
+        # failIfUnavailable would make Claude Code refuse to start in this
+        # project, so setup must not write it where the sandbox can't run.
+        for case, platform, missing in (("native Windows", "win32", None),
+                                        ("Linux without bubblewrap", "linux", "bwrap"),
+                                        ("Linux without socat", "linux", "socat")):
+            with self.subTest(case=case):
+                if missing:
+                    (self.bin / missing).unlink()
+                result = self.setup("apply", platform=platform)
+                self.assertEqual(result.returncode, 1)
+                self.assertRegex(result.stdout, r"(?m)^conflict +Claude sandbox")
+                self.assertIn("WSL2" if platform == "win32" else missing, result.stdout)
+                self.assertFalse(self.settings.exists())
+                if missing:
+                    self.tool(missing)
+
+    def test_macos_needs_no_extra_tools(self):
+        for tool in ("bwrap", "socat"):
+            (self.bin / tool).unlink()
+        self.assertEqual(self.setup("apply", platform="darwin").returncode, 0)
+
     def test_symlinked_settings_are_refused(self):
         outside = Path(self.temp.name) / "outside.json"
         outside.write_text("{}", encoding="utf-8")
@@ -183,6 +224,44 @@ class CodexProfileTests(SetupCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn(json.dumps(str(given)) + ' = "read"',
                       self.profile.read_text(encoding="utf-8"))
+
+    def test_legacy_sandbox_settings_block_the_profile(self):
+        # Any loaded sandbox_mode or [sandbox_workspace_write] makes Codex ignore
+        # default_permissions, so the senior profile would not apply (review on #26).
+        self.setup("apply")
+        cases = {self.codex_home / "config.toml": 'model = "x"\nsandbox_mode = "workspace-write"\n',
+                 self.project / ".codex/config.toml": "[sandbox_workspace_write]\nnetwork_access = true\n"}
+        for path, text in cases.items():
+            with self.subTest(config=str(path)):
+                path.parent.mkdir(exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+                for command in ("check", "apply"):
+                    result = self.setup(command)
+                    self.assertEqual(result.returncode, 1, command)
+                    self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+                    self.assertIn(str(path), result.stdout)
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
+                path.unlink()
+
+    def test_commented_legacy_key_is_not_a_conflict(self):
+        (self.codex_home / "config.toml").write_text('# sandbox_mode = "read-only"\n',
+                                                    encoding="utf-8")
+        self.assertEqual(self.setup("apply").returncode, 0)
+
+    def test_profile_with_non_bmp_plugin_path_is_valid_toml(self):
+        # json.dumps escaped 🚀 as a surrogate pair, which TOML rejects (review on #26).
+        given = Path(self.temp.name) / "plugin-🚀" / 'we"ird\\path'
+        given.mkdir(parents=True)
+        result = self.setup("apply", "--codex-plugin-root", str(given))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn("🚀", text)
+        try:
+            import tomllib
+        except ImportError:  # Python < 3.11: no parser to check with
+            self.skipTest("tomllib needs Python 3.11+")
+        data = tomllib.loads(text)
+        self.assertEqual(data["permissions"]["senior"]["filesystem"][str(given)], "read")
 
     def test_without_codex_installed_the_profile_is_not_applicable(self):
         import shutil

@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -45,6 +46,13 @@ DOCS_HOSTS = ("developer.mozilla.org", "nodejs.org", "www.typescriptlang.org",
               "typeorm.io", "www.mongodb.com", "docs.python.org", "*.github.com",
               "raw.githubusercontent.com")
 
+# A loaded `sandbox_mode` or `[sandbox_workspace_write]` makes Codex use those
+# older settings instead of `default_permissions`, so the senior profile would
+# silently not apply.
+LEGACY_SANDBOX = re.compile(
+    r"^[ \t]*(sandbox_mode[ \t]*=|sandbox_workspace_write[ \t]*\.|\[[ \t]*sandbox_workspace_write[ \t]*\])",
+    re.MULTILINE)
+
 PROFILE_MARKER = "# Managed by wise-code scripts/setup.py; edit freely, setup won't overwrite."
 
 
@@ -55,6 +63,53 @@ class Item:
 
 # ---------------------------------------------------------------- pure parts
 
+def platform():
+    # Tests set WISE_SETUP_PLATFORM; real runs use the interpreter's platform.
+    return os.environ.get("WISE_SETUP_PLATFORM") or sys.platform
+
+
+def sandbox_unavailable():
+    """Why Claude Code's sandbox can't run here, or None.
+
+    With failIfUnavailable set, Claude Code refuses to start where the sandbox
+    can't run, so setup must not write that setting on such a machine.
+    """
+    if platform() == "win32":
+        return ("the sandbox doesn't run on native Windows; run Claude Code inside "
+                "WSL2, or skip setup")
+    if platform().startswith("linux"):
+        missing = [tool for tool in ("bwrap", "socat") if shutil.which(tool) is None]
+        if missing:
+            return (f"sandbox dependencies missing: {', '.join(missing)}; install "
+                    "bubblewrap and socat (apt-get or dnf), then check again")
+    return None
+
+
+def toml_string(text):
+    """A TOML basic string: escape only what TOML requires, keep all Unicode."""
+    out = []
+    for char in str(text):
+        if char in ('"', "\\"):
+            out.append("\\" + char)
+        elif ord(char) < 0x20 or ord(char) == 0x7F:
+            out.append(f"\\u{ord(char):04X}")
+        else:
+            out.append(char)
+    return '"' + "".join(out) + '"'
+
+
+def legacy_sandbox_files(paths):
+    """The loaded Codex configs that carry legacy sandbox settings."""
+    found = []
+    for path in paths:
+        try:
+            if path.is_file() and LEGACY_SANDBOX.search(path.read_text(encoding="utf-8")):
+                found.append(path)
+        except (OSError, UnicodeError):
+            continue
+    return found
+
+
 def merge_claude(settings):
     """(merged, problem): add every required entry; problem is a conflict or None."""
     if not isinstance(settings, dict):
@@ -62,10 +117,14 @@ def merge_claude(settings):
     sandbox = settings.get("sandbox", {})
     if not isinstance(sandbox, dict):
         return None, "`sandbox` is not an object"
-    if sandbox.get("enabled") is False:
-        return None, "`sandbox.enabled` is false; turn it on yourself or remove the key"
+    for key in ("enabled", "failIfUnavailable"):
+        if sandbox.get(key) is False:
+            return None, f"`sandbox.{key}` is false; set it to true yourself or remove the key"
     merged = json.loads(json.dumps(settings))
     merged.setdefault("sandbox", {})["enabled"] = True
+    # Fail closed: without this, a sandbox that can't start runs commands
+    # unsandboxed and the deny rules above protect nothing.
+    merged["sandbox"]["failIfUnavailable"] = True
     for path, entries in CLAUDE_REQUIRED.items():
         node = merged
         for key in path[:-1]:
@@ -80,7 +139,7 @@ def merge_claude(settings):
 
 
 def codex_profile(plugin_root):
-    hosts = "\n".join(f'{json.dumps(h)} = "allow"' for h in DOCS_HOSTS)
+    hosts = "\n".join(f'{toml_string(h)} = "allow"' for h in DOCS_HOSTS)
     return f"""{PROFILE_MARKER}
 # WiseCode senior: run `codex --profile senior` in the project folder.
 default_permissions = "senior"
@@ -97,7 +156,7 @@ extends = ":read-only"
 [permissions.senior.filesystem]
 ":root" = "deny"
 ":minimal" = "read"
-{json.dumps(str(plugin_root))} = "read"
+{toml_string(plugin_root)} = "read"
 
 [permissions.senior.filesystem.":workspace_roots"]
 "." = "read"
@@ -153,6 +212,9 @@ def claude_item(project):
     for target in (path.parent, path):
         if target.is_symlink():
             return Item(name, "conflict", f"{target} is a symlink; refusing")
+    unavailable = sandbox_unavailable()
+    if unavailable:
+        return Item(name, "conflict", unavailable)
     existing = {}
     if path.exists():
         try:
@@ -185,12 +247,18 @@ def find_codex_plugin(codex_home):
     return None
 
 
-def codex_item(codex_home, plugin_root):
+def codex_item(codex_home, plugin_root, project):
     name = "Codex senior profile"
     # Installed means the CLI is on PATH or Codex has created its home; a CLI
     # that was never run has no home yet and still needs the profile.
     if not codex_home.is_dir() and shutil.which("codex") is None:
         return Item(name, "n/a", f"Codex not installed (no `codex` on PATH, no {codex_home})")
+    legacy = legacy_sandbox_files([codex_home / "config.toml", project / ".codex" / "config.toml"])
+    if legacy:
+        files = ", ".join(str(f) for f in legacy)
+        return Item(name, "conflict", f"{files} sets sandbox_mode or [sandbox_workspace_write]; "
+                    "while loaded, Codex ignores the senior permission profile. Remove "
+                    "those keys (permission profiles replace them), then check again")
     path = codex_home / "senior.config.toml"
     if path.is_symlink():
         return Item(name, "conflict", f"{path} is a symlink; refusing")
@@ -217,7 +285,7 @@ def items(args):
     project = wise.git_root(start) or start
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     plugin = Path(args.codex_plugin_root).resolve() if args.codex_plugin_root else None
-    return [consult_item(project), claude_item(project), codex_item(codex_home, plugin)]
+    return [consult_item(project), claude_item(project), codex_item(codex_home, plugin, project)]
 
 
 # ---------------------------------------------------------------- commands

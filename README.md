@@ -78,13 +78,19 @@ missing, you run `scripts/setup.py apply` yourself (Claude never changes its own
 sandbox), then onboarding continues. It sets up:
 
 - **Claude** — this project's `.claude/settings.local.json` (not committed):
-  shell sandbox on, `~/.ssh`, `~/.aws`, `~/.config/gh` and `.env` files
-  unreadable, network limited to GitHub and package registries.
+  shell sandbox on and fail-closed (`failIfUnavailable`), `~/.ssh`, `~/.aws`,
+  `~/.config/gh` and `.env` files unreadable to both the shell and the Read
+  tool, network limited to GitHub and package registries. Where the sandbox
+  can't run (native Windows, or Linux without `bubblewrap` and `socat`), setup
+  reports a conflict instead of writing a setting that would stop Claude Code
+  from starting: use WSL2 or install the packages, or skip.
 - **Codex senior** — `~/.codex/senior.config.toml`, used with
   `codex --profile senior`: filesystem denied except the project and the plugin
   (read) and `.wise-code/consult/` (write); shell network only to docs hosts;
   live web search (hosted search isn't limited by the host list). Skipped when
-  Codex isn't installed.
+  Codex isn't installed. A `sandbox_mode` or `[sandbox_workspace_write]` in
+  `~/.codex/config.toml` or the project's `.codex/config.toml` is a conflict:
+  while loaded, Codex ignores permission profiles.
 - **`.wise-code/consult/`** — created up front, so the senior never needs write
   access to `.wise-code/` itself.
 
