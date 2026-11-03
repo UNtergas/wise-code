@@ -89,6 +89,23 @@ class CheckQuoteTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual((result.returncode, result.stdout.strip()), (1, "TOO_LONG"))
 
+    def test_markdown_heading_scopes_the_search(self):
+        book = Path(self.temp.name) / "guide.md"
+        book.write_text("# Retries\n\nBackoff spreads retries over time.\n\n"
+                        "## Jitter\n\nJitter breaks up thundering herds.\n\n"
+                        "# Queues\n\nQueues absorb bursts.\n", encoding="utf-8")
+        check = lambda heading, quote: cq.check(book, heading, quote)
+        self.assertEqual(check("Retries", "backoff spreads retries"), ("FOUND", "Retries"))
+        # A subsection belongs to its parent heading's block.
+        self.assertEqual(check("Retries", "thundering herds"), ("FOUND", "Retries"))
+        self.assertEqual(check("jitter", "thundering herds"), ("FOUND", "Jitter"))
+        # Present in the book, but under another heading: the cited place is wrong.
+        self.assertEqual(check("Jitter", "queues absorb bursts"), ("MISSING", None))
+        self.assertEqual(check("Caching", "queues absorb bursts"), ("NO_HEADING", None))
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), str(book), "Queues",
+                                 "absorb bursts"], capture_output=True, text=True, timeout=10)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "FOUND § Queues"))
+
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
         book.write_text("Idempotent requests can be retried safely.", encoding="utf-8")

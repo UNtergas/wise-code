@@ -769,6 +769,16 @@ class ShelfTests(WiseTestCase):
         self.assertIn("p: 1 citations · 1 sections · understood 1 · not yet 0",
                       self.out("impact", "ddia", **s))
 
+    def test_markdown_book_citation_records_heading_not_page(self):
+        s = {"root": self.shelf}
+        self.run_wise("add", "book", "slug=notes", "title=Notes", "file=shared/notes.md", **s)
+        self.run_wise("add", "section", "book=notes", "number=2", "title=Backoff", **s)
+        cid = self.out("add", "citation", "project=p", "question=Q", "heading=Backoff",
+                       "--on", "SEC-notes-2", **s).strip()
+        node = next(n for n in self.nodes(self.shelf) if n["id"] == cid)
+        self.assertEqual(node["heading"], "Backoff")
+        self.assertNotIn("page", node)
+
     def test_project_check_warns_on_dead_shelf_ids(self):
         self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf",
                       root=self.shelf)

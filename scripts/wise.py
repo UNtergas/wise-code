@@ -130,7 +130,8 @@ TYPES = {
                            "l2": "date"}},
     "citation": {"prefix": "CIT", "required": ["project", "question"], "fields": {
         "date": "date", "project": "str", "question": "str", "quote": "str",
-        "page": "int", "status": ("sent",) + READ_VERDICTS, "updated": "date"}},
+        "page": "int", "heading": "str", "status": ("sent",) + READ_VERDICTS,
+        "updated": "date"}},
     "read": {"prefix": "RD", "required": ["project"], "fields": {
         "date": "date", "project": "str", "verdict": READ_VERDICTS,
         "evidence": "str"}},

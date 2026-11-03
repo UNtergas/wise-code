@@ -1,16 +1,18 @@
 """Check that a quote really appears in a shelf book, near the cited page.
 
-Usage: check_quote.py <book file> <page|-> "<quote>"
+Usage: check_quote.py <book file> <page|heading|-> "<quote>"
 
 PDF pages are read with pdftotext (page, then the page before and after, since a
-quote can cross a page break). Markdown and text files are searched whole; pass
-"-" as the page. Matching ignores case, whitespace, line-break hyphenation,
+quote can cross a page break). A Markdown book takes the cited heading instead of
+a page and is searched only under that heading, subsections included (NO_HEADING
+when the book has no such heading). Plain text has no structure: pass "-" and it
+is searched whole. Matching ignores case, whitespace, line-break hyphenation,
 typographic quotes and dashes, and common ligatures.
 
 A quote over MAX_WORDS words is refused as TOO_LONG before any search: the shelf
 shows short hooks, never passages.
 
-Exit 0: found (prints the page). 1: not found, or TOO_LONG. 2: the book can't be
+Exit 0: found (prints the page or heading). 1: MISSING, NO_HEADING or TOO_LONG. 2: the book can't be
 read (LFS_POINTER when the file is a Git LFS pointer that was never downloaded).
 """
 
@@ -63,8 +65,41 @@ def is_lfs_pointer(path):
         return False
 
 
+HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+
+
+def heading_block(text, heading):
+    """Return (heading as written, its text up to the next same-or-higher heading)."""
+    wanted = normalize(heading)
+    lines = text.splitlines()
+    for start, line in enumerate(lines):
+        match = HEADING_RE.match(line)
+        if not match or normalize(match.group(2)) != wanted:
+            continue
+        level = len(match.group(1))
+        end = next((i for i in range(start + 1, len(lines))
+                    if (m := HEADING_RE.match(lines[i])) and len(m.group(1)) <= level),
+                   len(lines))
+        return match.group(2), "\n".join(lines[start + 1:end])
+    return None, None
+
+
+def check_text(path, heading, needle):
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "UNREADABLE", None
+    if heading in ("", "-") or path.suffix.lower() != ".md":
+        return ("FOUND" if needle in normalize(text) else "MISSING"), None
+    title, block = heading_block(text, heading)
+    if title is None:
+        return "NO_HEADING", None
+    return ("FOUND", title) if needle in normalize(block) else ("MISSING", None)
+
+
 def check(path, page, quote, read_page=pdf_page):
-    """Return (status, page): FOUND, MISSING, TOO_LONG, LFS_POINTER or UNREADABLE."""
+    """Return (status, where): FOUND, MISSING, NO_HEADING, TOO_LONG, LFS_POINTER or
+    UNREADABLE. `where` is the page for a PDF, the heading for Markdown, else None."""
     path = Path(path)
     needle = normalize(quote)
     if len(needle.split()) > MAX_WORDS:
@@ -74,11 +109,7 @@ def check(path, page, quote, read_page=pdf_page):
     if is_lfs_pointer(path):
         return "LFS_POINTER", None
     if path.suffix.lower() != ".pdf":
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return "UNREADABLE", None
-        return ("FOUND" if needle in normalize(text) else "MISSING"), None
+        return check_text(path, str(page), needle)
     if read_page is pdf_page and shutil.which("pdftotext") is None:
         return "UNREADABLE", None
     page = int(page)
@@ -107,8 +138,9 @@ def main(argv):
         print("UNREADABLE: a PDF needs a page number")
         return 2
     status, found = check(path, page, quote)
-    print(status if found is None else f"{status} p. {found}")
-    return {"FOUND": 0, "MISSING": 1, "TOO_LONG": 1}.get(status, 2)
+    where = "" if found is None else (f" § {found}" if isinstance(found, str) else f" p. {found}")
+    print(status + where)
+    return {"FOUND": 0, "MISSING": 1, "NO_HEADING": 1, "TOO_LONG": 1}.get(status, 2)
 
 
 if __name__ == "__main__":
