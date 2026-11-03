@@ -1,6 +1,7 @@
 """Preview by default; reset only a confirmed snapshot of local learning notes."""
 
 import argparse
+import contextlib
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -65,12 +66,36 @@ def snapshot(cwd):
     return state, notes, digest.hexdigest()
 
 
+def locked_graph(cwd):
+    """Lock the learning graph, finishing any interrupted save first.
+
+    Taken before the snapshot and held through the reset, so the preview, the
+    backup and the reset all see the same committed graph, and no other
+    wise.py writes in between.
+    """
+    state = state_directory(cwd)
+    if state is None or not (state / "graph").is_dir():
+        return contextlib.nullcontext()
+    try:
+        return wise.Graph(state, write=True)
+    except wise.WiseError as error:
+        raise ValueError("Learning graph unavailable; nothing reset. {}".format(error)) from None
+
+
 def reset(cwd, confirmation=None):
     cwd = Path(cwd)
     if not cwd.is_absolute() or not cwd.is_dir():
         raise ValueError("Use an existing absolute project working directory.")
     cwd = cwd.resolve()
+    with locked_graph(cwd) as graph:
+        return _reset(cwd, confirmation, graph)
+
+
+def _reset(cwd, confirmation, graph):
     state, notes, fingerprint = snapshot(cwd)
+    if graph is None and GRAPH_FILES[0] in notes:
+        # Another wise.py created the graph after the lock check.
+        raise ValueError("Learning graph appeared during reset; preview again. Nothing reset.")
     if confirmation is not None and (not notes or confirmation != fingerprint):
         raise ValueError("Target or notes changed. Preview and confirm again; nothing reset.")
     if not notes:
@@ -103,8 +128,7 @@ def reset(cwd, confirmation=None):
         for name in fresh:
             os.replace(backup / (".new-" + name), state / name)
         if GRAPH_FILES[0] in notes:
-            with wise.Graph(state, write=True) as graph:
-                wise.reset_progress(graph)
+            wise.reset_progress(graph)
     except (OSError, ValueError, wise.WiseError) as error:
         raise ValueError(
             "Reset did not complete. Backup location: {}. "

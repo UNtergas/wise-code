@@ -282,6 +282,39 @@ class GraphResetTests(ResetCase):
         with self.assertRaises(ValueError):
             reset_module.reset(self.project, preview["confirmation"])
 
+    def test_interrupted_save_is_finished_before_the_backup(self):
+        # PR #20 review: a pending decision committed by a save that stopped
+        # after its journal must reach the backup before reset clears it.
+        state = self.graph_project()
+        wise = reset_module.wise
+
+        class Stop(Exception):
+            pass
+
+        def stop_at(_, reached):
+            if reached == "journal published":
+                raise Stop
+        original = wise.Graph._checkpoint
+        wise.Graph._checkpoint = stop_at
+        try:
+            with wise.Graph(state, write=True) as graph:
+                graph.nodes["D-late"] = {"id": "D-late", "type": "decision",
+                                         "title": "Late pending", "status": "pending",
+                                         "created": "2026-10-28"}
+                graph.dirty = True
+                with self.assertRaises(Stop):
+                    graph.save()
+        finally:
+            wise.Graph._checkpoint = original
+        self.assertTrue((state / "graph/.commit").exists())
+        preview = self.preview()
+        result = reset_module.reset(self.project, preview["confirmation"])
+        backup = (Path(result["backup"]) / "graph/nodes.jsonl").read_text(encoding="utf-8")
+        self.assertIn('"D-late"', backup)
+        active = (state / "graph/nodes.jsonl").read_text(encoding="utf-8")
+        self.assertNotIn('"D-late"', active)  # reset clears pending decisions
+        self.assertFalse((state / "graph/.commit").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
