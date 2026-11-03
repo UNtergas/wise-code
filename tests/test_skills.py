@@ -196,6 +196,10 @@ class LearnerFirstTests(unittest.TestCase):
         self.assertIn("skip that gate silently", gates)
         self.assertIn("never install them", gates)
         self.assertIn("`--changed`", gates)
+        # dryer: explicit 0.8 threshold, whole tree so copies from unchanged files count.
+        dryer = gates.split("2. **dryer**")[1].split("\n3. ")[0]
+        self.assertIn("`--threshold 0.8`", dryer)
+        self.assertIn("without `--changed`", dryer)
         self.assertIn('never "passed"', gates)
         self.assertIn("Never weaken a test, raise a threshold, or add a suppression", gates)
         # At Hint and Pseudo the learner fixes; only Full code edits.
@@ -210,7 +214,7 @@ class LearnerFirstTests(unittest.TestCase):
         self.assertIn("[gates.md](gates.md)", review)
         # Steps are numbered once each.
         numbers = re.findall(r"^  (\d)\. ", review, re.MULTILINE)
-        self.assertEqual(numbers, [str(n) for n in range(1, len(numbers) + 1)])
+        self.assertEqual(numbers, ["1", "2", "3", "4", "5", "6"])
         full = levels.split("## Full code")[1].split("\n## ")[0]
         self.assertLess(full.index("**Make it work.**"), full.index("**Make it right.**"))
         self.assertIn("Don't commit or push unless the learner asks", full)

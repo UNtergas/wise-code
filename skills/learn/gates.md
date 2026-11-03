@@ -29,13 +29,18 @@ next to it (`../crapper`).
 
 ## Running
 
-Scope every run to the change, not the whole tree: pass `--changed` (Git changes).
+Report on the change, not the whole tree. Crapper and mutator take `--changed`
+(Git changes); dryer needs the whole tree, see below.
 Run in this order, because each gate's fix can change the next one's result:
 
 1. **crapper** `--changed`. Reads coverage from the project's test run; if no
    coverage is available, run with `--no-coverage` and say that the score is
    complexity only, not CRAP.
-2. **dryer** `--changed`.
+2. **dryer** `--threshold 0.8`, on the whole tree, without `--changed`. With
+   `--changed`, dryer compares changed files only with each other, so code copied
+   from an unchanged file is never seen. Report only the pairs where at least one
+   form is in a changed file. Pass the threshold explicitly: dryer's default is
+   0.82, which lets pairs from 0.80 to 0.82 pass.
 3. **mutator** `--changed`. Slow: run it only when the learner asks, or at Full
    code before the Implementation report. Pass the project's test command with
    `--test-command` when it isn't detected.
