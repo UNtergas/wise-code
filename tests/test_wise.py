@@ -152,6 +152,35 @@ class StoreTests(WiseTestCase):
         self.assertEqual(bad.returncode, 2)
         self.assertIn("symlink", bad.stderr)
 
+    def test_symlinked_graph_folder_is_refused_for_reads_and_writes(self):
+        # Review #19 finding 4: the folder, not just its files, is the boundary.
+        outside = Path(self.temp.name) / "outside"
+        outside.mkdir()
+        (outside / "nodes.jsonl").write_text(
+            '{"id": "ext", "name": "External", "type": "concept"}\n', encoding="utf-8")
+        before = sorted((p.name, p.read_bytes()) for p in outside.iterdir())
+        state = self.project / ".wise-code"
+        state.mkdir()
+        (state / "graph").symlink_to(outside, target_is_directory=True)
+        for args in (("list", "concept"), ("add", "concept", "name=Inside")):
+            with self.subTest(args=args):
+                bad = self.run_wise(*args, check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("symlink", bad.stderr)
+                self.assertNotIn("External", bad.stdout)
+        self.assertEqual(sorted((p.name, p.read_bytes()) for p in outside.iterdir()), before)
+
+    def test_symlinked_gitattributes_is_refused(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        graph = self.project / ".wise-code" / "graph"
+        target = Path(self.temp.name) / "attrs"
+        target.write_text("", encoding="utf-8")
+        (graph / ".gitattributes").unlink()
+        (graph / ".gitattributes").symlink_to(target)
+        bad = self.run_wise("add", "concept", "name=Beta", check=False)
+        self.assertEqual(bad.returncode, 2)
+        self.assertEqual(target.read_text(encoding="utf-8"), "")
+
 
 class ConceptTests(WiseTestCase):
     def test_near_duplicate_concept_is_refused_with_the_match(self):

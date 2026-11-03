@@ -161,6 +161,8 @@ SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 CONFLICT_RE = re.compile(r"^(<{7}|={7}|>{7}|\|{7})( |$)")
 # Git keeps both sides' lines when two clones add records, instead of a conflict.
 GITATTRIBUTES = "*.jsonl merge=union\n"
+# Every file wise.py keeps inside graph/; none of them may be a symlink.
+GRAPH_FILES = ("nodes.jsonl", "edges.jsonl", ".gitattributes")
 
 
 def stamp(node):
@@ -246,8 +248,10 @@ class Graph:
         self.nodes = {}
         self.edges = set()
         self.dirty = False
-        for name in ("nodes.jsonl", "edges.jsonl"):
-            path = self.dir / name
+        # The state boundary holds for every path wise.py reads or writes: a
+        # symlinked folder would move the files outside it as surely as a
+        # symlinked file.
+        for path in (state, self.dir, *(self.dir / name for name in GRAPH_FILES)):
             if path.is_symlink():
                 raise WiseError(f"{path} is a symlink; refusing")
         self._load()
