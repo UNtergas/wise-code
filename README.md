@@ -77,12 +77,17 @@ The skills above are Claude-only: Claude is the teacher. Codex installs from the
 same repository (`.codex-plugin/`) but loads only `codex/skills/`, a separate
 senior-developer role you call in on purpose, never on its own:
 
-- consult: when you doubt a teacher decision, ask Codex. It reads your assist
-  level, asks what you tried first, and logs the exchange in
-  `.wise-code/consult/journal.md`, which Claude reads at the next session start.
-- PR review: a clean-code pass on an open pull request, on request.
+- `$wise-code:consult` — when you doubt a teacher decision, hint or explanation.
+  Codex asks what you tried and what you know first, checks the teacher's claim
+  against the code and primary sources, and answers at your assist level (Hint
+  stays a hint). It never edits your code or the learning graph. Each consult is
+  appended to `.wise-code/consult/journal.md` through `scripts/consult.py`; at
+  the next session start (or compaction) Claude is told how many consults came
+  in and how many disagree with it, reads them, and re-examines its own call
+  with you.
+- PR review: a clean-code pass on an open pull request, on request (in progress).
 
-Both are in progress; `codex/skills/` is empty until they land.
+Consult replies start with `=>> senior on call <<=`.
 
 ## Canary
 

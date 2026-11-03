@@ -61,6 +61,25 @@ class SkillLayoutTests(unittest.TestCase):
         self.assertEqual(codex["skills"], "./codex/skills/")
         self.assertTrue((ROOT / "codex/skills").is_dir())
 
+    def test_codex_senior_skills_run_only_when_called(self):
+        senior = sorted(p for p in (ROOT / "codex/skills").iterdir() if p.is_dir())
+        self.assertEqual([p.name for p in senior], ["consult"])
+        for skill in senior:
+            with self.subTest(skill=skill.name):
+                fields = frontmatter(skill / "SKILL.md")
+                self.assertEqual(fields.get("name"), skill.name)
+                self.assertTrue(fields.get("description"))
+                agent = (skill / "agents/openai.yaml").read_text(encoding="utf-8")
+                self.assertIn("allow_implicit_invocation: false", agent)
+
+    def test_consult_skill_reads_level_asks_first_and_writes_only_the_journal(self):
+        text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
+        for required in ("Assist level", "Level overrides", "What did you try",
+                         "scripts/consult.py", "three directories above",
+                         "never edit", "Disagrees with teacher"):
+            self.assertIn(required, text)
+        self.assertNotIn("wise.py add", text)
+
     def test_relative_links_in_guides_resolve(self):
         for guide in sorted((ROOT / "skills").rglob("*.md")):
             # Links inside code fences are format examples, not real references.
