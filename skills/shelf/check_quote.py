@@ -69,11 +69,14 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 
 
 FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+SETEXT_RE = re.compile(r"^\s{0,3}(=+|-+)\s*$")
 
 
 def headings(lines):
-    """Yield (line index, level, title) for each heading outside fenced code."""
+    """Yield (title line, body start, level, title) for each ATX or Setext heading
+    outside fenced code."""
     fence = None
+    paragraph = None  # index of the last plain text line, if the paragraph is open
     for index, line in enumerate(lines):
         match = FENCE_RE.match(line)
         if match:
@@ -82,11 +85,23 @@ def headings(lines):
                 fence = marker
             elif marker[0] == fence[0] and len(marker) >= len(fence):
                 fence = None
+            paragraph = None
             continue
-        if fence is None:
-            match = HEADING_RE.match(line)
-            if match:
-                yield index, len(match.group(1)), match.group(2)
+        if fence is not None:
+            continue
+        atx = HEADING_RE.match(line)
+        setext = SETEXT_RE.match(line)
+        if atx:
+            yield index, index + 1, len(atx.group(1)), atx.group(2)
+            paragraph = None
+        elif setext and paragraph is not None:
+            # "Title\n===" is level 1, "Title\n---" level 2. Without a text line
+            # just above, "---" is a thematic break.
+            level = 1 if setext.group(1)[0] == "=" else 2
+            yield paragraph, index + 1, level, lines[paragraph].strip()
+            paragraph = None
+        else:
+            paragraph = index if line.strip() else None
 
 
 def heading_block(text, heading):
@@ -94,12 +109,12 @@ def heading_block(text, heading):
     wanted = normalize(heading)
     lines = text.splitlines()
     found = list(headings(lines))
-    for position, (start, level, title) in enumerate(found):
+    for position, (_, body, level, title) in enumerate(found):
         if normalize(title) != wanted:
             continue
-        end = next((index for index, other, _ in found[position + 1:] if other <= level),
+        end = next((start for start, _, other, _ in found[position + 1:] if other <= level),
                    len(lines))
-        return title, "\n".join(lines[start + 1:end])
+        return title, "\n".join(lines[body:end])
     return None, None
 
 

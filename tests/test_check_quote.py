@@ -135,6 +135,23 @@ class CheckQuoteTests(unittest.TestCase):
         self.assertEqual(cq.check(book, "Tilde", "backoff spreads retries"),
                          ("NO_HEADING", None))
 
+    def test_setext_headings_scope_the_search(self):
+        book = Path(self.temp.name) / "setext.md"
+        book.write_text("# Retries\n\nBackoff spreads retries.\n\nQueues\n======\n\n"
+                        "Queues absorb bursts.\n\nBuffers\n-------\n\nBuffers fill up.\n\n"
+                        "Not a heading\n\n---\n\nAfter a thematic break.\n",
+                        encoding="utf-8")
+        run = lambda where, quote: subprocess.run(
+            [sys.executable, "-I", str(SCRIPT), str(book), where, quote],
+            capture_output=True, text=True, timeout=10).stdout.strip()
+        self.assertEqual(run("Retries", "queues absorb bursts"), "MISSING")
+        self.assertEqual(run("Queues", "queues absorb bursts"), "FOUND § Queues")
+        # A level-2 Setext heading sits inside the level-1 one above it.
+        self.assertEqual(run("Queues", "buffers fill up"), "FOUND § Queues")
+        self.assertEqual(run("Buffers", "buffers fill up"), "FOUND § Buffers")
+        # "---" after a blank line is a thematic break, not a heading.
+        self.assertEqual(run("Not a heading", "after a thematic break"), "NO_HEADING")
+
     def test_cli_exit_codes(self):
         book = Path(self.temp.name) / "notes.txt"
         book.write_text("Idempotent requests can be retried safely.", encoding="utf-8")
