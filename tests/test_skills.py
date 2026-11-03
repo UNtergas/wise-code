@@ -507,6 +507,10 @@ class ShelfTests(unittest.TestCase):
                         'git -C "<root>" push --quiet'):
             self.assertIn(command, sync)
         self.assertLess(sync.index("pull --rebase"), sync.index("push --quiet"))
+        # Publish the answer and the concept updates it caused together.
+        self.assertLess(quiz.index('status=reinforce'), quiz.index("**Shelf repo:**"))
+        self.assertLess(quiz.index("**Shelf repo:**"), quiz.index("End with one line"))
+        self.assertIn("cards added here go out with one more step 7", quiz)
         # One rule, one place: Shelf points to Quiz instead of restating it.
         extras = self.text().split("## Shelf mode extras")[1].split("\n## ")[0]
         self.assertIn("Quiz commits and pushes each answer itself", extras)

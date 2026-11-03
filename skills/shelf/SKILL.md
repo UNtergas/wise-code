@@ -171,7 +171,7 @@ Run in the shelf repo with no question (`/wise-code:shelf`): report, from the gr
 - citations still `sent` (never explained) or `partial`: `wise.py list citation --where status=sent` (and `=partial`),
 - due questions (`wise.py due`) → suggest `/wise-code:quiz`.
 
-Quiz on the shelf graph needs no Shelf step: in the shelf repo, Quiz commits and pushes each answer itself ([../quiz/SKILL.md](../quiz/SKILL.md), step 5), since `/wise-code:quiz` doesn't load this skill.
+Quiz on the shelf graph needs no Shelf step: in the shelf repo, Quiz commits and pushes each answer itself ([../quiz/SKILL.md](../quiz/SKILL.md), step 7), since `/wise-code:quiz` doesn't load this skill.
 
 Report from the records only; don't invent progress. Learn, Teach and Quiz run in the shelf repo as in any project, with its `.wise-code/` as their state.
 
