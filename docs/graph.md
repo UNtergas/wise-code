@@ -43,8 +43,13 @@ The "before" column grows with history; the "after" column doesn't.
   (`BK-ddia`, `SEC-ddia-1.2`), so every project means the same section.
 - Merges: git's built-in `union` driver keeps both sides' lines, so concurrent
   additions never conflict. Every change stamps the node (`updated`, `rev`); when
-  both sides changed the same node, the loader keeps the newer one and the next
-  write drops the other line. Leftover conflict markers are ignored.
+  both sides changed the same node, the loader keeps the higher stamp and the
+  next write drops the other line, so the older side's edit to that node is
+  lost by design. Identical lines collapse. Different lines with the same stamp
+  (both sides edited once on the same day) can't be ordered: both stay on disk,
+  every command warns, changes to that node are refused, and
+  `wise.py resolve <id>` shows how they differ; `--keep <n>` keeps one with a
+  higher `rev`. Leftover conflict markers are ignored.
 - Writes go only through the script: it assigns IDs, validates fields and
   edges (stored JSON types, not just CLI text), and refuses near-duplicate
   concepts. `--force` overrides similarity, never an existing concept id.

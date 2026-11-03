@@ -111,6 +111,9 @@ wise.py link rust-strings prereq utf-8
 - `add concept` refuses a name close to an existing one and prints the match:
   link to that concept, or add an alias (`set <id> aliases+=<name>`). `--force`
   only for a truly different idea; `wise.py merge <keep> <drop>` fixes a duplicate.
+- A warning "conflicting versions from a merge" means two clones edited one node
+  the same day. Run `wise.py resolve <id>`, show the learner how the versions
+  differ, and keep the one they choose (`--keep <n>`); never pick for them.
 - `status`: `introduced` → `demonstrated`, or `reinforce` when a gap shows. Keep
   `notes` short evidence lines, reasoning in the learner's words; product
   preferences aren't evidence of engineering understanding.

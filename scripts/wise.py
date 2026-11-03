@@ -184,6 +184,11 @@ GRAPH_FILES = (*DATA_FILES, ".gitattributes", ".gitignore", LOCK_NAME, JOURNAL_N
 LOCK_TIMEOUT = 20.0
 
 
+def canonical(node):
+    """One node as its stored line."""
+    return json.dumps(node, ensure_ascii=False, sort_keys=True)
+
+
 def stamp(node):
     return (node.get("updated") or node.get("created") or "", node.get("rev", 0))
 
@@ -275,6 +280,9 @@ class Graph:
         self.dir = state / "graph"
         self.nodes = {}
         self.edges = set()
+        # id -> canonical JSON of each version a union merge left with the
+        # same stamp; nodes[id] holds the first until `resolve` picks one.
+        self.conflicts = {}
         self.dirty = False
         self._lock = None
         # The state boundary holds for every path wise.py reads or writes: a
@@ -405,14 +413,7 @@ class Graph:
                     raise WiseError(f"nodes.jsonl line {number}: {error}") from None
                 if not isinstance(node, dict) or "id" not in node or "type" not in node:
                     raise WiseError(f"nodes.jsonl line {number}: needs id and type")
-                old = self.nodes.get(node["id"])
-                if old is not None:
-                    # A union merge kept both sides' version of one node: the
-                    # newer change wins, and the next write drops the other line.
-                    self.dirty = True
-                    if stamp(old) > stamp(node):
-                        continue
-                self.nodes[node["id"]] = node
+                self._keep_version(node)
         if edges_path.is_file():
             for number, line in enumerate(edges_path.read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip() or CONFLICT_RE.match(line):
@@ -423,9 +424,45 @@ class Graph:
                 except (ValueError, KeyError, TypeError) as error:
                     raise WiseError(f"edges.jsonl line {number}: {error}") from None
 
+    def _keep_version(self, node):
+        """Choose among the lines a union merge left for one id.
+
+        A higher (updated, rev) stamp wins and the next write drops the other
+        line: an edit on the older side is lost, by design. Identical lines
+        collapse. Different lines with the same stamp can't be ordered, so
+        both are kept on disk until the learner picks one (wise.py resolve).
+        """
+        node_id = node["id"]
+        old = self.nodes.get(node_id)
+        if old is None:
+            self.nodes[node_id] = node
+            return
+        new, ours = stamp(node), stamp(old)
+        if new != ours:
+            self.dirty = True  # the losing line goes on the next write
+            if new > ours:
+                self.nodes[node_id] = node
+                self.conflicts.pop(node_id, None)
+            return
+        text = canonical(node)
+        versions = self.conflicts.get(node_id, [canonical(old)])
+        if text in versions:
+            self.dirty = True  # an identical duplicate collapses
+            return
+        self.conflicts[node_id] = versions + [text]
+
+    def _check_unresolved(self, node_id):
+        if node_id in self.conflicts:
+            raise WiseError(f"{node_id} has {len(self.conflicts[node_id])} conflicting "
+                            f"versions from a merge; pick one first: wise.py resolve {node_id}")
+
     def save(self):
         if not self.dirty:
             return
+        for node_id, versions in self.conflicts.items():
+            # Every change path is guarded; this catches any that isn't.
+            if canonical(self.nodes.get(node_id)) != versions[0]:
+                self._check_unresolved(node_id)
         if self._lock is None:
             # graph/ didn't exist at load: lock now, and refuse if another
             # process created the graph in between (this snapshot is stale).
@@ -436,8 +473,8 @@ class Graph:
                                 "nothing saved, retry the command")
         if not (self.dir / ".gitattributes").exists():
             self._publish(".gitattributes", GITATTRIBUTES)
-        node_lines = [json.dumps(self.nodes[key], ensure_ascii=False, sort_keys=True)
-                      for key in sorted(self.nodes)]
+        node_lines = [line for key in sorted(self.nodes)
+                      for line in self.conflicts.get(key, [canonical(self.nodes[key])])]
         edge_lines = [json.dumps({"from": a, "rel": r, "to": b}, ensure_ascii=False,
                                  sort_keys=True)
                       for a, r, b in sorted(self.edges)]
@@ -521,12 +558,14 @@ class Graph:
 
     def touch(self, node):
         """Mark a changed node so a later union merge can tell which side is newer."""
+        self._check_unresolved(node["id"])
         node["updated"] = iso(today())
         node["rev"] = int(node.get("rev", 0)) + 1
         self.dirty = True
 
     def remove(self, node_id):
         node_id = self.resolve(node_id)
+        self._check_unresolved(node_id)
         del self.nodes[node_id]
         self.edges = {e for e in self.edges if node_id not in (e[0], e[2])}
         self.dirty = True
@@ -988,6 +1027,7 @@ def cmd_merge(graph, args):
     keep, drop = graph.resolve(args.keep), graph.resolve(args.drop)
     if keep == drop:
         raise WiseError("same node")
+    graph._check_unresolved(drop)
     a, b = graph.nodes[keep], graph.nodes[drop]
     if a["type"] != b["type"]:
         raise WiseError("can only merge nodes of the same type")
@@ -1014,6 +1054,34 @@ def cmd_merge(graph, args):
     graph.touch(a)
     graph.save()
     print(f"merged {drop} into {keep}")
+    return 0
+
+
+def cmd_resolve(graph, args):
+    """Show a merge conflict's versions, or keep one of them."""
+    node_id = graph.resolve(args.id)
+    versions = graph.conflicts.get(node_id)
+    if not versions:
+        raise WiseError(f"{node_id} has no conflicting versions")
+    nodes = [json.loads(text) for text in versions]
+    if args.keep is None:
+        fields = sorted({f for n in nodes for f in n})
+        differ = [f for f in fields if len({canonical(n.get(f)) for n in nodes}) > 1]
+        print(f"{node_id}: {len(nodes)} versions with the same stamp "
+              f"{stamp(nodes[0])[0]} rev {stamp(nodes[0])[1]}; they differ in "
+              f"{', '.join(differ)}")
+        for number, node in enumerate(nodes, 1):
+            print(f"{number}: " + canonical({f: node.get(f) for f in differ}))
+        print(f"keep one: wise.py resolve {node_id} --keep <number>")
+        return 0
+    if not 1 <= args.keep <= len(nodes):
+        raise WiseError(f"--keep must be 1 to {len(nodes)}")
+    node = nodes[args.keep - 1]
+    del graph.conflicts[node_id]
+    graph.nodes[node_id] = node
+    graph.touch(node)  # a higher rev, so this choice wins every later merge
+    graph.save()
+    print(f"kept version {args.keep} of {node_id}")
     return 0
 
 
@@ -1787,6 +1855,9 @@ def cmd_check_said(graph, args):
 
 def cmd_check(graph, args):
     problems, warnings = [], []
+    for node_id, versions in sorted(graph.conflicts.items()):
+        problems.append(f"{node_id}: {len(versions)} conflicting versions; "
+                        f"wise.py resolve {node_id}")
     for node in graph.nodes.values():
         problems += validate_node(node)
     for a, r, b in graph.edges:
@@ -2301,6 +2372,11 @@ def build_parser():
     p.add_argument("drop")
     p.set_defaults(func=cmd_merge, write=True)
 
+    p = sub.add_parser("resolve", help="show or pick between a node's conflicting versions")
+    p.add_argument("id")
+    p.add_argument("--keep", type=int, help="the version number to keep")
+    p.set_defaults(func=cmd_resolve, write=True)
+
     p = sub.add_parser("answer", help="record an answer to a question and reschedule it")
     p.add_argument("id")
     p.add_argument("verdict")
@@ -2436,6 +2512,10 @@ def main(argv=None):
             print("no .wise-code here; nothing recorded yet")
             return 0
         with Graph(state, write=args.write) as graph:
+            if graph.conflicts and args.func not in (cmd_resolve, cmd_check):
+                ids = ", ".join(sorted(graph.conflicts))
+                print(f"wise.py: conflicting versions from a merge: {ids}; "
+                      "wise.py resolve <id>", file=sys.stderr)
             return args.func(graph, args) or 0
     except WiseError as error:
         print(f"wise.py: {error}", file=sys.stderr)

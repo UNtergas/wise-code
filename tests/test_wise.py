@@ -458,6 +458,113 @@ class CommitTests(WiseTestCase):
         self.assertIn("unreadable", bad.stderr)
 
 
+class MergeConflictTests(WiseTestCase):
+    """Review #19 finding 2: equal merge stamps never pick a winner silently."""
+
+    def nodes_file(self):
+        return self.project / ".wise-code" / "graph" / "nodes.jsonl"
+
+    def with_lines(self, *extra):
+        # Simulate a union merge: append other clones' versions of a node.
+        path = self.nodes_file()
+        lines = path.read_text(encoding="utf-8").splitlines()
+        path.write_text("\n".join([*lines, *extra]) + "\n", encoding="utf-8")
+
+    def versions(self, node_id):
+        return [json.loads(line) for line in self.nodes_file().read_text(
+            encoding="utf-8").splitlines() if json.loads(line)["id"] == node_id]
+
+    def two_divergent(self):
+        self.run_wise("add", "concept", "name=Alpha", "notes+=base")
+        self.run_wise("add", "concept", "name=Other")
+        base = self.versions("alpha")[0]
+        ours = {**base, "notes": ["base", "ours"], "updated": "2026-10-29", "rev": 1}
+        theirs = {**base, "notes": ["base", "theirs"], "updated": "2026-10-29", "rev": 1}
+        return base, ours, theirs
+
+    def line(self, node):
+        return json.dumps(node, ensure_ascii=False, sort_keys=True)
+
+    def test_divergent_equal_stamps_are_kept_in_either_line_order(self):
+        for order in ("ours-first", "theirs-first"):
+            with self.subTest(order=order):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                base, ours, theirs = self.two_divergent()
+                pair = [ours, theirs] if order == "ours-first" else [theirs, ours]
+                # Drop the base line: both sides edited it.
+                keep = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                        if json.loads(l)["id"] != "alpha"]
+                self.nodes_file().write_text("\n".join(keep) + "\n", encoding="utf-8")
+                self.with_lines(*(self.line(n) for n in pair))
+                # An unrelated write keeps both versions on disk and warns.
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertIn("conflicting versions from a merge: alpha", res.stderr)
+                self.assertCountEqual([v["notes"] for v in self.versions("alpha")],
+                                      [["base", "ours"], ["base", "theirs"]])
+                # Changing the conflicted node is refused until resolved.
+                bad = self.run_wise("set", "alpha", "definition=y", check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("wise.py resolve alpha", bad.stderr)
+                self.assertEqual(self.run_wise("delete", "alpha", check=False).returncode, 2)
+                self.assertIn("alpha: 2 conflicting versions",
+                              self.run_wise("check", check=False).stdout)
+                shown = self.out("resolve", "alpha")
+                self.assertIn("differ in notes", shown)
+                self.assertIn('2: {"notes": ["base", "', shown)
+                theirs_at = 1 + [n["notes"][1] for n in pair].index("theirs")
+                self.out("resolve", "alpha", "--keep", str(theirs_at))
+                [kept] = self.versions("alpha")
+                self.assertEqual(kept["notes"], ["base", "theirs"])
+                self.assertEqual(kept["rev"], 2)  # beats both sides in later merges
+                self.assertIn("ok · ", self.out("check"))
+
+    def test_identical_duplicates_collapse_silently(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        self.with_lines(self.line(self.versions("alpha")[0]))
+        res = self.run_wise("add", "concept", "name=Other")
+        self.assertNotIn("conflicting", res.stderr)
+        self.assertEqual(len(self.versions("alpha")), 1)
+
+    def test_higher_stamp_wins_in_either_line_order(self):
+        for newer_first in (True, False):
+            with self.subTest(newer_first=newer_first):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                base, ours, theirs = self.two_divergent()
+                theirs = {**theirs, "rev": 2}
+                self.with_lines(*(self.line(n) for n in
+                                  ([theirs, ours] if newer_first else [ours, theirs])))
+                self.run_wise("set", "other", "definition=x")
+                [kept] = self.versions("alpha")
+                self.assertEqual(kept["notes"], ["base", "theirs"])
+
+    @unittest.skipUnless(shutil.which("git"), "git not installed")
+    def test_real_git_merge_of_same_day_edits_waits_for_resolve(self):
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": self.temp.name,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(cwd, *args):
+            return subprocess.run(["git", "-C", str(cwd), *args], text=True,
+                                  capture_output=True, env=env, timeout=30)
+        shutil.rmtree(self.project / ".git")
+        git(self.project, "init", "-q", "-b", "main")
+        self.run_wise("add", "concept", "name=Alpha")
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-qm", "base")
+        tracked = git(self.project, "ls-files").stdout.split()
+        self.assertFalse([f for f in tracked if f.endswith((".lock", ".commit", ".tmp"))])
+        clone = Path(self.temp.name) / "clone"
+        git(self.temp.name, "clone", "-q", str(self.project), str(clone))
+        for root, note in ((self.project, "ours"), (clone, "theirs")):
+            self.run_wise("set", "alpha", f"notes+={note}", root=root, day="2026-10-29")
+            git(root, "commit", "-qam", note)
+        git(self.project, "fetch", "-q", str(clone), "main")
+        merge = git(self.project, "merge", "-q", "--no-edit", "FETCH_HEAD")
+        self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
+        self.assertEqual(len(self.versions("alpha")), 2)
+        self.assertIn("2 versions", self.out("resolve", "alpha"))
+
+
 class ViewTests(WiseTestCase):
     def test_render_and_anki_export(self):
         self.run_wise("add", "concept", "name=Strings", "definition=UTF-8 text",
