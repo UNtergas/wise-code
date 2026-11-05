@@ -25,7 +25,10 @@ folder:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup.py" check
 ```
 
-Exit 0: say nothing about it and continue with Project. Otherwise show the
+Exit 0: continue with Project; say nothing about it unless a line reads
+`edited`. Then show that line once: the learner changed their Codex senior
+profile, and it lists what differs from the generated one. Their edit stands;
+don't change the file. Otherwise show the
 learner the `missing` and `conflict` lines as printed, in one short message:
 it turns on Claude Code's shell sandbox for this project
 (`.claude/settings.local.json`), creates `.wise-code/consult/`, and, if Codex is

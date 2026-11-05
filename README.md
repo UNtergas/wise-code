@@ -96,7 +96,10 @@ sandbox), then onboarding continues. It sets up:
   `~/.codex/config.toml` or the project's `.codex/config.toml` is a conflict:
   while loaded, Codex ignores permission profiles. When the plugin moves (for
   example on update), `apply` regenerates an unedited profile for the new
-  folder; an edited one is reported as a conflict.
+  folder; an edited one is reported as a conflict. A profile you edited is
+  never reported `ok`: `check` says `edited` and lists every line that differs
+  from what setup writes (a removed `":root" = "deny"`, say), keeps your file,
+  and lets onboarding continue.
 - **`.wise-code/consult/`** — created up front, so the senior never needs write
   access to `.wise-code/` itself.
 
