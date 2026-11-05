@@ -2,6 +2,7 @@
 
 import errno
 import json
+import re
 import os
 from pathlib import Path
 import shutil
@@ -95,7 +96,7 @@ class StoreTests(WiseTestCase):
                               capture_output=True, env=env, timeout=30)
 
     @unittest.skipUnless(shutil.which("git"), "git not installed")
-    def test_real_git_merge_of_two_clones_needs_no_conflict_resolution(self):
+    def test_real_git_merge_of_two_clones_keeps_every_record(self):
         shutil.rmtree(self.project / ".git")
         self.git(self.project, "init", "-q", "-b", "main")
         self.run_wise("add", "concept", "name=Strings")
@@ -120,14 +121,21 @@ class StoreTests(WiseTestCase):
         self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
         text = (self.project / ".wise-code/graph/nodes.jsonl").read_text(encoding="utf-8")
         self.assertNotIn("<<<<<<<", text)
-        self.assertIn("ok", self.out("check"))
         qa = [n for n in self.nodes() if n["type"] == "qa"]
         self.assertEqual(len({n["id"] for n in qa}), 12)  # 10 added + 2 answers
-        # The newer change to the shared question wins, and a write cleans the file.
+        # Both sides rescheduled the shared question: neither includes the
+        # other, so the learner picks (review #34), and a write cleans the file.
+        self.assertIn(f"{qid}: 2 conflicting versions", self.run_wise("check", check=False).stdout)
+        shown = self.out("resolve", qid)
+        self.assertIn("differ in box, due", shown)
+        boxes = [json.loads(line.split(": ", 1)[1])["box"]
+                 for line in shown.splitlines() if re.match(r"^[12]: ", line)]
+        self.out("resolve", qid, "--keep", str(1 + boxes.index(2)))
         self.run_wise("add", "concept", "name=Lifetimes")
         question = [n for n in self.nodes() if n["id"] == qid]
         self.assertEqual(len(question), 1)
         self.assertEqual(question[0]["box"], 2)
+        self.assertIn("ok", self.out("check"))
 
     def test_unknown_field_and_bad_enum_are_rejected(self):
         bad = self.run_wise("add", "qa", "q=x", "a=y", "source=nope", check=False)
@@ -621,17 +629,243 @@ class MergeConflictTests(WiseTestCase):
         self.assertNotIn("conflicting", res.stderr)
         self.assertEqual(len(self.versions("alpha")), 1)
 
-    def test_higher_stamp_wins_in_either_line_order(self):
+    def test_divergent_unequal_stamps_wait_for_resolve(self):
+        # Review #34: a higher stamp doesn't mean that side saw the other's
+        # edit; picking it silently dropped the other clone's change.
         for newer_first in (True, False):
             with self.subTest(newer_first=newer_first):
                 shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
                 base, ours, theirs = self.two_divergent()
-                theirs = {**theirs, "rev": 2}
+                # Both sides edited the base, as wise.py records it.
+                seen = {"seen": [wise.version_id(base)]}
+                ours, theirs = {**ours, **seen}, {**theirs, **seen, "rev": 2}
                 self.with_lines(*(self.line(n) for n in
                                   ([theirs, ours] if newer_first else [ours, theirs])))
-                self.run_wise("set", "other", "definition=x")
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertIn("conflicting versions from a merge: alpha", res.stderr)
+                # The base is an ancestor of both and goes; both edits stay.
+                self.assertCountEqual([v["notes"] for v in self.versions("alpha")],
+                                      [["base", "ours"], ["base", "theirs"]])
+
+    def test_a_version_and_its_own_ancestor_collapse_to_the_descendant(self):
+        # A union merge of neighbouring edits leaves the unchanged base line
+        # beside the edited one; the edit includes the base, so it wins.
+        self.run_wise("add", "concept", "name=Alpha", "notes+=base")
+        self.run_wise("add", "concept", "name=Other")
+        base = self.versions("alpha")[0]
+        self.run_wise("set", "alpha", "notes+=one", day="2026-10-29")
+        self.run_wise("set", "alpha", "notes+=two", day="2026-10-30")
+        for order in ("base-last", "base-first"):
+            with self.subTest(order=order):
+                lines = self.nodes_file().read_text(encoding="utf-8").splitlines()
+                lines = [l for l in lines if json.loads(l) != base]
+                lines = lines + [self.line(base)] if order == "base-last" else [self.line(base)] + lines
+                self.nodes_file().write_text("\n".join(lines) + "\n", encoding="utf-8")
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertNotIn("conflicting", res.stderr)
                 [kept] = self.versions("alpha")
-                self.assertEqual(kept["notes"], ["base", "theirs"])
+                self.assertEqual(kept["notes"], ["base", "one", "two"])
+
+    def test_resolved_choice_includes_the_rejected_branch_history(self):
+        # Review on #34: keeping A over B1 forgot B0, B1's own ancestor, so a
+        # merge bringing B0 back asked again.
+        base, ours, _ = self.two_divergent()
+        b0 = {**base, "notes": ["base", "b0"], "updated": "2026-10-29", "rev": 1,
+              "seen": [wise.version_id(base)]}
+        b1 = {**b0, "notes": ["base", "b0", "b1"], "rev": 2,
+              "seen": [wise.version_id(base), wise.version_id(b0)]}
+        a = {**ours, "seen": [wise.version_id(base)]}
+        self.with_lines(self.line(a), self.line(b1))
+        shown = self.out("resolve", "alpha")
+        keep_a = 1 + ["ours" in line for line in shown.splitlines()
+                      if re.match(r"^[12]: ", line)].index(True)
+        self.out("resolve", "alpha", "--keep", str(keep_a))
+        self.with_lines(self.line(b0))
+        res = self.run_wise("set", "other", "definition=x")
+        self.assertNotIn("conflicting", res.stderr)
+        [kept] = self.versions("alpha")
+        self.assertEqual(kept["notes"], ["base", "ours"])
+
+    def test_malformed_seen_is_a_line_error_not_a_crash(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        good = self.versions("alpha")[0]
+        for label, value in (("null", None), ("object entry", [{"x": 1}])):
+            with self.subTest(label):
+                text = self.line(good) + "\n" + self.line({**good, "rev": 3, "seen": value}) + "\n"
+                self.nodes_file().write_text(text, encoding="utf-8")
+                for command in (("check",), ("list", "concept")):
+                    res = self.run_wise(*command, check=False)
+                    self.assertEqual(res.returncode, 2, res.stderr)
+                    self.assertIn("nodes.jsonl line 2: seen must be a list of text", res.stderr)
+                    self.assertNotIn("Traceback", res.stderr)
+                self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
+    @unittest.skipUnless(shutil.which("git"), "git not installed")
+    def test_two_projects_citing_one_book_merge_without_resolve(self):
+        # Review on #34: each project adds itself to the book's projects, so
+        # every shared book became a conflict that blocked further citations.
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": self.temp.name,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(cwd, *args):
+            return subprocess.run(["git", "-C", str(cwd), *args], text=True,
+                                  capture_output=True, env=env, timeout=30)
+        shutil.rmtree(self.project / ".git")
+        git(self.project, "init", "-q", "-b", "main")
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        self.run_wise("add", "section", "book=ddia", "number=1.2", "title=Scalability")
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-qm", "base")
+        clone = Path(self.temp.name) / "clone"
+        git(self.temp.name, "clone", "-q", str(self.project), str(clone))
+        for root, project, day in ((self.project, "grammar", "2026-10-29"),
+                                   (clone, "job-tracking", "2026-10-30")):
+            self.run_wise("add", "citation", f"project={project}", "question=Q",
+                          "--on", "SEC-ddia-1.2", root=root, day=day)
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", project)
+        git(self.project, "fetch", "-q", str(clone), "main")
+        merge = git(self.project, "merge", "-q", "--no-edit", "FETCH_HEAD")
+        self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
+        res = self.run_wise("add", "citation", "project=third", "question=Q",
+                            "--on", "SEC-ddia-1.2", day="2026-10-31")
+        self.assertNotIn("conflicting", res.stderr)
+        [book] = self.versions("BK-ddia")
+        self.assertEqual(book["projects"], ["grammar", "job-tracking", "third"])
+
+    def test_versions_differing_in_more_than_book_projects_still_wait(self):
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        self.run_wise("add", "concept", "name=Other")
+        base = self.versions("BK-ddia")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        ours = {**base, **seen, "projects": ["a"]}
+        theirs = {**base, **seen, "projects": ["b"], "title": "Designing DIA"}
+        self.with_lines(self.line(ours), self.line(theirs))
+        res = self.run_wise("set", "other", "definition=x")
+        self.assertIn("conflicting versions from a merge: BK-ddia", res.stderr)
+
+    def test_book_projects_cannot_shrink_so_union_loses_nothing(self):
+        # Review on #34: `projects-=old` on one clone was undone by the union.
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        self.run_wise("set", "BK-ddia", "projects+=old")
+        before = self.nodes_file().read_text(encoding="utf-8")
+        for change in ("projects-=old", "projects=new"):
+            with self.subTest(change):
+                bad = self.run_wise("set", "BK-ddia", change, check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("book.projects only grows", bad.stderr)
+                self.assertIn("old", bad.stderr)
+                self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), before)
+        self.run_wise("set", "BK-ddia", "projects=new,old")
+        self.assertEqual(self.versions("BK-ddia")[0]["projects"], ["new", "old"])
+
+    def test_malformed_project_entries_are_not_combined(self):
+        # Review on #34: a non-text list item crashed the union during load.
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        base = self.versions("BK-ddia")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        self.with_lines(self.line({**base, **seen, "projects": [{"bad": 1}]}),
+                        self.line({**base, **seen, "projects": ["other"]}))
+        text = self.nodes_file().read_text(encoding="utf-8")
+        res = self.run_wise("check", check=False)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertIn("book.projects must be a list of text", res.stdout + res.stderr)
+        self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
+    def test_resolving_a_book_keeps_every_project_whichever_title_is_kept(self):
+        # Review on #34: --keep 2 was refused for "removing" version 1's project.
+        for order in ("ours-first", "theirs-first"):
+            for keep_title in ("DDIA", "Designing DIA"):
+                with self.subTest(order=order, keep=keep_title):
+                    shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                    self.run_wise("add", "book", "slug=ddia", "title=DDIA",
+                                  "file=shared/ddia.pdf")
+                    base = self.versions("BK-ddia")[0]
+                    seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29",
+                            "rev": 1}
+                    ours = {**base, **seen, "projects": ["a"]}
+                    theirs = {**base, **seen, "projects": ["b"], "title": "Designing DIA"}
+                    pair = [ours, theirs] if order == "ours-first" else [theirs, ours]
+                    lines = [l for l in self.nodes_file().read_text(encoding="utf-8")
+                             .splitlines() if json.loads(l)["id"] != "BK-ddia"]
+                    self.nodes_file().write_text("\n".join(lines + [self.line(n) for n in pair])
+                                                 + "\n", encoding="utf-8")
+                    number = 1 + [n["title"] for n in pair].index(keep_title)
+                    res = self.run_wise("resolve", "BK-ddia", "--keep", str(number),
+                                        check=False)
+                    self.assertEqual(res.returncode, 0, res.stderr)
+                    [kept] = self.versions("BK-ddia")
+                    self.assertEqual(kept["title"], keep_title)
+                    self.assertEqual(kept["projects"], ["a", "b"])
+
+    def test_resolved_book_still_includes_the_original_kept_version(self):
+        # Review on #34: uniting projects into the kept version before hashing
+        # recorded the edited copy, so the original came back as a conflict.
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        base = self.versions("BK-ddia")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        a = {**base, **seen, "projects": ["a"], "title": "A"}
+        b = {**base, **seen, "projects": ["b"], "title": "B"}
+        c = {**base, **seen, "projects": ["c"], "title": "C"}
+        lines = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                 if json.loads(l)["id"] != "BK-ddia"]
+        self.nodes_file().write_text("\n".join(lines + [self.line(a), self.line(b)]) + "\n",
+                                     encoding="utf-8")
+        self.out("resolve", "BK-ddia", "--keep", "1")
+        self.with_lines(self.line(a), self.line(c))
+        self.assertIn("2 versions", self.out("resolve", "BK-ddia"))
+
+    def test_malformed_metadata_is_not_combined(self):
+        # Review on #34: "at": null beside a text `at` crashed the combine.
+        self.run_wise("add", "concept", "name=Alpha")
+        base = self.versions("alpha")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        self.with_lines(self.line({**base, **seen, "at": None}),
+                        self.line({**base, **seen, "at": "2026-10-29T10:00:00"}))
+        text = self.nodes_file().read_text(encoding="utf-8")
+        res = self.run_wise("check", check=False)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertIn("alpha", res.stdout + res.stderr)
+        self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
+    def test_show_hides_merge_history(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        self.run_wise("set", "alpha", "notes+=one")
+        self.assertNotIn("seen", self.out("show", "alpha").splitlines()[0])
+
+    @unittest.skipUnless(shutil.which("git"), "git not installed")
+    def test_real_git_merge_of_unequal_stamps_keeps_both_edits(self):
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": self.temp.name,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(cwd, *args):
+            return subprocess.run(["git", "-C", str(cwd), *args], text=True,
+                                  capture_output=True, env=env, timeout=30)
+        shutil.rmtree(self.project / ".git")
+        git(self.project, "init", "-q", "-b", "main")
+        self.run_wise("add", "concept", "name=Alpha")
+        self.run_wise("add", "concept", "name=Other")
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-qm", "base")
+        clone = Path(self.temp.name) / "clone"
+        git(self.temp.name, "clone", "-q", str(self.project), str(clone))
+        # Different fields, different stamps: ours edits once, theirs twice a day later.
+        self.run_wise("set", "alpha", "definition=ours", day="2026-10-29")
+        git(self.project, "commit", "-qam", "ours")
+        self.run_wise("set", "alpha", "notes+=theirs", root=clone, day="2026-10-30")
+        self.run_wise("set", "alpha", "notes+=again", root=clone, day="2026-10-30")
+        git(clone, "commit", "-qam", "theirs")
+        git(self.project, "fetch", "-q", str(clone), "main")
+        merge = git(self.project, "merge", "-q", "--no-edit", "FETCH_HEAD")
+        self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
+        res = self.run_wise("set", "other", "definition=x", check=False)
+        self.assertIn("conflicting versions from a merge: alpha", res.stderr)
+        shown = self.out("resolve", "alpha")
+        self.assertIn("2 versions", shown)
+        self.assertIn("ours", shown)
+        self.assertIn("again", shown)
 
     @unittest.skipUnless(shutil.which("git"), "git not installed")
     def test_real_git_merge_of_same_day_edits_waits_for_resolve(self):
