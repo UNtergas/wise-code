@@ -252,6 +252,17 @@ def includes_all(node, versions):
              *(version_id(v) for v in versions))
 
 
+def grown_items(versions):
+    """{GROW_ONLY field: sorted union of every version's items}, valid text lists only."""
+    found = {}
+    for node in versions:
+        for field in GROW_ONLY.get(node.get("type"), ()):
+            value = node.get(field)
+            if isinstance(value, list) and all(isinstance(i, str) for i in value):
+                found.setdefault(field, set()).update(value)
+    return {field: sorted(items) for field, items in found.items()}
+
+
 def combine_versions(versions):
     """One version holding every independent version's changes, or None.
 
@@ -262,17 +273,19 @@ def combine_versions(versions):
     kind = versions[0]["type"]
     if any(v["type"] != kind for v in versions):
         return None
+    # A malformed version is never merged into another: it stays a conflict
+    # and `check` reports what is wrong with it.
+    if any(validate_node(v) for v in versions):
+        return None
     grow = GROW_ONLY.get(kind, ())
     combined = dict(versions[0])
     for field in sorted({f for v in versions for f in v} - set(META)):
         values = [v.get(field) for v in versions]
         if all(canonical(x) == canonical(values[0]) for x in values):
             continue
-        texts = all(x is None or (isinstance(x, list) and all(isinstance(i, str) for i in x))
-                    for x in values)
-        if field not in grow or not texts:
-            return None  # stays a conflict; check reports a malformed value
-        combined[field] = sorted({item for x in values for item in (x or [])})
+        if field not in grow:
+            return None
+        combined[field] = grown_items(versions)[field]
     for field, pick in (("created", min), ("updated", max), ("rev", max), ("at", max)):
         present = [v[field] for v in versions if field in v]
         if present:
@@ -535,11 +548,10 @@ class Graph:
                 self.conflicts[node_id] = [canonical(n) for n in survivors]
             else:
                 self._loaded[node_id] = version_id(survivors[0])
-            node = survivors[0]
-            grown = {f: set(node[f]) for f in GROW_ONLY.get(node["type"], ())
-                     if isinstance(node.get(f), list) and all(isinstance(i, str) for i in node[f])}
+            # A conflict's grow-only items are every version's: resolve keeps them all.
+            grown = grown_items(survivors)
             if grown:
-                self._grown[node_id] = grown
+                self._grown[node_id] = {f: set(items) for f, items in grown.items()}
         if edges_path.is_file():
             for number, line in enumerate(edges_path.read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip() or CONFLICT_RE.match(line):
@@ -1201,6 +1213,8 @@ def cmd_resolve(graph, args):
     graph.nodes[node_id] = node
     # The choice includes every version, so it wins every later merge that
     # brings one back.
+    # Grow-only lists keep every version's items, whichever version is kept.
+    node.update(grown_items(nodes))
     includes_all(node, nodes)
     graph.touch(node)
     graph.save()

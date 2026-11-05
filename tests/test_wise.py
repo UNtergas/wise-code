@@ -773,6 +773,45 @@ class MergeConflictTests(WiseTestCase):
         self.assertIn("book.projects must be a list of text", res.stdout + res.stderr)
         self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
 
+    def test_resolving_a_book_keeps_every_project_whichever_title_is_kept(self):
+        # Review on #34: --keep 2 was refused for "removing" version 1's project.
+        for order in ("ours-first", "theirs-first"):
+            for keep_title in ("DDIA", "Designing DIA"):
+                with self.subTest(order=order, keep=keep_title):
+                    shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                    self.run_wise("add", "book", "slug=ddia", "title=DDIA",
+                                  "file=shared/ddia.pdf")
+                    base = self.versions("BK-ddia")[0]
+                    seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29",
+                            "rev": 1}
+                    ours = {**base, **seen, "projects": ["a"]}
+                    theirs = {**base, **seen, "projects": ["b"], "title": "Designing DIA"}
+                    pair = [ours, theirs] if order == "ours-first" else [theirs, ours]
+                    lines = [l for l in self.nodes_file().read_text(encoding="utf-8")
+                             .splitlines() if json.loads(l)["id"] != "BK-ddia"]
+                    self.nodes_file().write_text("\n".join(lines + [self.line(n) for n in pair])
+                                                 + "\n", encoding="utf-8")
+                    number = 1 + [n["title"] for n in pair].index(keep_title)
+                    res = self.run_wise("resolve", "BK-ddia", "--keep", str(number),
+                                        check=False)
+                    self.assertEqual(res.returncode, 0, res.stderr)
+                    [kept] = self.versions("BK-ddia")
+                    self.assertEqual(kept["title"], keep_title)
+                    self.assertEqual(kept["projects"], ["a", "b"])
+
+    def test_malformed_metadata_is_not_combined(self):
+        # Review on #34: "at": null beside a text `at` crashed the combine.
+        self.run_wise("add", "concept", "name=Alpha")
+        base = self.versions("alpha")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        self.with_lines(self.line({**base, **seen, "at": None}),
+                        self.line({**base, **seen, "at": "2026-10-29T10:00:00"}))
+        text = self.nodes_file().read_text(encoding="utf-8")
+        res = self.run_wise("check", check=False)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertIn("alpha", res.stdout + res.stderr)
+        self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
     def test_show_hides_merge_history(self):
         self.run_wise("add", "concept", "name=Alpha")
         self.run_wise("set", "alpha", "notes+=one")

@@ -57,7 +57,9 @@ The "before" column grows with history; the "after" column doesn't.
   (it only grows: each project that cites the book adds itself) and in
   metadata are combined, their lists united, without asking. To keep that
   lossless, `projects` only grows: any change that would drop an item is
-  refused. Lines with no
+  refused, and `resolve` keeps every version's projects whichever version is
+  kept. Malformed versions are never combined: they stay a conflict and
+  `check` reports them. Lines with no
   `seen` (written before it existed, or edited by hand) can't be shown to
   include another, so they too wait for `resolve`. Leftover conflict markers are
   ignored.
