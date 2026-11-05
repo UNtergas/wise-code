@@ -799,6 +799,23 @@ class MergeConflictTests(WiseTestCase):
                     self.assertEqual(kept["title"], keep_title)
                     self.assertEqual(kept["projects"], ["a", "b"])
 
+    def test_resolved_book_still_includes_the_original_kept_version(self):
+        # Review on #34: uniting projects into the kept version before hashing
+        # recorded the edited copy, so the original came back as a conflict.
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        base = self.versions("BK-ddia")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        a = {**base, **seen, "projects": ["a"], "title": "A"}
+        b = {**base, **seen, "projects": ["b"], "title": "B"}
+        c = {**base, **seen, "projects": ["c"], "title": "C"}
+        lines = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                 if json.loads(l)["id"] != "BK-ddia"]
+        self.nodes_file().write_text("\n".join(lines + [self.line(a), self.line(b)]) + "\n",
+                                     encoding="utf-8")
+        self.out("resolve", "BK-ddia", "--keep", "1")
+        self.with_lines(self.line(a), self.line(c))
+        self.assertIn("2 versions", self.out("resolve", "BK-ddia"))
+
     def test_malformed_metadata_is_not_combined(self):
         # Review on #34: "at": null beside a text `at` crashed the combine.
         self.run_wise("add", "concept", "name=Alpha")

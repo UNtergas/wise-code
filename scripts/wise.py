@@ -1208,7 +1208,9 @@ def cmd_resolve(graph, args):
         return 0
     if not 1 <= args.keep <= len(nodes):
         raise WiseError(f"--keep must be 1 to {len(nodes)}")
-    node = nodes[args.keep - 1]
+    # A copy: `nodes` must stay the versions as stored, since their hashes
+    # are what a later merge brings back.
+    node = json.loads(versions[args.keep - 1])
     del graph.conflicts[node_id]
     graph.nodes[node_id] = node
     # The choice includes every version, so it wins every later merge that
