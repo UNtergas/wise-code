@@ -31,15 +31,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wise  # noqa: E402 - shares project lookup and errors
 
 
-# Credentials no Claude tool may read. The shell sandbox (denyRead) and the Read
-# tool (permissions.deny) are separate layers, so each path goes in both.
-CREDENTIALS = ["~/.ssh", "~/.aws", "~/.config/gh"]
+# Secrets no Claude tool may read: (shell sandbox path, Read-tool rule) pairs.
+# The shell sandbox (sandbox.filesystem.denyRead) and the Read tool
+# (permissions.deny) are separate layers, and each list is written in its own
+# syntax: in sandbox paths `./` is the project root and `~/` home; in Read rules
+# a bare `**/` pattern matches anywhere under the project. Recent Claude Code
+# also copies Read deny rules into denyRead, but setup doesn't rely on that.
+# `./**/.env` may not match the root file, so the root gets its own entry.
+PROTECTED = [
+    (["~/.ssh"], ["Read(~/.ssh/**)"]),
+    (["~/.aws"], ["Read(~/.aws/**)"]),
+    (["~/.config/gh"], ["Read(~/.config/gh/**)"]),
+    (["./.env", "./**/.env"], ["Read(**/.env)"]),
+]
 
 CLAUDE_REQUIRED = {
-    ("sandbox", "filesystem", "denyRead"): CREDENTIALS,
+    ("sandbox", "filesystem", "denyRead"): [p for shell, _ in PROTECTED for p in shell],
     ("sandbox", "network", "allowedDomains"): [
         "*.github.com", "registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
-    ("permissions", "deny"): [f"Read({path}/**)" for path in CREDENTIALS] + ["Read(**/.env)"],
+    ("permissions", "deny"): [rule for _, read in PROTECTED for rule in read],
 }
 
 DOCS_HOSTS = ("developer.mozilla.org", "nodejs.org", "www.typescriptlang.org",
