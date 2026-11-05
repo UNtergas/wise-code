@@ -55,7 +55,9 @@ The "before" column grows with history; the "after" column doesn't.
   `seen` (with what they include) so a later merge that brings one back settles
   silently. One exception: versions that differ only in a book's `projects`
   (it only grows: each project that cites the book adds itself) and in
-  metadata are combined, their lists united, without asking. Lines with no
+  metadata are combined, their lists united, without asking. To keep that
+  lossless, `projects` only grows: any change that would drop an item is
+  refused. Lines with no
   `seen` (written before it existed, or edited by hand) can't be shown to
   include another, so they too wait for `resolve`. Leftover conflict markers are
   ignored.

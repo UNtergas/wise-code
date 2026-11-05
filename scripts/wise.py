@@ -150,8 +150,9 @@ META_FIELDS = {"created": "date", "updated": "date", "rev": "int", "at": "str",
 # edits back on one side, merged with the other, reads as divergent: resolve asks.
 MERGE_HISTORY = 16
 # List fields that only ever grow (a book gains each project that cites it).
-# Independent versions that differ only here and in metadata are combined by
-# union instead of waiting for resolve: no side's item is lost.
+# touch() refuses any change that drops an item, so independent versions that
+# differ only here and in metadata are combined by union instead of waiting
+# for resolve: no side's item, and no side's removal, is lost.
 GROW_ONLY = {"book": ("projects",)}
 # Allowed ranges for int fields; others must be 0 or more.
 RANGES = {("question", "box"): (min(BOXES), max(BOXES))}
@@ -267,8 +268,10 @@ def combine_versions(versions):
         values = [v.get(field) for v in versions]
         if all(canonical(x) == canonical(values[0]) for x in values):
             continue
-        if field not in grow or not all(isinstance(x, (list, type(None))) for x in values):
-            return None
+        texts = all(x is None or (isinstance(x, list) and all(isinstance(i, str) for i in x))
+                    for x in values)
+        if field not in grow or not texts:
+            return None  # stays a conflict; check reports a malformed value
         combined[field] = sorted({item for x in values for item in (x or [])})
     for field, pick in (("created", min), ("updated", max), ("rev", max), ("at", max)):
         present = [v[field] for v in versions if field in v]
@@ -372,6 +375,8 @@ class Graph:
         # id -> version_id of the version loaded, so touch() can record that
         # the edited node includes it; ids already touched in this process.
         self._loaded = {}
+        # id -> {GROW_ONLY field: items at load}, so touch() can refuse a shrink.
+        self._grown = {}
         self._touched = set()
         self.dirty = False
         self._lock = None
@@ -530,6 +535,11 @@ class Graph:
                 self.conflicts[node_id] = [canonical(n) for n in survivors]
             else:
                 self._loaded[node_id] = version_id(survivors[0])
+            node = survivors[0]
+            grown = {f: set(node[f]) for f in GROW_ONLY.get(node["type"], ())
+                     if isinstance(node.get(f), list) and all(isinstance(i, str) for i in node[f])}
+            if grown:
+                self._grown[node_id] = grown
         if edges_path.is_file():
             for number, line in enumerate(edges_path.read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip() or CONFLICT_RE.match(line):
@@ -650,6 +660,11 @@ class Graph:
     def touch(self, node):
         """Mark a changed node so a later union merge can tell what it includes."""
         self._check_unresolved(node["id"])
+        for field, before in self._grown.get(node["id"], {}).items():
+            gone = before - set(node.get(field) or [])
+            if gone:
+                raise WiseError(f"{node['type']}.{field} only grows (a merge unites both "
+                                f"sides' lists); can't remove {', '.join(sorted(gone))}")
         # Never move the date back: a node dated ahead of today (another
         # time zone, a clock ahead) would otherwise outrank this change.
         node["updated"] = max(iso(today()), node.get("updated") or "",

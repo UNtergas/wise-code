@@ -745,6 +745,34 @@ class MergeConflictTests(WiseTestCase):
         res = self.run_wise("set", "other", "definition=x")
         self.assertIn("conflicting versions from a merge: BK-ddia", res.stderr)
 
+    def test_book_projects_cannot_shrink_so_union_loses_nothing(self):
+        # Review on #34: `projects-=old` on one clone was undone by the union.
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        self.run_wise("set", "BK-ddia", "projects+=old")
+        before = self.nodes_file().read_text(encoding="utf-8")
+        for change in ("projects-=old", "projects=new"):
+            with self.subTest(change):
+                bad = self.run_wise("set", "BK-ddia", change, check=False)
+                self.assertEqual(bad.returncode, 2)
+                self.assertIn("book.projects only grows", bad.stderr)
+                self.assertIn("old", bad.stderr)
+                self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), before)
+        self.run_wise("set", "BK-ddia", "projects=new,old")
+        self.assertEqual(self.versions("BK-ddia")[0]["projects"], ["new", "old"])
+
+    def test_malformed_project_entries_are_not_combined(self):
+        # Review on #34: a non-text list item crashed the union during load.
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        base = self.versions("BK-ddia")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        self.with_lines(self.line({**base, **seen, "projects": [{"bad": 1}]}),
+                        self.line({**base, **seen, "projects": ["other"]}))
+        text = self.nodes_file().read_text(encoding="utf-8")
+        res = self.run_wise("check", check=False)
+        self.assertNotIn("Traceback", res.stderr)
+        self.assertIn("book.projects must be a list of text", res.stdout + res.stderr)
+        self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
     def test_show_hides_merge_history(self):
         self.run_wise("add", "concept", "name=Alpha")
         self.run_wise("set", "alpha", "notes+=one")
