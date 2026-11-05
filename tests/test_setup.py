@@ -137,13 +137,30 @@ class ExistingClaudeSettingsTests(SetupCase):
         self.assertRegex(result.stdout, r"(?m)^conflict +Claude sandbox")
         self.assertEqual(self.settings.read_text(encoding="utf-8"), "{ not json")
 
-    def test_every_shell_denied_path_is_also_denied_to_the_read_tool(self):
-        # The Read tool runs outside the shell sandbox (review on #26).
+    def test_every_protected_path_is_denied_to_both_shell_and_read_tool(self):
+        # The Read tool runs outside the shell sandbox (review on #26), and
+        # .env was denied to the Read tool only (review #30).
         self.assertEqual(self.setup("apply").returncode, 0)
         settings = self.claude()
-        deny = settings["permissions"]["deny"]
-        for path in settings["sandbox"]["filesystem"]["denyRead"]:
-            self.assertIn(f"Read({path}/**)", deny)
+        shell = settings["sandbox"]["filesystem"]["denyRead"]
+        read = settings["permissions"]["deny"]
+        for path in ("~/.ssh", "~/.aws", "~/.config/gh"):
+            self.assertIn(path, shell)
+            self.assertIn(f"Read({path}/**)", read)
+        # Sandbox paths: `./` is the project root; `**` doesn't cover the root file.
+        self.assertIn("./.env", shell)
+        self.assertIn("./**/.env", shell)
+        self.assertIn("Read(**/.env)", read)
+
+    def test_settings_from_an_older_setup_gain_the_env_rules(self):
+        self.write({"sandbox": {"enabled": True, "failIfUnavailable": True,
+                                "filesystem": {"denyRead": ["~/.ssh", "~/.aws", "~/.config/gh"]}},
+                    "permissions": {"deny": ["Read(**/.env)"]}})
+        check = self.setup("check")
+        self.assertEqual(check.returncode, 1)
+        self.assertRegex(check.stdout, r"(?m)^missing +Claude sandbox")
+        self.assertEqual(self.setup("apply").returncode, 0)
+        self.assertIn("./**/.env", self.claude()["sandbox"]["filesystem"]["denyRead"])
 
     def test_planted_temp_symlink_cannot_write_outside(self):
         # A fixed temp name was followed and truncated its target (review on #26).
