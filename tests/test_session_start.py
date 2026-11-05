@@ -405,7 +405,7 @@ class GraphHookTests(HookCase):
 
 
 class ConsultJournalHookTests(HookCase):
-    """The hook points Claude at senior consults since the last session."""
+    """The hook points Claude at senior consults it hasn't acknowledged."""
 
     # Borrowed helpers only: subclassing would rerun every GraphHookTests test.
     wise = GraphHookTests.wise
@@ -424,28 +424,50 @@ class ConsultJournalHookTests(HookCase):
         path.write_text("\n".join(lines), encoding="utf-8")
         return path
 
-    def test_consults_since_last_session_are_announced_without_their_content(self):
+    def consult(self, *args):
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": "2026-11-05"}
+        return subprocess.run([sys.executable, str(ROOT / "scripts/consult.py"), *args],
+                              text=True, capture_output=True, env=env, timeout=30,
+                              cwd=self.project)
+
+    def pending_ids(self):
+        return [line.split()[0] for line in self.consult("pending").stdout.splitlines()]
+
+    def test_pending_consults_are_announced_without_their_content(self):
         self.graph_state()
         self.wise("add", "session", "goal=retries", day="2026-11-02")
         path = self.journal(("2026-11-01", True), ("2026-11-02", False),
                             ("2026-11-03", True))
         context = self.context()
         self.assertIn(str(path), context)
-        self.assertIn("2 senior consults since the last session", context)
-        self.assertIn("1 disagrees with the teacher", context)
+        self.assertIn("3 senior consults not yet acknowledged", context)
+        self.assertIn("2 disagree with the teacher", context)
+        self.assertIn("consult.py", context)
+        self.assertIn(" ack ", context)
         for secret in ("Secret topic", "private question", "private answer"):
             self.assertNotIn(secret, context)
 
-    def test_consults_before_the_last_session_stay_quiet(self):
+    def test_a_later_session_does_not_hide_an_unread_consult(self):
+        # Review #31: filtering by the latest session date returned (0, 0).
         self.graph_state()
-        self.wise("add", "session", "goal=retries", day="2026-11-03")
-        self.journal(("2026-11-01", True))
-        self.assertNotIn("senior consult", self.context())
+        self.journal(("2026-11-03", True))
+        self.wise("add", "session", "goal=recap", day="2026-11-04")
+        self.assertIn("1 senior consult not yet acknowledged", self.context())
+
+    def test_acknowledged_consults_stay_quiet_after_restart(self):
+        self.graph_state()
+        self.journal(("2026-11-05", False), ("2026-11-05", True))
+        first, second = self.pending_ids()
+        self.consult("ack", first)
+        context = self.context(source="startup")
+        self.assertIn("1 senior consult not yet acknowledged (1 disagrees", context)
+        self.consult("ack", second)
+        self.assertNotIn("senior consult", self.context(source="startup"))
 
     def test_without_sessions_every_consult_counts(self):
         self.graph_state()
         self.journal(("2026-11-01", False))
-        self.assertIn("1 senior consult since the last session", self.context())
+        self.assertIn("1 senior consult not yet acknowledged", self.context())
 
     def test_compaction_also_announces(self):
         # A consult can happen mid-conversation; compaction is the next chance.

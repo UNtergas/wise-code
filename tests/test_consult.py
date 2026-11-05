@@ -130,8 +130,8 @@ class QuestionKindTests(ConsultCase):
         text = self.journal.read_text(encoding="utf-8")
         self.assertIn("Kind: question\n", text)
         self.assertNotIn("Disagrees with teacher", text)
-        self.assertEqual(consult.entries(self.journal),
-                         [consult.Entry("2026-11-03", False)])
+        self.assertEqual([(e.date, e.disagrees) for e in consult.entries(self.journal)],
+                         [("2026-11-03", False)])
 
     def test_question_refuses_a_verdict(self):
         result = self.question("--disagrees", "yes", "--what", "x")
@@ -167,6 +167,60 @@ class EntriesTests(ConsultCase):
         self.journal.symlink_to(target)
         self.assertEqual(consult.entries(self.journal), [])
 
+
+
+class AcknowledgeTests(ConsultCase):
+    """Review #31: the teacher acknowledges each consult explicitly."""
+
+    def ids(self):
+        out = self.run_consult("pending")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        return [line.split()[0] for line in out.stdout.splitlines() if line.strip()]
+
+    def test_new_consults_are_pending_until_acknowledged_one_by_one(self):
+        self.add(day="2026-11-03")
+        self.add("--topic", "Second", "--what", "cap", day="2026-11-03", disagrees="yes")
+        first, second = self.ids()
+        self.assertNotEqual(first, second)  # same day, separate ids
+        self.assertIn("disagrees", self.run_consult("pending").stdout.splitlines()[1])
+        result = self.run_consult("ack", first)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.ids(), [second])
+        self.assertEqual(self.run_consult("ack", first).returncode, 0)  # idempotent
+        self.assertEqual(self.ids(), [second])
+
+    def test_ids_stay_stable_when_codex_appends(self):
+        self.add(day="2026-11-03")
+        [first] = self.ids()
+        self.add(day="2026-11-05")
+        self.assertEqual(self.ids()[0], first)
+
+    def test_acknowledgment_lives_outside_the_codex_folder_and_journal_is_untouched(self):
+        self.add()
+        before = self.journal.read_bytes()
+        [entry] = self.ids()
+        self.run_consult("ack", entry)
+        self.assertEqual(self.journal.read_bytes(), before)
+        acks = self.project / ".wise-code/consult-acks.txt"
+        self.assertIn(entry, acks.read_text(encoding="utf-8"))
+        self.assertNotIn(self.project / ".wise-code/consult", acks.parents)
+
+    def test_unknown_id_is_refused_and_nothing_is_acknowledged(self):
+        self.add()
+        [entry] = self.ids()
+        result = self.run_consult("ack", entry, "c-000000000000")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("c-000000000000", result.stderr)
+        self.assertEqual(self.ids(), [entry])
+
+    def test_symlinked_acknowledgments_are_refused(self):
+        self.add()
+        [entry] = self.ids()
+        target = Path(self.temp.name) / "elsewhere.txt"
+        (self.project / ".wise-code/consult-acks.txt").symlink_to(target)
+        result = self.run_consult("ack", entry)
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(target.exists())
 
 if __name__ == "__main__":
     unittest.main()
