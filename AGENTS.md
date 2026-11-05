@@ -24,7 +24,9 @@ engineering discipline below applies to you.
 - The plugin ships no learner data. Learning state lives in each project's
   `.wise-code/` and is written only through `wise.py`. Never write the JSONL
   files directly. The senior consult journal (`.wise-code/consult/`) is
-  written only by Codex, through `scripts/consult.py`.
+  written only by Codex, through `scripts/consult.py`; the teacher's
+  acknowledgments (`.wise-code/consult-acks.txt`) only by Claude, through
+  `consult.py ack`.
 - Releases bump `version` in both `.claude-plugin/plugin.json` and
   `.codex-plugin/plugin.json`.
 - Borrowed material is credited in `THIRD_PARTY_NOTICES.md` with its license.
