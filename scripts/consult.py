@@ -6,8 +6,8 @@ the learning graph but not in it: Codex is its only writer, so it needs no lock,
 and nothing here touches `graph/`. The session hook counts entries with
 `entries()`; Claude reads the file itself.
 
-Each entry has a stable id, a hash of its own text (Codex only appends, so
-earlier entries never change). Claude, the teacher, records that it went
+Each entry has a stable id, a hash of its own text and of how many identical
+entries come before it (Codex only appends, so earlier entries never change). Claude, the teacher, records that it went
 through an entry with `consult.py ack <id>`, in `.wise-code/consult-acks.txt`:
 outside `consult/`, so the senior's sandbox can't acknowledge for it, and the
 journal stays Codex's alone. An entry is pending until acknowledged, however
@@ -61,10 +61,17 @@ def one_line(text):
     return " ".join(str(text).split())
 
 
-def entry_id(block):
-    """The id of one entry: a hash of its lines, trailing blanks ignored."""
-    text = "\n".join(line.rstrip() for line in block).strip()
-    return "c-" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+def entry_text(block):
+    return "\n".join(line.rstrip() for line in block).strip()
+
+
+def entry_id(text, occurrence):
+    """The id of one entry: a hash of its text and how many identical entries
+    precede it. Two consults can match line for line (headings carry minutes
+    only); appending never changes an earlier entry's occurrence, so ids stay
+    stable."""
+    key = text if occurrence == 0 else f"{text}\n#{occurrence}"
+    return "c-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
 
 
 def parse(text):
@@ -75,12 +82,14 @@ def parse(text):
             blocks.append([line])
         elif blocks:
             blocks[-1].append(line)
-    found = []
+    found, seen = [], collections.Counter()
     for block in blocks:
+        text = entry_text(block)
+        occurrence, seen[text] = seen[text], seen[text] + 1
         heading = HEADING.match(block[0])
         verdicts = [DISAGREES.match(line) for line in block[1:]]
         verdict = next((v for v in verdicts if v), None)
-        found.append(Entry(entry_id(block), heading.group(1),
+        found.append(Entry(entry_id(text, occurrence), heading.group(1),
                            bool(verdict) and verdict.group(1) == "yes",
                            block[0][heading.end():].strip()))
     return found

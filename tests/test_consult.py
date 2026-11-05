@@ -189,6 +189,21 @@ class AcknowledgeTests(ConsultCase):
         self.assertEqual(self.run_consult("ack", first).returncode, 0)  # idempotent
         self.assertEqual(self.ids(), [second])
 
+    def test_identical_entries_are_acknowledged_separately(self):
+        # Review on #31: same fields in the same minute gave one id, so acking
+        # the first hid the second.
+        self.journal.parent.mkdir()
+        block = ("## 2026-11-03 10:00 — Retry backoff\nKind: doubt\n"
+                 "Disagrees with teacher: yes — cap\n")
+        self.journal.write_text(block, encoding="utf-8")
+        [first] = self.ids()
+        self.run_consult("ack", first)
+        with self.journal.open("a", encoding="utf-8") as stream:
+            stream.write("\n" + block)
+        second = self.ids()
+        self.assertEqual(len(second), 1)
+        self.assertNotEqual(second[0], first)
+
     def test_ids_stay_stable_when_codex_appends(self):
         self.add(day="2026-11-03")
         [first] = self.ids()
