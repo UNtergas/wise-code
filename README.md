@@ -79,8 +79,12 @@ sandbox), then onboarding continues. It sets up:
 
 - **Claude** — this project's `.claude/settings.local.json` (not committed):
   shell sandbox on and fail-closed (`failIfUnavailable`), `~/.ssh`, `~/.aws`,
-  `~/.config/gh` and `.env` files unreadable to both the shell and the Read
-  tool, network limited to GitHub and package registries. Where the sandbox
+  `~/.config/gh` and the project's `.env` files unreadable to both the shell
+  (`sandbox.filesystem.denyRead`) and the Read tool (`permissions.deny`),
+  network limited to GitHub and package registries. On Linux and WSL2 Claude
+  Code expands the `.env` wildcard to the concrete files it matches, so a
+  `.env` created mid-session may not be covered for the shell until Claude
+  Code restarts (the Read-tool rule still applies). Where the sandbox
   can't run (native Windows, or Linux without `bubblewrap` and `socat`), setup
   reports a conflict instead of writing a setting that would stop Claude Code
   from starting: use WSL2 or install the packages, or skip.
