@@ -52,7 +52,10 @@ The "before" column grows with history; the "after" column doesn't.
   doesn't show that side saw the other's change. Both stay on disk, every
   command warns, changes to that node are refused, and `wise.py resolve <id>`
   shows how they differ; `--keep <n>` keeps one, recording every version in its
-  `seen` so a later merge that brings one back settles silently. Lines with no
+  `seen` (with what they include) so a later merge that brings one back settles
+  silently. One exception: versions that differ only in a book's `projects`
+  (it only grows: each project that cites the book adds itself) and in
+  metadata are combined, their lists united, without asking. Lines with no
   `seen` (written before it existed, or edited by hand) can't be shown to
   include another, so they too wait for `resolve`. Leftover conflict markers are
   ignored.

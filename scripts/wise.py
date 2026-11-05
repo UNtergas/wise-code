@@ -149,6 +149,10 @@ META_FIELDS = {"created": "date", "updated": "date", "rev": "int", "at": "str",
 # How many earlier versions a node remembers (`seen`). A version this many
 # edits back on one side, merged with the other, reads as divergent: resolve asks.
 MERGE_HISTORY = 16
+# List fields that only ever grow (a book gains each project that cites it).
+# Independent versions that differ only here and in metadata are combined by
+# union instead of waiting for resolve: no side's item is lost.
+GROW_ONLY = {"book": ("projects",)}
 # Allowed ranges for int fields; others must be 0 or more.
 RANGES = {("question", "box"): (min(BOXES), max(BOXES))}
 TIER2 = ("lesson", "reference", "research", "adr", "mission", "resource")
@@ -239,6 +243,40 @@ def surviving_versions(versions):
             unique.append(node)
     included = {v for node in unique for v in node.get("seen", [])}
     return [node for node in unique if version_id(node) not in included]
+
+
+def includes_all(node, versions):
+    """Record in `node` that it includes `versions` and everything they include."""
+    remember(node, *(a for v in versions for a in v.get("seen", [])),
+             *(version_id(v) for v in versions))
+
+
+def combine_versions(versions):
+    """One version holding every independent version's changes, or None.
+
+    Only when they differ in nothing but GROW_ONLY lists and metadata: the
+    lists are united, the stamps take the latest, and the result includes
+    every version, so a later merge that brings one back settles silently.
+    """
+    kind = versions[0]["type"]
+    if any(v["type"] != kind for v in versions):
+        return None
+    grow = GROW_ONLY.get(kind, ())
+    combined = dict(versions[0])
+    for field in sorted({f for v in versions for f in v} - set(META)):
+        values = [v.get(field) for v in versions]
+        if all(canonical(x) == canonical(values[0]) for x in values):
+            continue
+        if field not in grow or not all(isinstance(x, (list, type(None))) for x in values):
+            return None
+        combined[field] = sorted({item for x in values for item in (x or [])})
+    for field, pick in (("created", min), ("updated", max), ("rev", max), ("at", max)):
+        present = [v[field] for v in versions if field in v]
+        if present:
+            combined[field] = pick(present)
+    combined["seen"] = []
+    includes_all(combined, versions)
+    return combined
 
 
 class WiseError(Exception):
@@ -474,11 +512,19 @@ class Graph:
                     raise WiseError(f"nodes.jsonl line {number}: {error}") from None
                 if not isinstance(node, dict) or "id" not in node or "type" not in node:
                     raise WiseError(f"nodes.jsonl line {number}: needs id and type")
+                # Merge decisions read `seen` before validate_node runs.
+                seen = node.get("seen", [])
+                if not isinstance(seen, list) or not all(isinstance(v, str) for v in seen):
+                    raise WiseError(f"nodes.jsonl line {number}: seen must be a list of text; "
+                                    f"got {seen!r}")
                 lines.setdefault(node["id"], []).append(node)
         for node_id, versions in lines.items():
             survivors = surviving_versions(versions)
-            if len(survivors) < len(versions):
-                self.dirty = True  # included or duplicate lines go on the next write
+            combined = combine_versions(survivors) if len(survivors) > 1 else None
+            if combined is not None:
+                survivors = [combined]
+            if len(survivors) < len(versions) or combined is not None:
+                self.dirty = True  # included, duplicate or combined lines go on the next write
             self.nodes[node_id] = survivors[0]
             if len(survivors) > 1:
                 self.conflicts[node_id] = [canonical(n) for n in survivors]
@@ -1140,7 +1186,7 @@ def cmd_resolve(graph, args):
     graph.nodes[node_id] = node
     # The choice includes every version, so it wins every later merge that
     # brings one back.
-    remember(node, *(version_id(n) for n in nodes))
+    includes_all(node, nodes)
     graph.touch(node)
     graph.save()
     print(f"kept version {args.keep} of {node_id}")

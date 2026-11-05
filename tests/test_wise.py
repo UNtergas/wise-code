@@ -666,6 +666,85 @@ class MergeConflictTests(WiseTestCase):
                 [kept] = self.versions("alpha")
                 self.assertEqual(kept["notes"], ["base", "one", "two"])
 
+    def test_resolved_choice_includes_the_rejected_branch_history(self):
+        # Review on #34: keeping A over B1 forgot B0, B1's own ancestor, so a
+        # merge bringing B0 back asked again.
+        base, ours, _ = self.two_divergent()
+        b0 = {**base, "notes": ["base", "b0"], "updated": "2026-10-29", "rev": 1,
+              "seen": [wise.version_id(base)]}
+        b1 = {**b0, "notes": ["base", "b0", "b1"], "rev": 2,
+              "seen": [wise.version_id(base), wise.version_id(b0)]}
+        a = {**ours, "seen": [wise.version_id(base)]}
+        self.with_lines(self.line(a), self.line(b1))
+        shown = self.out("resolve", "alpha")
+        keep_a = 1 + ["ours" in line for line in shown.splitlines()
+                      if re.match(r"^[12]: ", line)].index(True)
+        self.out("resolve", "alpha", "--keep", str(keep_a))
+        self.with_lines(self.line(b0))
+        res = self.run_wise("set", "other", "definition=x")
+        self.assertNotIn("conflicting", res.stderr)
+        [kept] = self.versions("alpha")
+        self.assertEqual(kept["notes"], ["base", "ours"])
+
+    def test_malformed_seen_is_a_line_error_not_a_crash(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        good = self.versions("alpha")[0]
+        for label, value in (("null", None), ("object entry", [{"x": 1}])):
+            with self.subTest(label):
+                text = self.line(good) + "\n" + self.line({**good, "rev": 3, "seen": value}) + "\n"
+                self.nodes_file().write_text(text, encoding="utf-8")
+                for command in (("check",), ("list", "concept")):
+                    res = self.run_wise(*command, check=False)
+                    self.assertEqual(res.returncode, 2, res.stderr)
+                    self.assertIn("nodes.jsonl line 2: seen must be a list of text", res.stderr)
+                    self.assertNotIn("Traceback", res.stderr)
+                self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
+    @unittest.skipUnless(shutil.which("git"), "git not installed")
+    def test_two_projects_citing_one_book_merge_without_resolve(self):
+        # Review on #34: each project adds itself to the book's projects, so
+        # every shared book became a conflict that blocked further citations.
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": self.temp.name,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(cwd, *args):
+            return subprocess.run(["git", "-C", str(cwd), *args], text=True,
+                                  capture_output=True, env=env, timeout=30)
+        shutil.rmtree(self.project / ".git")
+        git(self.project, "init", "-q", "-b", "main")
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        self.run_wise("add", "section", "book=ddia", "number=1.2", "title=Scalability")
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-qm", "base")
+        clone = Path(self.temp.name) / "clone"
+        git(self.temp.name, "clone", "-q", str(self.project), str(clone))
+        for root, project, day in ((self.project, "grammar", "2026-10-29"),
+                                   (clone, "job-tracking", "2026-10-30")):
+            self.run_wise("add", "citation", f"project={project}", "question=Q",
+                          "--on", "SEC-ddia-1.2", root=root, day=day)
+            git(root, "add", "-A")
+            git(root, "commit", "-qm", project)
+        git(self.project, "fetch", "-q", str(clone), "main")
+        merge = git(self.project, "merge", "-q", "--no-edit", "FETCH_HEAD")
+        self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
+        res = self.run_wise("add", "citation", "project=third", "question=Q",
+                            "--on", "SEC-ddia-1.2", day="2026-10-31")
+        self.assertNotIn("conflicting", res.stderr)
+        [book] = self.versions("BK-ddia")
+        self.assertEqual(book["projects"], ["grammar", "job-tracking", "third"])
+
+    def test_versions_differing_in_more_than_book_projects_still_wait(self):
+        self.run_wise("add", "book", "slug=ddia", "title=DDIA", "file=shared/ddia.pdf")
+        self.run_wise("add", "concept", "name=Other")
+        base = self.versions("BK-ddia")[0]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        ours = {**base, **seen, "projects": ["a"]}
+        theirs = {**base, **seen, "projects": ["b"], "title": "Designing DIA"}
+        self.with_lines(self.line(ours), self.line(theirs))
+        res = self.run_wise("set", "other", "definition=x")
+        self.assertIn("conflicting versions from a merge: BK-ddia", res.stderr)
+
     def test_show_hides_merge_history(self):
         self.run_wise("add", "concept", "name=Alpha")
         self.run_wise("set", "alpha", "notes+=one")
