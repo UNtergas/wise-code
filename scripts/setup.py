@@ -1,6 +1,6 @@
 """Check or apply the sandbox setup WiseCode's Learn onboarding requires first.
 
-Three items, each reported as ok, missing, conflict or n/a:
+Three items, each reported as ok, missing, conflict, edited (Codex profile only) or n/a:
 
 - consult folder: `.wise-code/consult/` in this project, so the Codex senior can
   write its journal while every other path stays read-only to it.
@@ -12,7 +12,9 @@ Three items, each reported as ok, missing, conflict or n/a:
   the plugin, write only the consult folder, live web search, docs hosts only for
   shell network. n/a when Codex isn't installed.
 
-`check` changes nothing and exits 1 if anything is missing or conflicts.
+`check` changes nothing and exits 1 if anything is missing or conflicts. A
+Codex profile the learner edited is reported as `edited` with every line that
+differs from what setup writes; it is kept and doesn't fail the check.
 `apply` creates what is missing, merges the Claude settings, and never
 overwrites anything that differs from what it would write: that is reported as a
 conflict for the learner to resolve. Running it twice changes nothing.
@@ -325,20 +327,56 @@ def codex_item(codex_home, plugin_root, project):
     return Item(name, "missing", str(path), apply)
 
 
+def profile_lines(text):
+    """Each setting line of a profile with its [section], comments and blanks left out."""
+    section, found = "", []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("["):
+            section = line
+            continue
+        found.append(f"{section} {line}".strip())
+    return found
+
+
+def profile_changes(text, generated):
+    """How a profile differs from what setup writes: removed and added lines."""
+    ours, theirs = profile_lines(generated), profile_lines(text)
+    return ([f"removed {line}" for line in ours if line not in theirs]
+            + [f"added {line}" for line in theirs if line not in ours])
+
+
+def verified_item(name, path, text, granted):
+    """ok when the profile is exactly what setup writes for its plugin folder.
+
+    Otherwise the learner edited it: their edit is kept and doesn't block
+    onboarding (the marker invites edits), but it is never reported as ok,
+    and every generated line it removed or changed is listed.
+    """
+    changes = profile_changes(text, codex_profile(granted))
+    if not changes:
+        return Item(name, "ok", str(path))
+    return Item(name, "edited", f"{path} differs from what setup writes; check these "
+                "are meant: " + "; ".join(changes))
+
+
 def existing_profile_item(name, path, text, root, codex_home):
-    """Check that a setup-written profile still grants the plugin's current folder.
+    """Check a setup-written profile: its plugin grant, then every other line.
 
     The profile denies the filesystem root, so a stale grant (the plugin moved,
-    e.g. on update) leaves the senior unable to read its own scripts.
+    e.g. on update) leaves the senior unable to read its own scripts. A current
+    grant alone proves nothing about the other restrictions.
     """
     granted = granted_plugin(text)
     if root is None:
         if granted and Path(granted).is_dir():
-            return Item(name, "ok", str(path))
+            return verified_item(name, path, text, granted)
         return Item(name, "conflict", f"{path} grants {granted}, which is gone, and wise-code "
                     f"wasn't found under {codex_home}; pass --codex-plugin-root PATH")
     if granted == str(root):
-        return Item(name, "ok", str(path))
+        return verified_item(name, path, text, granted)
     if granted and text == codex_profile(granted):
         # Unedited since setup wrote it: safe to regenerate for the new folder.
         def apply():
@@ -366,10 +404,14 @@ def report(found):
         print(f"{item.status:<9}{item.name}: {item.detail}")
 
 
+# Statuses that let onboarding continue.
+PASSING = ("ok", "edited", "n/a")
+
+
 def cmd_check(args):
     found = items(args)
     report(found)
-    if all(i.status in ("ok", "n/a") for i in found):
+    if all(i.status in PASSING for i in found):
         return 0
     script = Path(__file__).resolve()
     print(f'run: python3 "{script}" apply   (then check again)')
@@ -383,7 +425,7 @@ def cmd_apply(args):
     # Report the state after applying, the same way check does.
     found = items(args)
     report(found)
-    return 0 if all(i.status in ("ok", "n/a") for i in found) else 1
+    return 0 if all(i.status in PASSING for i in found) else 1
 
 
 def cmd_show_codex(args):
