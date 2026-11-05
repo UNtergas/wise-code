@@ -2,6 +2,7 @@
 
 import errno
 import json
+import re
 import os
 from pathlib import Path
 import shutil
@@ -95,7 +96,7 @@ class StoreTests(WiseTestCase):
                               capture_output=True, env=env, timeout=30)
 
     @unittest.skipUnless(shutil.which("git"), "git not installed")
-    def test_real_git_merge_of_two_clones_needs_no_conflict_resolution(self):
+    def test_real_git_merge_of_two_clones_keeps_every_record(self):
         shutil.rmtree(self.project / ".git")
         self.git(self.project, "init", "-q", "-b", "main")
         self.run_wise("add", "concept", "name=Strings")
@@ -120,14 +121,21 @@ class StoreTests(WiseTestCase):
         self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
         text = (self.project / ".wise-code/graph/nodes.jsonl").read_text(encoding="utf-8")
         self.assertNotIn("<<<<<<<", text)
-        self.assertIn("ok", self.out("check"))
         qa = [n for n in self.nodes() if n["type"] == "qa"]
         self.assertEqual(len({n["id"] for n in qa}), 12)  # 10 added + 2 answers
-        # The newer change to the shared question wins, and a write cleans the file.
+        # Both sides rescheduled the shared question: neither includes the
+        # other, so the learner picks (review #34), and a write cleans the file.
+        self.assertIn(f"{qid}: 2 conflicting versions", self.run_wise("check", check=False).stdout)
+        shown = self.out("resolve", qid)
+        self.assertIn("differ in box, due", shown)
+        boxes = [json.loads(line.split(": ", 1)[1])["box"]
+                 for line in shown.splitlines() if re.match(r"^[12]: ", line)]
+        self.out("resolve", qid, "--keep", str(1 + boxes.index(2)))
         self.run_wise("add", "concept", "name=Lifetimes")
         question = [n for n in self.nodes() if n["id"] == qid]
         self.assertEqual(len(question), 1)
         self.assertEqual(question[0]["box"], 2)
+        self.assertIn("ok", self.out("check"))
 
     def test_unknown_field_and_bad_enum_are_rejected(self):
         bad = self.run_wise("add", "qa", "q=x", "a=y", "source=nope", check=False)
@@ -621,17 +629,80 @@ class MergeConflictTests(WiseTestCase):
         self.assertNotIn("conflicting", res.stderr)
         self.assertEqual(len(self.versions("alpha")), 1)
 
-    def test_higher_stamp_wins_in_either_line_order(self):
+    def test_divergent_unequal_stamps_wait_for_resolve(self):
+        # Review #34: a higher stamp doesn't mean that side saw the other's
+        # edit; picking it silently dropped the other clone's change.
         for newer_first in (True, False):
             with self.subTest(newer_first=newer_first):
                 shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
                 base, ours, theirs = self.two_divergent()
-                theirs = {**theirs, "rev": 2}
+                # Both sides edited the base, as wise.py records it.
+                seen = {"seen": [wise.version_id(base)]}
+                ours, theirs = {**ours, **seen}, {**theirs, **seen, "rev": 2}
                 self.with_lines(*(self.line(n) for n in
                                   ([theirs, ours] if newer_first else [ours, theirs])))
-                self.run_wise("set", "other", "definition=x")
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertIn("conflicting versions from a merge: alpha", res.stderr)
+                # The base is an ancestor of both and goes; both edits stay.
+                self.assertCountEqual([v["notes"] for v in self.versions("alpha")],
+                                      [["base", "ours"], ["base", "theirs"]])
+
+    def test_a_version_and_its_own_ancestor_collapse_to_the_descendant(self):
+        # A union merge of neighbouring edits leaves the unchanged base line
+        # beside the edited one; the edit includes the base, so it wins.
+        self.run_wise("add", "concept", "name=Alpha", "notes+=base")
+        self.run_wise("add", "concept", "name=Other")
+        base = self.versions("alpha")[0]
+        self.run_wise("set", "alpha", "notes+=one", day="2026-10-29")
+        self.run_wise("set", "alpha", "notes+=two", day="2026-10-30")
+        for order in ("base-last", "base-first"):
+            with self.subTest(order=order):
+                lines = self.nodes_file().read_text(encoding="utf-8").splitlines()
+                lines = [l for l in lines if json.loads(l) != base]
+                lines = lines + [self.line(base)] if order == "base-last" else [self.line(base)] + lines
+                self.nodes_file().write_text("\n".join(lines) + "\n", encoding="utf-8")
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertNotIn("conflicting", res.stderr)
                 [kept] = self.versions("alpha")
-                self.assertEqual(kept["notes"], ["base", "theirs"])
+                self.assertEqual(kept["notes"], ["base", "one", "two"])
+
+    def test_show_hides_merge_history(self):
+        self.run_wise("add", "concept", "name=Alpha")
+        self.run_wise("set", "alpha", "notes+=one")
+        self.assertNotIn("seen", self.out("show", "alpha").splitlines()[0])
+
+    @unittest.skipUnless(shutil.which("git"), "git not installed")
+    def test_real_git_merge_of_unequal_stamps_keeps_both_edits(self):
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": self.temp.name,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_NOSYSTEM": "1"}
+
+        def git(cwd, *args):
+            return subprocess.run(["git", "-C", str(cwd), *args], text=True,
+                                  capture_output=True, env=env, timeout=30)
+        shutil.rmtree(self.project / ".git")
+        git(self.project, "init", "-q", "-b", "main")
+        self.run_wise("add", "concept", "name=Alpha")
+        self.run_wise("add", "concept", "name=Other")
+        git(self.project, "add", "-A")
+        git(self.project, "commit", "-qm", "base")
+        clone = Path(self.temp.name) / "clone"
+        git(self.temp.name, "clone", "-q", str(self.project), str(clone))
+        # Different fields, different stamps: ours edits once, theirs twice a day later.
+        self.run_wise("set", "alpha", "definition=ours", day="2026-10-29")
+        git(self.project, "commit", "-qam", "ours")
+        self.run_wise("set", "alpha", "notes+=theirs", root=clone, day="2026-10-30")
+        self.run_wise("set", "alpha", "notes+=again", root=clone, day="2026-10-30")
+        git(clone, "commit", "-qam", "theirs")
+        git(self.project, "fetch", "-q", str(clone), "main")
+        merge = git(self.project, "merge", "-q", "--no-edit", "FETCH_HEAD")
+        self.assertEqual(merge.returncode, 0, merge.stdout + merge.stderr)
+        res = self.run_wise("set", "other", "definition=x", check=False)
+        self.assertIn("conflicting versions from a merge: alpha", res.stderr)
+        shown = self.out("resolve", "alpha")
+        self.assertIn("2 versions", shown)
+        self.assertIn("ours", shown)
+        self.assertIn("again", shown)
 
     @unittest.skipUnless(shutil.which("git"), "git not installed")
     def test_real_git_merge_of_same_day_edits_waits_for_resolve(self):

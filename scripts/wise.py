@@ -142,9 +142,13 @@ TYPES = {
         "verdict": READ_VERDICTS}},
 }
 
-META = ("id", "type", "created", "updated", "rev", "at")
+META = ("id", "type", "created", "updated", "rev", "at", "seen")
 # Stored kinds of the metadata every record may carry (id and type checked apart).
-META_FIELDS = {"created": "date", "updated": "date", "rev": "int", "at": "str"}
+META_FIELDS = {"created": "date", "updated": "date", "rev": "int", "at": "str",
+               "seen": "list"}
+# How many earlier versions a node remembers (`seen`). A version this many
+# edits back on one side, merged with the other, reads as divergent: resolve asks.
+MERGE_HISTORY = 16
 # Allowed ranges for int fields; others must be 0 or more.
 RANGES = {("question", "box"): (min(BOXES), max(BOXES))}
 TIER2 = ("lesson", "reference", "research", "adr", "mission", "resource")
@@ -207,6 +211,34 @@ def canonical(node):
 
 def stamp(node):
     return (node.get("updated") or node.get("created") or "", node.get("rev", 0))
+
+
+def version_id(node):
+    """A short content hash naming one version of a node."""
+    return hashlib.sha256(canonical(node).encode("utf-8")).hexdigest()[:12]
+
+
+def remember(node, *versions):
+    """Record that `node` includes `versions` (ids), keeping the newest MERGE_HISTORY."""
+    seen = [v for v in node.get("seen", []) if v not in versions] + list(versions)
+    node["seen"] = seen[-MERGE_HISTORY:]
+
+
+def surviving_versions(versions):
+    """The versions of one node a union merge left that no other version includes.
+
+    A version is dropped when it is identical to an earlier one or when another
+    version lists it in `seen` (that one was edited from it). What remains are
+    independent edits: one means the merge is settled; more than one must be
+    resolved by the learner, whatever their stamps say, since a higher rev or a
+    later date doesn't show that side saw the other's change.
+    """
+    unique = []
+    for node in versions:
+        if canonical(node) not in (canonical(u) for u in unique):
+            unique.append(node)
+    included = {v for node in unique for v in node.get("seen", [])}
+    return [node for node in unique if version_id(node) not in included]
 
 
 class WiseError(Exception):
@@ -296,9 +328,13 @@ class Graph:
         self.dir = state / "graph"
         self.nodes = {}
         self.edges = set()
-        # id -> canonical JSON of each version a union merge left with the
-        # same stamp; nodes[id] holds the first until `resolve` picks one.
+        # id -> canonical JSON of each independent version a union merge left;
+        # nodes[id] holds the first until `resolve` picks one.
         self.conflicts = {}
+        # id -> version_id of the version loaded, so touch() can record that
+        # the edited node includes it; ids already touched in this process.
+        self._loaded = {}
+        self._touched = set()
         self.dirty = False
         self._lock = None
         # The state boundary holds for every path wise.py reads or writes: a
@@ -425,6 +461,7 @@ class Graph:
                 leftover.unlink()
 
     def _load(self):
+        lines = {}  # id -> every version on disk, in file order
         nodes_path = self.dir / "nodes.jsonl"
         edges_path = self.dir / "edges.jsonl"
         if nodes_path.is_file():
@@ -437,7 +474,16 @@ class Graph:
                     raise WiseError(f"nodes.jsonl line {number}: {error}") from None
                 if not isinstance(node, dict) or "id" not in node or "type" not in node:
                     raise WiseError(f"nodes.jsonl line {number}: needs id and type")
-                self._keep_version(node)
+                lines.setdefault(node["id"], []).append(node)
+        for node_id, versions in lines.items():
+            survivors = surviving_versions(versions)
+            if len(survivors) < len(versions):
+                self.dirty = True  # included or duplicate lines go on the next write
+            self.nodes[node_id] = survivors[0]
+            if len(survivors) > 1:
+                self.conflicts[node_id] = [canonical(n) for n in survivors]
+            else:
+                self._loaded[node_id] = version_id(survivors[0])
         if edges_path.is_file():
             for number, line in enumerate(edges_path.read_text(encoding="utf-8").splitlines(), 1):
                 if not line.strip() or CONFLICT_RE.match(line):
@@ -447,33 +493,6 @@ class Graph:
                     self.edges.add((edge["from"], edge["rel"], edge["to"]))
                 except (ValueError, KeyError, TypeError) as error:
                     raise WiseError(f"edges.jsonl line {number}: {error}") from None
-
-    def _keep_version(self, node):
-        """Choose among the lines a union merge left for one id.
-
-        A higher (updated, rev) stamp wins and the next write drops the other
-        line: an edit on the older side is lost, by design. Identical lines
-        collapse. Different lines with the same stamp can't be ordered, so
-        both are kept on disk until the learner picks one (wise.py resolve).
-        """
-        node_id = node["id"]
-        old = self.nodes.get(node_id)
-        if old is None:
-            self.nodes[node_id] = node
-            return
-        new, ours = stamp(node), stamp(old)
-        if new != ours:
-            self.dirty = True  # the losing line goes on the next write
-            if new > ours:
-                self.nodes[node_id] = node
-                self.conflicts.pop(node_id, None)
-            return
-        text = canonical(node)
-        versions = self.conflicts.get(node_id, [canonical(old)])
-        if text in versions:
-            self.dirty = True  # an identical duplicate collapses
-            return
-        self.conflicts[node_id] = versions + [text]
 
     def _check_unresolved(self, node_id):
         if node_id in self.conflicts:
@@ -583,13 +602,18 @@ class Graph:
                 self.touch(book)
 
     def touch(self, node):
-        """Mark a changed node so a later union merge can tell which side is newer."""
+        """Mark a changed node so a later union merge can tell what it includes."""
         self._check_unresolved(node["id"])
         # Never move the date back: a node dated ahead of today (another
         # time zone, a clock ahead) would otherwise outrank this change.
         node["updated"] = max(iso(today()), node.get("updated") or "",
                               node.get("created") or "")
         node["rev"] = int(node.get("rev", 0)) + 1
+        # Name the version this edit started from, so a merge that brings it
+        # back knows this one includes it (surviving_versions).
+        if node["id"] in self._loaded and node["id"] not in self._touched:
+            remember(node, self._loaded[node["id"]])
+        self._touched.add(node["id"])
         self.dirty = True
 
     def remove(self, node_id):
@@ -738,7 +762,7 @@ def said_check_of(node):
     """The stored check, but only if it was made on the quote stored now.
 
     `set` resets the check on a changed quote, but `edit`, a hand edit, or a
-    union merge that keeps the newer line can change the words and leave an
+    union merge resolved to another version can change the words and leave an
     old `ok` behind. Binding the check to a hash of the checked words makes
     any such change read as `unchecked`, whatever path changed it.
     """
@@ -1101,10 +1125,10 @@ def cmd_resolve(graph, args):
     nodes = [json.loads(text) for text in versions]
     if args.keep is None:
         fields = sorted({f for n in nodes for f in n})
-        differ = [f for f in fields if len({canonical(n.get(f)) for n in nodes}) > 1]
-        print(f"{node_id}: {len(nodes)} versions with the same stamp "
-              f"{stamp(nodes[0])[0]} rev {stamp(nodes[0])[1]}; they differ in "
-              f"{', '.join(differ)}")
+        differ = [f for f in fields if f not in META
+                  and len({canonical(n.get(f)) for n in nodes}) > 1]
+        print(f"{node_id}: {len(nodes)} versions edited apart in different clones; "
+              f"they differ in {', '.join(differ)}")
         for number, node in enumerate(nodes, 1):
             print(f"{number}: " + canonical({f: node.get(f) for f in differ}))
         print(f"keep one: wise.py resolve {node_id} --keep <number>")
@@ -1114,7 +1138,10 @@ def cmd_resolve(graph, args):
     node = nodes[args.keep - 1]
     del graph.conflicts[node_id]
     graph.nodes[node_id] = node
-    graph.touch(node)  # a higher rev, so this choice wins every later merge
+    # The choice includes every version, so it wins every later merge that
+    # brings one back.
+    remember(node, *(version_id(n) for n in nodes))
+    graph.touch(node)
     graph.save()
     print(f"kept version {args.keep} of {node_id}")
     return 0
@@ -1448,7 +1475,8 @@ def cmd_weak(graph, args):
 def cmd_show(graph, args):
     node_id = graph.resolve(args.id)
     node = graph.nodes[node_id]
-    print(json.dumps(node, ensure_ascii=False, sort_keys=True))
+    shown = {k: v for k, v in node.items() if k != "seen"}  # merge bookkeeping
+    print(json.dumps(shown, ensure_ascii=False, sort_keys=True))
     printer = Printer(f"pass --rel to filter {node_id}'s links")
     links = [("→", r, b) for a, r, b in sorted(graph.edges) if a == node_id] + \
             [("←", r, a) for a, r, b in sorted(graph.edges) if b == node_id]

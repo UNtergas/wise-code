@@ -42,14 +42,20 @@ The "before" column grows with history; the "after" column doesn't.
   (`rust-strings`) with `aliases`. Shelf books and sections use stable slugs
   (`BK-ddia`, `SEC-ddia-1.2`), so every project means the same section.
 - Merges: git's built-in `union` driver keeps both sides' lines, so concurrent
-  additions never conflict. Every change stamps the node (`updated`, `rev`); when
-  both sides changed the same node, the loader keeps the higher stamp and the
-  next write drops the other line, so the older side's edit to that node is
-  lost by design. Identical lines collapse. Different lines with the same stamp
-  (both sides edited once on the same day) can't be ordered: both stay on disk,
-  every command warns, changes to that node are refused, and
-  `wise.py resolve <id>` shows how they differ; `--keep <n>` keeps one with a
-  higher `rev`. Leftover conflict markers are ignored.
+  additions never conflict. A merge never drops an edit silently. Every change
+  through `wise.py` stamps the node (`updated`, `rev`) and lists the version it
+  was edited from in `seen` (content hashes, the last 16). When a merge leaves
+  several lines for one node, the loader drops identical copies and every line
+  another line lists in `seen` (it was edited from it, so it adds nothing); the
+  next write removes them. If more than one line remains, the sides edited the
+  node independently, whatever their stamps say: a higher `rev` or a later date
+  doesn't show that side saw the other's change. Both stay on disk, every
+  command warns, changes to that node are refused, and `wise.py resolve <id>`
+  shows how they differ; `--keep <n>` keeps one, recording every version in its
+  `seen` so a later merge that brings one back settles silently. Lines with no
+  `seen` (written before it existed, or edited by hand) can't be shown to
+  include another, so they too wait for `resolve`. Leftover conflict markers are
+  ignored.
 - Writes go only through the script: it assigns IDs, validates fields and
   edges (stored JSON types, not just CLI text), and refuses near-duplicate
   concepts. `--force` overrides similarity, never an existing concept id.
