@@ -311,6 +311,44 @@ class CodexProfileTests(SetupCase):
         self.assertIn("show-codex", result.stdout)
         self.assertEqual(self.profile.read_bytes(), before)
 
+    def test_an_untouched_profile_is_ok(self):
+        self.setup("apply")
+        result = self.setup("check")
+        self.assertRegex(result.stdout, r"(?m)^ok +Codex senior profile")
+
+    def test_weakened_profile_is_reported_as_edited_not_ok(self):
+        # Only the plugin grant was checked, so ":root" = "write" read as ok (review #33).
+        self.setup("apply")
+        text = self.profile.read_text(encoding="utf-8")
+        self.profile.write_text(text.replace('":root" = "deny"', '":root" = "write"')
+                                    .replace('"**/.env" = "deny"\n', ""), encoding="utf-8")
+        before = self.profile.read_bytes()
+        for command in ("check", "apply"):
+            with self.subTest(command):
+                result = self.setup(command)
+                self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
+                self.assertNotRegex(result.stdout, r"(?m)^ok +Codex senior profile")
+                self.assertIn('removed [permissions.senior.filesystem] ":root" = "deny"',
+                              result.stdout)
+                self.assertIn('added [permissions.senior.filesystem] ":root" = "write"',
+                              result.stdout)
+                self.assertIn('removed [permissions.senior.filesystem.":workspace_roots"] '
+                              '"**/.env" = "deny"', result.stdout)
+                # The learner's edit is theirs: kept, and it doesn't block onboarding.
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(self.profile.read_bytes(), before)
+
+    def test_edited_profile_without_a_detected_plugin_is_still_edited(self):
+        self.setup("apply")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"~/notes" = "read"\n')
+        # The plugin isn't found under CODEX_HOME, but the granted folder exists.
+        (self.codex_plugin / ".codex-plugin/plugin.json").unlink()
+        result = self.setup("check")
+        self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
+        self.assertIn('added [permissions.senior.network.domains] '
+                      '"~/notes" = "read"', result.stdout)
+
     def test_granted_plugin_folder_gone_is_reported(self):
         import shutil
         self.setup("apply")
