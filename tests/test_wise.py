@@ -787,6 +787,44 @@ class LessonImportTests(WiseTestCase):
         self.assertEqual(kinds.count("qa"), 2)
         self.assertEqual(kinds.count("question"), 1)
 
+    def test_malformed_answers_are_rejected_and_nothing_is_recorded(self):
+        # bool("false") is True: a string verdict was stored as correct (review #32).
+        good = {"q": "Q1", "answer": "a", "correct": True}
+        bad_answers = {
+            "string false": {"q": "Q", "answer": "wrong", "correct": "false", "expected": "right"},
+            "number": {"q": "Q", "answer": "a", "correct": 0},
+            "null": {"q": "Q", "answer": "a", "correct": None},
+            "missing": {"q": "Q", "answer": "a"},
+            "not an object": "Q: a",
+            "non-string text": {"q": ["Q"], "answer": "a", "correct": True},
+        }
+        self.run_wise("add", "qa", "q=Q0", "a=A0", "source=asked")  # graph exists
+        before = self.nodes()
+        folder = Path(self.temp.name)
+        for label, bad in bad_answers.items():
+            with self.subTest(label):
+                path = folder / "results.json"
+                path.write_text(json.dumps({"result_id": f"r-{len(label)}", "lesson": "0001",
+                                            "answers": [good, bad]}), encoding="utf-8")
+                result = self.run_wise("import-lesson", str(path), check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("answer 2", result.stderr)
+                self.assertEqual(self.nodes(), before)
+
+    def test_malformed_payload_is_rejected(self):
+        folder = Path(self.temp.name)
+        for label, data in {"result_id not a string": {"result_id": 7, "answers": []},
+                            "answers not a list": {"result_id": "r", "answers": {}},
+                            "not an object": [], "lesson not a string": {
+                                "result_id": "r", "lesson": 1, "answers": []}}.items():
+            with self.subTest(label):
+                path = folder / "results.json"
+                path.write_text(json.dumps(data), encoding="utf-8")
+                result = self.run_wise("import-lesson", str(path), check=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("results.json", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
     def test_inbox_is_imported_and_moved_to_done(self):
         inbox = self.project / ".wise-code" / "inbox"
         inbox.mkdir(parents=True)

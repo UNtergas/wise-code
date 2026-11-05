@@ -154,7 +154,10 @@ lesson's **Download results** button (`skills/teach/templates/results.js`) saves
 `{lesson, result_id, date, answers: [{q, answer, correct, expected}]}`. Put the
 file in `.wise-code/inbox/` (imported at the next session start) or run
 `wise.py import-lesson <file>`. Each answer becomes a `lesson` QA, wrong answers
-enter the question bank, and a `result_id` is never imported twice.
+enter the question bank, and a `result_id` is never imported twice. The whole
+file is checked before anything is recorded: `correct` must be a JSON boolean
+and `q`, `answer`, `expected` strings, so a malformed file is rejected with the
+number of the bad answer and the graph stays unchanged.
 
 ## Shelf graph
 

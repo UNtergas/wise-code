@@ -1987,27 +1987,63 @@ def cmd_check(graph, args):
 
 # ---------------------------------------------------------------- import: lesson results
 
-def import_lesson_file(graph, path):
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+def parse_lesson_result(data):
+    """Validate a lesson results payload; return (result_id, date, lesson, answers).
+
+    Raises WiseError naming the first bad field, before anything is recorded.
+    Each returned answer is {q, answer, correct, expected} with str texts and a
+    bool `correct`: truthiness would turn the string "false" into a right answer.
+    """
+    if not isinstance(data, dict):
+        raise WiseError("not a JSON object")
     result_id = data.get("result_id")
+    if not isinstance(result_id, str) or not result_id.strip():
+        raise WiseError("result_id must be a non-empty string")
     answers = data.get("answers")
-    if not result_id or not isinstance(answers, list):
-        raise WiseError(f"{path}: needs result_id and answers")
+    if not isinstance(answers, list):
+        raise WiseError("answers must be a list")
+    lesson = data.get("lesson", "")
+    if not isinstance(lesson, str):
+        raise WiseError("lesson must be a string")
+    date = coerce("qa", "date", data.get("date") or iso(today()))
+    parsed = []
+    for number, answer in enumerate(answers, 1):
+        if not isinstance(answer, dict):
+            raise WiseError(f"answer {number} must be an object")
+        if not isinstance(answer.get("correct"), bool):
+            raise WiseError(f"answer {number}: correct must be true or false; "
+                            f"got {answer.get('correct')!r}")
+        texts = {}
+        for key in ("q", "answer", "expected"):
+            value = answer.get(key, "")
+            if not isinstance(value, str):
+                raise WiseError(f"answer {number}: {key} must be a string; got {value!r}")
+            texts[key] = value.strip()
+        parsed.append(dict(texts, correct=answer["correct"]))
+    return result_id, date, lesson, parsed
+
+
+def import_lesson_file(graph, path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        result_id, date, lesson, answers = parse_lesson_result(data)
+    except (ValueError, UnicodeError) as error:
+        raise WiseError(f"{path}: not valid JSON ({error})") from None
+    except WiseError as error:
+        raise WiseError(f"{path}: {error}") from None
     if any(n.get("result") == result_id for n in graph.of_type("qa")):
         print(f"skip {Path(path).name}: result {result_id} already imported")
         return 0
-    date = data.get("date") or iso(today())
-    lesson = data.get("lesson", "")
     lesson_node = next((n["id"] for n in graph.of_type("lesson")
                         if lesson and (lesson in n.get("path", "") or lesson == n["id"])), None)
     concepts = graph.out(lesson_node, "covers") if lesson_node else []
     created = 0
     for answer in answers:
-        correct = bool(answer.get("correct"))
-        qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": coerce("qa", "date", date),
+        correct = answer["correct"]
+        qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": date,
               "created": iso(today()), "source": "lesson",
-              "q": str(answer.get("q", "")).strip() or "(lesson question)",
-              "a": str(answer.get("answer", "")).strip() or "(no answer)",
+              "q": answer["q"] or "(lesson question)",
+              "a": answer["answer"] or "(no answer)",
               "verdict": "correct" if correct else "wrong", "result": result_id,
               "at": stamp_now()}
         graph.nodes[qa["id"]] = qa
@@ -2016,7 +2052,7 @@ def import_lesson_file(graph, path):
         if not correct:
             question = {"id": new_id("QB", graph.nodes), "type": "question",
                         "created": iso(today()), "q": qa["q"],
-                        "a": str(answer.get("expected", "")).strip() or "(see the lesson)",
+                        "a": answer["expected"] or "(see the lesson)",
                         "source": f"lesson {lesson}".strip(), "box": 1,
                         "due": iso(today() + dt.timedelta(days=1))}
             graph.nodes[question["id"]] = question
@@ -2025,7 +2061,7 @@ def import_lesson_file(graph, path):
                 graph.edges.add((question["id"], "tests", concept))
         created += 1
     graph.dirty = True
-    wrong = sum(1 for a in answers if not a.get("correct"))
+    wrong = sum(1 for a in answers if not a["correct"])
     print(f"imported {Path(path).name}: {created} answers · {wrong} wrong → question bank")
     return created
 
