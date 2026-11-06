@@ -97,9 +97,13 @@ sandbox), then onboarding continues. It sets up:
   while loaded, Codex ignores permission profiles. When the plugin moves (for
   example on update), `apply` regenerates an unedited profile for the new
   folder; an edited one is reported as a conflict. A profile you edited is
-  never reported `ok`: `check` says `edited` and lists every line that differs
-  from what setup writes (a removed `":root" = "deny"`, say), keeps your file,
-  and lets onboarding continue.
+  never reported `ok` and never rewritten. `check` says `edited`, lists every
+  setting that differs from what setup writes (a removed `":root" = "deny"`,
+  say), and onboarding waits until you approve exactly those settings with
+  `setup.py accept-profile`. It stores their hash in
+  `~/.codex/senior.config.toml.accepted`; the profile then reads `accepted`.
+  Comments don't count, but any later change to a setting needs accepting
+  again.
 - **`.wise-code/consult/`** — created up front, so the senior never needs write
   access to `.wise-code/` itself.
 

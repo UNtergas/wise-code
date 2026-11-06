@@ -1,6 +1,7 @@
 """Check or apply the sandbox setup WiseCode's Learn onboarding requires first.
 
-Three items, each reported as ok, missing, conflict, edited (Codex profile only) or n/a:
+Three items, each reported as ok, missing, conflict, n/a, or (Codex profile
+only) edited or accepted:
 
 - consult folder: `.wise-code/consult/` in this project, so the Codex senior can
   write its journal while every other path stays read-only to it.
@@ -12,15 +13,19 @@ Three items, each reported as ok, missing, conflict, edited (Codex profile only)
   the plugin, write only the consult folder, live web search, docs hosts only for
   shell network. n/a when Codex isn't installed.
 
-`check` changes nothing and exits 1 if anything is missing or conflicts. A
-Codex profile the learner edited is reported as `edited` with every line that
-differs from what setup writes; it is kept and doesn't fail the check.
+`check` changes nothing and exits 1 if anything is missing, conflicts or is
+edited. A Codex profile the learner edited is reported as `edited` with every
+setting line that differs from what setup writes, and blocks until the learner
+approves exactly those settings with `accept-profile`, which stores their hash
+next to the profile. From then on it reads `accepted` (passing, never `ok`);
+any later change to a setting blocks again.
 `apply` creates what is missing, merges the Claude settings, and never
 overwrites anything that differs from what it would write: that is reported as a
 conflict for the learner to resolve. Running it twice changes nothing.
 """
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -315,7 +320,8 @@ def codex_item(codex_home, plugin_root, project):
         if not text.startswith(PROFILE_MARKER):
             return Item(name, "conflict", f"{path} exists and wasn't written by setup; "
                         "compare it with `setup.py show-codex` and merge by hand")
-        return existing_profile_item(name, path, text, root, codex_home)
+        return existing_profile_item(name, path, text, root, codex_home,
+                                     read_accepted(path))
     if root is None:
         return Item(name, "missing", "wise-code not found under "
                     f"{codex_home}; install it in Codex, or pass --codex-plugin-root PATH")
@@ -348,21 +354,47 @@ def profile_changes(text, generated):
             + [f"added {line}" for line in theirs if line not in ours])
 
 
-def verified_item(name, path, text, granted):
+def profile_digest(text):
+    """Hash of a profile's settings: comments, blanks and spacing don't count."""
+    return hashlib.sha256("\n".join(profile_lines(text)).encode("utf-8")).hexdigest()
+
+
+def accepted_path(profile):
+    return profile.with_name(profile.name + ".accepted")
+
+
+def read_accepted(profile):
+    """The digest the learner accepted; None if absent, linked or unreadable."""
+    path = accepted_path(profile)
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8").strip() or None
+    except (OSError, UnicodeError):
+        return None
+
+
+def verified_item(name, path, text, granted, accepted):
     """ok when the profile is exactly what setup writes for its plugin folder.
 
-    Otherwise the learner edited it: their edit is kept and doesn't block
-    onboarding (the marker invites edits), but it is never reported as ok,
-    and every generated line it removed or changed is listed.
+    Otherwise the learner edited it. The edit is theirs and is never
+    rewritten, but it loosens or tightens the senior's sandbox, so it blocks
+    (`edited`, every differing line listed) until the learner approves these
+    exact settings with `accept-profile`; then it passes as `accepted`.
     """
     changes = profile_changes(text, codex_profile(granted))
     if not changes:
         return Item(name, "ok", str(path))
-    return Item(name, "edited", f"{path} differs from what setup writes; check these "
-                "are meant: " + "; ".join(changes))
+    if accepted == profile_digest(text):
+        return Item(name, "accepted", f"{path}: your edits, accepted: " + "; ".join(changes))
+    script = Path(__file__).resolve()
+    return Item(name, "edited", f"{path} differs from what setup writes: "
+                + "; ".join(changes) + ". If you meant these, approve them with "
+                f'`python3 "{script}" accept-profile`; otherwise compare with '
+                "`setup.py show-codex` and fix the file")
 
 
-def existing_profile_item(name, path, text, root, codex_home):
+def existing_profile_item(name, path, text, root, codex_home, accepted):
     """Check a setup-written profile: its plugin grant, then every other line.
 
     The profile denies the filesystem root, so a stale grant (the plugin moved,
@@ -372,11 +404,11 @@ def existing_profile_item(name, path, text, root, codex_home):
     granted = granted_plugin(text)
     if root is None:
         if granted and Path(granted).is_dir():
-            return verified_item(name, path, text, granted)
+            return verified_item(name, path, text, granted, accepted)
         return Item(name, "conflict", f"{path} grants {granted}, which is gone, and wise-code "
                     f"wasn't found under {codex_home}; pass --codex-plugin-root PATH")
     if granted == str(root):
-        return verified_item(name, path, text, granted)
+        return verified_item(name, path, text, granted, accepted)
     if granted and text == codex_profile(granted):
         # Unedited since setup wrote it: safe to regenerate for the new folder.
         def apply():
@@ -405,7 +437,7 @@ def report(found):
 
 
 # Statuses that let onboarding continue.
-PASSING = ("ok", "edited", "n/a")
+PASSING = ("ok", "accepted", "n/a")
 
 
 def cmd_check(args):
@@ -413,8 +445,9 @@ def cmd_check(args):
     report(found)
     if all(i.status in PASSING for i in found):
         return 0
-    script = Path(__file__).resolve()
-    print(f'run: python3 "{script}" apply   (then check again)')
+    if any(i.status in ("missing", "conflict") for i in found):
+        script = Path(__file__).resolve()
+        print(f'run: python3 "{script}" apply   (then check again)')
     return 1
 
 
@@ -426,6 +459,30 @@ def cmd_apply(args):
     found = items(args)
     report(found)
     return 0 if all(i.status in PASSING for i in found) else 1
+
+
+def cmd_accept_profile(args):
+    """The learner approves their edited Codex profile, exactly as it is now."""
+    codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    item = items(args)[2]
+    if item.status in ("ok", "n/a"):
+        print(f"nothing to accept: {item.detail}")
+        return 0
+    if item.status == "accepted":
+        print(f"already accepted: {item.detail}")
+        return 0
+    if item.status != "edited":
+        raise wise.WiseError(f"can't accept the Codex profile: {item.detail}")
+    profile = codex_home / "senior.config.toml"
+    target = accepted_path(profile)
+    if target.is_symlink():
+        raise wise.WiseError(f"{target} is a symlink; refusing")
+    text = profile.read_text(encoding="utf-8")
+    write_atomic(target, profile_digest(text) + "\n")
+    print(f"accepted {profile} as it is now; any later change to a setting needs accepting "
+          "again. Accepted: "
+          + "; ".join(profile_changes(text, codex_profile(granted_plugin(text)))))
+    return 0
 
 
 def cmd_show_codex(args):
@@ -444,6 +501,8 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     for name, func, text in (("check", cmd_check, "report; change nothing"),
                              ("apply", cmd_apply, "create what is missing"),
+                             ("accept-profile", cmd_accept_profile,
+                              "approve your edited Codex profile as it is now"),
                              ("show-codex", cmd_show_codex,
                               "print the Codex profile setup would write")):
         commands.add_parser(name, parents=[shared], help=text).set_defaults(func=func)

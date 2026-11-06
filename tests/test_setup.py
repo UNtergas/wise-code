@@ -316,16 +316,21 @@ class CodexProfileTests(SetupCase):
         result = self.setup("check")
         self.assertRegex(result.stdout, r"(?m)^ok +Codex senior profile")
 
-    def test_weakened_profile_is_reported_as_edited_not_ok(self):
-        # Only the plugin grant was checked, so ":root" = "write" read as ok (review #33).
-        self.setup("apply")
+    def weaken(self):
         text = self.profile.read_text(encoding="utf-8")
         self.profile.write_text(text.replace('":root" = "deny"', '":root" = "write"')
                                     .replace('"**/.env" = "deny"\n', ""), encoding="utf-8")
+
+    def test_weakened_profile_blocks_until_accepted(self):
+        # Only the plugin grant was checked, so ":root" = "write" read as ok
+        # (review #33); then an edit passed with a one-off notice.
+        self.setup("apply")
+        self.weaken()
         before = self.profile.read_bytes()
         for command in ("check", "apply"):
             with self.subTest(command):
                 result = self.setup(command)
+                self.assertEqual(result.returncode, 1, result.stdout)
                 self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
                 self.assertNotRegex(result.stdout, r"(?m)^ok +Codex senior profile")
                 self.assertIn('removed [permissions.senior.filesystem] ":root" = "deny"',
@@ -334,9 +339,71 @@ class CodexProfileTests(SetupCase):
                               result.stdout)
                 self.assertIn('removed [permissions.senior.filesystem.":workspace_roots"] '
                               '"**/.env" = "deny"', result.stdout)
-                # The learner's edit is theirs: kept, and it doesn't block onboarding.
-                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn("accept-profile", result.stdout)
+                # apply can't settle an edit, so check doesn't point to it.
+                self.assertNotIn("run: python3", result.stdout)
+                # The learner's edit is theirs: never rewritten.
                 self.assertEqual(self.profile.read_bytes(), before)
+
+    def test_accepted_edits_pass_but_are_never_ok(self):
+        self.setup("apply")
+        self.weaken()
+        accept = self.setup("accept-profile")
+        self.assertEqual(accept.returncode, 0, accept.stdout + accept.stderr)
+        self.assertIn(':root" = "write"', accept.stdout)  # shows what was accepted
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertRegex(result.stdout, r"(?m)^accepted +Codex senior profile")
+        self.assertNotRegex(result.stdout, r"(?m)^ok +Codex senior profile")
+        # A comment or blank line changes no setting: still accepted.
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write("\n# my note\n")
+        self.assertEqual(self.setup("check").returncode, 0)
+
+    def test_a_new_edit_after_acceptance_blocks_again(self):
+        self.setup("apply")
+        self.weaken()
+        self.setup("accept-profile")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"~/notes" = "read"\n')
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
+        self.assertIn('"~/notes" = "read"', result.stdout)
+
+    def test_restoring_the_generated_profile_is_ok_again(self):
+        self.setup("apply")
+        generated = self.profile.read_text(encoding="utf-8")
+        self.weaken()
+        self.setup("accept-profile")
+        self.profile.write_text(generated, encoding="utf-8")
+        self.assertRegex(self.setup("check").stdout, r"(?m)^ok +Codex senior profile")
+
+    def test_nothing_to_accept_on_an_unedited_profile(self):
+        self.setup("apply")
+        result = self.setup("accept-profile")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("nothing to accept", result.stdout)
+        self.assertEqual([p.name for p in self.codex_home.iterdir()
+                          if p.name.endswith(".accepted")], [])
+
+    def test_accept_refuses_a_profile_setup_did_not_write(self):
+        self.setup("apply")
+        self.profile.write_text('[permissions.senior]\n', encoding="utf-8")
+        result = self.setup("accept-profile")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("wasn't written by setup", result.stderr)
+
+    def test_symlinked_acceptance_is_refused_and_ignored(self):
+        self.setup("apply")
+        self.weaken()
+        target = self.home / "elsewhere"
+        (self.codex_home / "senior.config.toml.accepted").symlink_to(target)
+        result = self.setup("accept-profile")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("symlink", result.stderr)
+        self.assertFalse(target.exists())
+        self.assertEqual(self.setup("check").returncode, 1)
 
     def test_edited_profile_without_a_detected_plugin_is_still_edited(self):
         self.setup("apply")
@@ -345,9 +412,12 @@ class CodexProfileTests(SetupCase):
         # The plugin isn't found under CODEX_HOME, but the granted folder exists.
         (self.codex_plugin / ".codex-plugin/plugin.json").unlink()
         result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
         self.assertIn('added [permissions.senior.network.domains] '
                       '"~/notes" = "read"', result.stdout)
+        self.assertEqual(self.setup("accept-profile").returncode, 0)
+        self.assertRegex(self.setup("check").stdout, r"(?m)^accepted +Codex senior profile")
 
     def test_granted_plugin_folder_gone_is_reported(self):
         import shutil
