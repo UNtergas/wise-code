@@ -103,7 +103,9 @@ sandbox), then onboarding continues. It sets up:
   `setup.py accept-profile`. It stores their hash in
   `~/.codex/senior.config.toml.accepted`; the profile then reads `accepted`.
   Comments don't count, but any later change to a setting needs accepting
-  again.
+  again. **Upgrading:** if you edited your profile before this gate existed,
+  your next onboarding stops once at it; `check` ends with a `WARNING:` line
+  saying so and giving the command.
 - **`.wise-code/consult/`** — created up front, so the senior never needs write
   access to `.wise-code/` itself.
 

@@ -345,6 +345,39 @@ class CodexProfileTests(SetupCase):
                 # The learner's edit is theirs: never rewritten.
                 self.assertEqual(self.profile.read_bytes(), before)
 
+    def warnings(self, result):
+        return [line for line in result.stdout.splitlines() if line.startswith("WARNING:")]
+
+    def test_an_edit_never_accepted_gets_an_explicit_warning(self):
+        # Profiles edited before the accept gate existed now stop onboarding:
+        # the learner must be told plainly, not only by the status line.
+        self.setup("apply")
+        self.weaken()
+        for command in ("check", "apply"):
+            with self.subTest(command):
+                result = self.setup(command)
+                [warning] = self.warnings(result)
+                self.assertEqual(result.stdout.rstrip().splitlines()[-1], warning)
+                self.assertIn("onboarding stops", warning)
+                self.assertIn("never approved", warning)
+                self.assertIn("accept-profile", warning)
+                self.assertIn("show-codex", warning)
+
+    def test_an_edit_after_acceptance_gets_its_own_warning(self):
+        self.setup("apply")
+        self.weaken()
+        self.setup("accept-profile")
+        self.assertEqual(self.warnings(self.setup("check")), [])
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"~/notes" = "read"\n')
+        [warning] = self.warnings(self.setup("check"))
+        self.assertIn("changed since you accepted it", warning)
+        self.assertIn("accept-profile", warning)
+
+    def test_no_warning_for_an_unedited_profile(self):
+        self.setup("apply")
+        self.assertEqual(self.warnings(self.setup("check")), [])
+
     def test_accepted_edits_pass_but_are_never_ok(self):
         self.setup("apply")
         self.weaken()
