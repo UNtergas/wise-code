@@ -28,7 +28,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup.py" check
 Exit 0: continue with Project; say nothing about it.
 
 A line reading `edited` means the learner changed their Codex senior profile;
-it lists every setting that differs from the generated one. Show it as
+it lists every setting that differs from the generated one. `check` then ends
+with a line starting `WARNING:`: quote it to the learner word for word, first,
+before anything else. Then show the `edited` line as
 printed and say plainly what each change lets the senior do (for example,
 `":root" = "write"` lets it write anywhere on their disk). The edit is theirs:
 don't change the file, and never run `accept-profile` yourself, since it is

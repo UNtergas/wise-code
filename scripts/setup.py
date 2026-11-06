@@ -74,8 +74,10 @@ PROFILE_MARKER = "# Managed by wise-code scripts/setup.py; edit freely, setup wo
 
 
 class Item:
-    def __init__(self, name, status, detail, apply=None):
+    def __init__(self, name, status, detail, apply=None, warning=None):
         self.name, self.status, self.detail, self.apply = name, status, detail, apply
+        # A line the learner must not miss, printed apart after the report.
+        self.warning = warning
 
 
 # ---------------------------------------------------------------- pure parts
@@ -388,10 +390,18 @@ def verified_item(name, path, text, granted, accepted):
     if accepted == profile_digest(text):
         return Item(name, "accepted", f"{path}: your edits, accepted: " + "; ".join(changes))
     script = Path(__file__).resolve()
+    if accepted is None:
+        why = ("it has edits you never approved. Edited profiles now need your "
+               "approval, so this also happens to a profile you edited before")
+    else:
+        why = "it changed since you accepted it"
+    warning = (f"WARNING: onboarding stops at your Codex senior profile ({path}): {why}. "
+               f'Approve it as it is with `python3 "{script}" accept-profile`, or restore '
+               "the generated one from `setup.py show-codex`, then check again.")
     return Item(name, "edited", f"{path} differs from what setup writes: "
                 + "; ".join(changes) + ". If you meant these, approve them with "
                 f'`python3 "{script}" accept-profile`; otherwise compare with '
-                "`setup.py show-codex` and fix the file")
+                "`setup.py show-codex` and fix the file", warning=warning)
 
 
 def existing_profile_item(name, path, text, root, codex_home, accepted):
@@ -436,6 +446,13 @@ def report(found):
         print(f"{item.status:<9}{item.name}: {item.detail}")
 
 
+def warn(found):
+    """Warnings come last, apart, so nothing scrolls them out of sight."""
+    for item in found:
+        if item.warning:
+            print(f"\n{item.warning}")
+
+
 # Statuses that let onboarding continue.
 PASSING = ("ok", "accepted", "n/a")
 
@@ -448,6 +465,7 @@ def cmd_check(args):
     if any(i.status in ("missing", "conflict") for i in found):
         script = Path(__file__).resolve()
         print(f'run: python3 "{script}" apply   (then check again)')
+    warn(found)
     return 1
 
 
@@ -458,6 +476,7 @@ def cmd_apply(args):
     # Report the state after applying, the same way check does.
     found = items(args)
     report(found)
+    warn(found)
     return 0 if all(i.status in PASSING for i in found) else 1
 
 
