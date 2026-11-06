@@ -154,6 +154,12 @@ MERGE_HISTORY = 16
 # differ only here and in metadata are combined by union instead of waiting
 # for resolve: no side's item, and no side's removal, is lost.
 GROW_ONLY = {"book": ("projects",)}
+# Fields computed from records that are all kept, where the lower value is the
+# safer one. A question answered on two clones keeps every answer (QA records);
+# its schedule merges to the lower box and the earlier due date, each taken on
+# its own, so it comes back sooner, never later. A missing value is the lowest
+# (box 1, due now), so it wins.
+SOONER = {"question": ("box", "due")}
 # Allowed ranges for int fields; others must be 0 or more.
 RANGES = {("question", "box"): (min(BOXES), max(BOXES))}
 TIER2 = ("lesson", "reference", "research", "adr", "mission", "resource")
@@ -266,9 +272,10 @@ def grown_items(versions):
 def combine_versions(versions):
     """One version holding every independent version's changes, or None.
 
-    Only when they differ in nothing but GROW_ONLY lists and metadata: the
-    lists are united, the stamps take the latest, and the result includes
-    every version, so a later merge that brings one back settles silently.
+    Only when they differ in nothing but GROW_ONLY lists, SOONER fields and
+    metadata: the lists are united, SOONER fields take the lowest value, the
+    stamps the latest, and the result includes every version, so a later
+    merge that brings one back settles silently.
     """
     kind = versions[0]["type"]
     if any(v["type"] != kind for v in versions):
@@ -277,15 +284,21 @@ def combine_versions(versions):
     # and `check` reports what is wrong with it.
     if any(validate_node(v) for v in versions):
         return None
-    grow = GROW_ONLY.get(kind, ())
+    grow, sooner = GROW_ONLY.get(kind, ()), SOONER.get(kind, ())
     combined = dict(versions[0])
     for field in sorted({f for v in versions for f in v} - set(META)):
         values = [v.get(field) for v in versions]
         if all(canonical(x) == canonical(values[0]) for x in values):
             continue
-        if field not in grow:
+        if field in grow:
+            combined[field] = grown_items(versions)[field]
+        elif field in sooner:
+            if None in values:
+                combined.pop(field, None)
+            else:
+                combined[field] = min(values)
+        else:
             return None
-        combined[field] = grown_items(versions)[field]
     for field, pick in (("created", min), ("updated", max), ("rev", max), ("at", max)):
         present = [v[field] for v in versions if field in v]
         if present:

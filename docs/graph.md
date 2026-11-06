@@ -53,16 +53,23 @@ The "before" column grows with history; the "after" column doesn't.
   command warns, changes to that node are refused, and `wise.py resolve <id>`
   shows how they differ; `--keep <n>` keeps one, recording every version in its
   `seen` (with what they include) so a later merge that brings one back settles
-  silently. One exception: versions that differ only in a book's `projects`
-  (it only grows: each project that cites the book adds itself) and in
-  metadata are combined, their lists united, without asking. To keep that
-  lossless, `projects` only grows: any change that would drop an item is
-  refused, and `resolve` keeps every version's projects whichever version is
-  kept. Malformed versions are never combined: they stay a conflict and
-  `check` reports them. Lines with no
+  silently. Two exceptions combine versions without asking, when they differ
+  only in these fields and in metadata (`SOONER` and `GROW_ONLY` in
+  `scripts/wise.py`):
+  - A question's `box` and `due`: answering on two clones keeps both answers
+    (QA records) and reschedules on each side. The merge keeps the lower box
+    and the earlier due date, each on its own, so the question comes back
+    sooner, never later. A missing value is the lowest (box 1, due now).
+  - A book's `projects`: it only grows (each project that cites the book adds
+    itself), so the lists are united. To keep that lossless, any change that
+    would drop an item is refused, and `resolve` keeps every version's
+    projects whichever version is kept.
+
+  Any other difference still waits for `resolve`. Malformed versions are never
+  combined: they stay a conflict and `check` reports them. Lines with no
   `seen` (written before it existed, or edited by hand) can't be shown to
-  include another, so they too wait for `resolve`. Leftover conflict markers are
-  ignored.
+  include another, so they too wait for `resolve`, unless they differ only as in
+  the two exceptions. Leftover conflict markers are ignored.
 - Writes go only through the script: it assigns IDs, validates fields and
   edges (stored JSON types, not just CLI text), and refuses near-duplicate
   concepts. `--force` overrides similarity, never an existing concept id.

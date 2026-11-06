@@ -123,18 +123,15 @@ class StoreTests(WiseTestCase):
         self.assertNotIn("<<<<<<<", text)
         qa = [n for n in self.nodes() if n["type"] == "qa"]
         self.assertEqual(len({n["id"] for n in qa}), 12)  # 10 added + 2 answers
-        # Both sides rescheduled the shared question: neither includes the
-        # other, so the learner picks (review #34), and a write cleans the file.
-        self.assertIn(f"{qid}: 2 conflicting versions", self.run_wise("check", check=False).stdout)
-        shown = self.out("resolve", qid)
-        self.assertIn("differ in box, due", shown)
-        boxes = [json.loads(line.split(": ", 1)[1])["box"]
-                 for line in shown.splitlines() if re.match(r"^[12]: ", line)]
-        self.out("resolve", qid, "--keep", str(1 + boxes.index(2)))
+        # Both sides rescheduled the shared question. The schedule merges by
+        # itself to the safer side: lower box, earlier due (wrong on 10-28 put
+        # it in box 1 due 10-29; correct on 10-29 in box 2 due 11-01).
+        check = self.run_wise("check", check=False)
+        self.assertNotIn("conflicting", check.stdout + check.stderr)
         self.run_wise("add", "concept", "name=Lifetimes")
         question = [n for n in self.nodes() if n["id"] == qid]
         self.assertEqual(len(question), 1)
-        self.assertEqual(question[0]["box"], 2)
+        self.assertEqual((question[0]["box"], question[0]["due"]), (1, "2026-10-29"))
         self.assertIn("ok", self.out("check"))
 
     def test_unknown_field_and_bad_enum_are_rejected(self):
@@ -828,6 +825,73 @@ class MergeConflictTests(WiseTestCase):
         self.assertNotIn("Traceback", res.stderr)
         self.assertIn("alpha", res.stdout + res.stderr)
         self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
+
+    def question_versions(self, ours_fields, theirs_fields):
+        self.run_wise("add", "question", "q=Why?", "a=Because.")
+        self.run_wise("add", "concept", "name=Other")
+        [base] = [n for n in self.nodes() if n["type"] == "question"]
+        seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
+        ours = {**base, **seen, **ours_fields}
+        theirs = {**base, **seen, "rev": 2, **theirs_fields}
+        for field in ("box", "due"):
+            for node in (ours, theirs):
+                if node.get(field) is None:
+                    node.pop(field, None)
+        lines = [l for l in self.nodes_file().read_text(encoding="utf-8").splitlines()
+                 if json.loads(l)["id"] != base["id"]]
+        return base["id"], lines, ours, theirs
+
+    def test_a_schedule_changed_on_both_sides_merges_to_the_sooner_review(self):
+        # Box and due are computed from answers, and both answers are kept:
+        # take the lower box and the earlier due, each, in either line order.
+        for order in ("ours-first", "theirs-first"):
+            with self.subTest(order=order):
+                shutil.rmtree(self.project / ".wise-code", ignore_errors=True)
+                qid, lines, ours, theirs = self.question_versions(
+                    {"box": 3, "due": "2026-11-01"}, {"box": 2, "due": "2026-11-09"})
+                pair = [ours, theirs] if order == "ours-first" else [theirs, ours]
+                self.nodes_file().write_text("\n".join(lines + [self.line(n) for n in pair])
+                                             + "\n", encoding="utf-8")
+                res = self.run_wise("set", "other", "definition=x")
+                self.assertNotIn("conflicting", res.stderr)
+                [kept] = self.versions(qid)
+                self.assertEqual((kept["box"], kept["due"]), (2, "2026-11-01"))
+                self.assertEqual(kept["rev"], 2)
+                # Bringing either side back later changes nothing.
+                for old in (ours, theirs):
+                    self.with_lines(self.line(old))
+                    self.assertNotIn("conflicting",
+                                     self.run_wise("set", "other", "definition=y").stderr)
+                    [again] = self.versions(qid)
+                    self.assertEqual((again["box"], again["due"]), (2, "2026-11-01"))
+
+    def test_a_missing_due_means_due_now_and_wins(self):
+        qid, lines, ours, theirs = self.question_versions(
+            {"box": 3, "due": None}, {"box": 4, "due": "2026-11-09"})
+        self.nodes_file().write_text("\n".join(lines + [self.line(ours), self.line(theirs)])
+                                     + "\n", encoding="utf-8")
+        self.assertNotIn("conflicting", self.run_wise("set", "other", "definition=x").stderr)
+        [kept] = self.versions(qid)
+        self.assertEqual(kept["box"], 3)
+        self.assertNotIn("due", kept)
+
+    def test_schedule_lines_from_before_seen_also_merge(self):
+        # Graphs written before `seen` existed: the rule is by field, not ancestry.
+        qid, lines, ours, theirs = self.question_versions({"box": 3}, {"box": 5})
+        for node in (ours, theirs):
+            node.pop("seen")
+        self.nodes_file().write_text("\n".join(lines + [self.line(ours), self.line(theirs)])
+                                     + "\n", encoding="utf-8")
+        self.assertNotIn("conflicting", self.run_wise("set", "other", "definition=x").stderr)
+        self.assertEqual(self.versions(qid)[0]["box"], 3)
+
+    def test_a_question_changed_beyond_its_schedule_still_waits(self):
+        qid, lines, ours, theirs = self.question_versions(
+            {"box": 3}, {"box": 2, "a": "Because, really."})
+        self.nodes_file().write_text("\n".join(lines + [self.line(ours), self.line(theirs)])
+                                     + "\n", encoding="utf-8")
+        res = self.run_wise("set", "other", "definition=x")
+        self.assertIn(f"conflicting versions from a merge: {qid}", res.stderr)
 
     def test_show_hides_merge_history(self):
         self.run_wise("add", "concept", "name=Alpha")
