@@ -1,6 +1,6 @@
 ---
 name: google
-description: Quick senior lookup for an independent coding question (syntax, config, a tool, an API) answered in full and not logged. Use only when the learner explicitly invokes $wise-code:google.
+description: Quick senior lookup for an independent coding question (syntax, config, a tool, an API) answered in full and not logged. Use only when the learner explicitly invokes $wise-code:google. Read this SKILL.md in full before your first reply.
 ---
 
 ## Canary

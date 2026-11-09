@@ -1,6 +1,6 @@
 ---
 name: consult
-description: Senior-developer consult for a WiseCode learner, at their assist level and logged for the teacher - a doubt about a decision, hint or explanation from their Claude teacher, or an independent coding question. Use only when the learner explicitly invokes $wise-code:consult.
+description: Senior-developer consult for a WiseCode learner, at their assist level and logged for the teacher - a doubt about a decision, hint or explanation from their Claude teacher, or an independent coding question. Use only when the learner explicitly invokes $wise-code:consult. Read this SKILL.md in full before your first reply.
 ---
 
 ## Canary

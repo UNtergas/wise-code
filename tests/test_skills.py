@@ -426,6 +426,8 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn(f"`{start.replace(' <name>', '')}`", text)
                 self.assertIn("What's your name?", text)
                 self.assertIn("never store it", text)
+                description = next(l for l in lines if l.startswith("description:"))
+                self.assertIn("Read this SKILL.md in full before your first reply.", description)
                 self.assertNotIn(self.START, lines)
                 self.assertNotIn(self.END, lines)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
