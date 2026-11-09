@@ -30,8 +30,9 @@ Build and learn:
 - `/wise-code:explore <question>` — how or why existing code works: you predict,
   Claude checks the prediction against the code and its Git history. Read-only.
 - `/wise-code:sharpen <task>` — make a task deeper, not bigger; you rewrite it.
-- `/wise-code:grill <plan>` — stress-test a plan in rounds of questions until
-  nothing is left assumed.
+- `/wise-code:grill <plan>` — stress-test a plan in rounds of questions: settles
+  what the next piece needs, defers the rest out loud, leaves nothing assumed.
+  Ask for the whole design to walk every branch.
 - `/wise-code:grill-with-docs <plan>` — the same inside a repo, keeping
   `GLOSSARY.md` and ADRs in `docs/adr/` as decisions settle.
 - `/wise-code:research <question>` — answer an external question (API behavior,
