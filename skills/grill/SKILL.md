@@ -56,9 +56,11 @@ Format a round like so:
 
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
 
+**Scope the tree to the next piece.** Unless the plan already says, the first round also asks: what is the next piece you'll build? Settle a decision now only if that piece depends on it or changing it later would be expensive. Defer the rest: propose it to the user as deferred, naming the decision and what will force it ("storage engine: when a second writer appears"). The frontier holds only decisions still to settle. If the user asks for the whole design, skip this scoping and walk every branch.
+
 Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent (`model: haiku`; it only looks things up) to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. A fact from outside the repository (how a library or API behaves) is a job for `/wise-code:research`. The _decisions_ are the user's: put each to them and wait.
 
-The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.
+The session is done when the frontier is empty: everything the next piece needs is settled, the rest is deferred out loud, nothing left silently assumed. Close by listing the settled and the deferred decisions. Do not act on it until the user confirms you have reached a shared understanding.
 
 ## Learning mode
 
@@ -80,5 +82,9 @@ also a learning checkpoint, so change three things:
    [behavior.md](../learn/behavior.md)). Reasoning that shows
    real understanding, or a real gap, gets a `checkpoint` QA per
    [materials.md](../learn/materials.md).
+4. **Deferring takes a reason.** The learner says in one line why the decision
+   can wait; "later" alone isn't one, so ask again. Deferred decisions go under
+   `## Unknowns` in `project-map.md`, with what will force each, and not the learning graph: a
+   `pending` decision there is a checkpoint a restart resumes.
 
 With no profile, or `Learning mode: paused`, grill as written above.

@@ -303,6 +303,27 @@ class LearnerFirstTests(unittest.TestCase):
         adr_rule = (ROOT / "skills/grill-with-docs/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("The learner writes the ADR", adr_rule)
 
+    def test_grills_scope_to_what_the_next_piece_needs(self):
+        # A big plan must not force the whole design before anything is built.
+        for name in ("grill", "grill-with-docs"):
+            with self.subTest(skill=name):
+                text = (ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn("Defer", text)
+                self.assertIn("what will force it", text)
+                self.assertIn("whole design", text)
+                section = text.split("## Learning mode")[1]
+                self.assertIn("Deferring takes a reason", section)
+                self.assertIn("`## Unknowns`", section)
+                self.assertIn("not the learning graph", section)
+        grill = (ROOT / "skills/grill/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("what is the next piece", grill)
+        self.assertNotIn("every branch of the design tree visited", grill)
+        self.assertIn("nothing left silently assumed", grill)
+        docs = (ROOT / "skills/grill-with-docs/SKILL.md").read_text(encoding="utf-8")
+        self.assertNotIn("Stop when no open branch remains", docs)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("defers the rest", readme)
+
     def test_grill_only_suggests_itself_when_not_asked(self):
         path = ROOT / "skills/grill/SKILL.md"
         description = frontmatter(path)["description"]

@@ -46,7 +46,8 @@ Session count decides, not project size. Wayfinder on a well-scoped feature = sl
 6. **Probe edge cases** with concrete scenarios, not abstractions ("A user deletes the last admin: what happens?").
 7. **Keep questions short.** A three-paragraph question hides why it's asked.
 8. **Never answer your own questions.** If user is silent, wait.
-9. Stop when no open branch remains, or user says stop. Say what is still unresolved.
+9. **Defer what this change doesn't need.** A branch this change doesn't depend on, and that is cheap to change later, is proposed as deferred, naming what will force it. If the user asks for the whole design, walk every branch.
+10. Stop when no branch this change needs is open, or user says stop. Say what is still unresolved.
 
 ## Writing during the session
 
@@ -130,6 +131,10 @@ is also a learning checkpoint, and the learner does the thinking and the writing
    correctly, link its concept: `wise.py add concept name=<term> definition=…
    glossary=GLOSSARY.md` (or `set <concept> glossary=GLOSSARY.md`). For each ADR
    written: `wise.py add adr path=docs/adr/NNNN-slug.md title=… --covers <concept>`.
+6. **Deferring takes a reason.** The learner says in one line why the decision
+   can wait; "later" alone isn't one, so ask again. Deferred decisions go under
+   `## Unknowns` in `project-map.md`, with what will force each, and not the learning graph: a
+   `pending` decision there is a checkpoint a restart resumes.
 
 With no profile, or `Learning mode: paused`, follow the rules above as written.
 
@@ -137,7 +142,7 @@ With no profile, or `Learning mode: paused`, follow the rules above as written.
 
 The paper trail is thin by design. Before ending:
 1. List every resolved decision in chat, **verbatim-precise** (ordering guarantees, negative requirements, numeric defaults, edge-case outcomes). Do not soften into prose.
-2. List what is still unresolved.
+2. List what is still unresolved, and what was deferred with what will force it.
 3. Tell user which files changed (glossary terms added/revised, ADRs written) or that none qualified. In learning mode, also list the ADRs the learner still has to write.
 4. Offer next step: write the decision list to a spec file in the repo's notes convention, or go straight to implementation if the change is small. **Keep the conversation**; don't clear it before the decisions are written down somewhere.
 
