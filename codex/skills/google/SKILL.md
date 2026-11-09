@@ -1,6 +1,6 @@
 ---
 name: google
-description: Quick senior lookup for an independent coding question (syntax, config, a tool, an API) answered in full and not logged. Use only when the learner explicitly invokes $wise-code:google.
+description: Quick senior lookup for an independent coding question (syntax, config, a tool, an API) answered in full and not logged. Use only when the learner explicitly invokes $wise-code:google. Read this SKILL.md in full before your first reply.
 ---
 
 ## Canary
@@ -11,12 +11,18 @@ text (not in a code block, nothing before or after them). It stays on after
 this lookup is done, whatever the next task is.
 
 ```text
-=>> senior lookup <<=
+=>> senior lookup <name> <<=
 ```
 
 ```text
 <<= senior off =>>
 ```
+
+`<name>` is the name the user gave in this conversation. At the first reply of
+a new conversation, if no name has been given yet, start with
+`=>> senior lookup <<=`, ask "What's your name?" before anything else, and wait;
+use the name from then on. Ask again in each new conversation; never store it
+in files, notes or the journal.
 
 They differ from the teacher's markers on purpose: the learner sees at a glance
 that the senior, not Claude, is talking. A missing start or end line means the

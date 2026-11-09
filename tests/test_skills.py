@@ -410,7 +410,7 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn("It stays on after this skill finishes", "\n".join(lines))
                 self.assertNotIn("while this skill is active", "\n".join(lines))
 
-    SENIOR = {"consult": "=>> senior on call <<=", "google": "=>> senior lookup <<="}
+    SENIOR = {"consult": "=>> senior on call <name> <<=", "google": "=>> senior lookup <name> <<="}
     SENIOR_END = "<<= senior off =>>"
 
     def test_senior_skills_state_their_own_markers_until_the_conversation_ends(self):
@@ -423,10 +423,25 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn(start, lines)
                 self.assertIn(self.SENIOR_END, lines)
                 self.assertIn("until the conversation ends", text)
+                self.assertIn(f"`{start.replace(' <name>', '')}`", text)
+                self.assertIn("What's your name?", text)
+                self.assertIn("never store it", text)
+                description = next(l for l in lines if l.startswith("description:"))
+                self.assertIn("Read this SKILL.md in full before your first reply.", description)
                 self.assertNotIn(self.START, lines)
                 self.assertNotIn(self.END, lines)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(self.SENIOR_END, readme)
+        for start in self.SENIOR.values():
+            self.assertIn(start, readme)
+
+    def test_consult_asks_the_name_alone_before_disclosure_and_intake(self):
+        text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("in your first message after you have their name", text)
+        self.assertNotIn("in your first message that this consult", text)
+        ask_first = text[text.index("## 2. Ask first"):text.index("## 3. Check")]
+        self.assertIn("name question from the Canary comes first\nand alone", ask_first)
+        self.assertIn("Don't make them repeat it", ask_first)
 
     def test_hook_uses_the_same_markers(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
