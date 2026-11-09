@@ -435,6 +435,14 @@ class CanaryTests(unittest.TestCase):
         for start in self.SENIOR.values():
             self.assertIn(start, readme)
 
+    def test_consult_asks_the_name_alone_before_disclosure_and_intake(self):
+        text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("in your first message after you have their name", text)
+        self.assertNotIn("in your first message that this consult", text)
+        ask_first = text[text.index("## 2. Ask first"):text.index("## 3. Check")]
+        self.assertIn("name question from the Canary comes first\nand alone", ask_first)
+        self.assertIn("Don't make them repeat it", ask_first)
+
     def test_hook_uses_the_same_markers(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")
         self.assertIn('CANARY_START = "=====> ah0y_sir"', hook)

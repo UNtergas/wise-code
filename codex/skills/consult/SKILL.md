@@ -71,8 +71,9 @@ mention it once if they seem to want that.
 
 1. Find the project's `.wise-code/`: the nearest one from the working folder,
    not above the Git root. Never read another project's. No `.wise-code/`: tell
-   the learner in your first message that this consult won't be logged, and
-   that running Learn with Claude here turns logging on. Don't create the folder.
+   the learner in your first message after you have their name that this
+   consult won't be logged, and that running Learn with Claude here turns
+   logging on. Don't create the folder.
 2. If it has `profile.md`, read `Assist level:` and `Level overrides:`. A topic
    or language override that matches the question beats the default. No
    `Assist level:` line means Hint. If `Learning mode: paused`, or there is no
@@ -81,6 +82,12 @@ mention it once if they seem to want that.
    give; follow it for your answer exactly as the teacher must.
 
 ## 2. Ask first
+
+If no name has been given yet, the name question from the Canary comes first
+and alone: no disclosure, no intake questions, no answer in that message. The next
+message carries the rest of this section. If the learner already sent a question
+with the invocation, keep it and continue from it once they give their name.
+Don't make them repeat it.
 
 If you were invoked with nothing else (just `$wise-code:consult`), open with
 one message that asks everything at once, then end your turn and wait:
