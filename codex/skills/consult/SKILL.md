@@ -11,12 +11,18 @@ text (not in a code block, nothing before or after them). It stays on after
 this consult is done, whatever the next task is.
 
 ```text
-=>> senior on call <<=
+=>> senior on call <name> <<=
 ```
 
 ```text
 <<= senior off =>>
 ```
+
+`<name>` is the name the user gave in this conversation. At the first reply of
+a new conversation, if no name has been given yet, start with
+`=>> senior on call <<=`, ask "What's your name?" before anything else, and wait;
+use the name from then on. Ask again in each new conversation; never store it
+in files, notes or the journal.
 
 They differ from the teacher's markers on purpose: the learner sees at a glance
 that the senior, not Claude, is talking. A missing start or end line means the

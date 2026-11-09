@@ -410,7 +410,7 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn("It stays on after this skill finishes", "\n".join(lines))
                 self.assertNotIn("while this skill is active", "\n".join(lines))
 
-    SENIOR = {"consult": "=>> senior on call <<=", "google": "=>> senior lookup <<="}
+    SENIOR = {"consult": "=>> senior on call <name> <<=", "google": "=>> senior lookup <name> <<="}
     SENIOR_END = "<<= senior off =>>"
 
     def test_senior_skills_state_their_own_markers_until_the_conversation_ends(self):
@@ -423,10 +423,15 @@ class CanaryTests(unittest.TestCase):
                 self.assertIn(start, lines)
                 self.assertIn(self.SENIOR_END, lines)
                 self.assertIn("until the conversation ends", text)
+                self.assertIn(f"`{start.replace(' <name>', '')}`", text)
+                self.assertIn("What's your name?", text)
+                self.assertIn("never store it", text)
                 self.assertNotIn(self.START, lines)
                 self.assertNotIn(self.END, lines)
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(self.SENIOR_END, readme)
+        for start in self.SENIOR.values():
+            self.assertIn(start, readme)
 
     def test_hook_uses_the_same_markers(self):
         hook = (ROOT / "hooks/session_start.py").read_text(encoding="utf-8")

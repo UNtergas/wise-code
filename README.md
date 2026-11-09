@@ -145,9 +145,11 @@ senior-developer role you call in on purpose, never on its own:
   `### This repository` sections with that repository's own.
 
 Senior replies carry their own canary, distinct from the teacher's so you see
-who is talking: they start with `=>> senior on call <<=` (consult) or
-`=>> senior lookup <<=` (google) and end with `<<= senior off =>>`, from the
-first senior skill load until the conversation ends.
+who is talking: they start with `=>> senior on call <name> <<=` (consult) or
+`=>> senior lookup <name> <<=` (google) and end with `<<= senior off =>>`, from
+the first senior skill load until the conversation ends. Like the teacher, the
+senior opens each new conversation by asking your name (no name in the first
+line until you answer); the name is never stored.
 
 ## Canary
 
