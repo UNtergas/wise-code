@@ -1187,6 +1187,95 @@ class MarkdownImportTests(WiseTestCase):
         self.assertFalse((state / "graph").exists())
 
 
+QUIZ_PAGE = r"""
+// Loads the real results.js with a stub page, then runs the steps in argv[3]:
+// "a:<id>:<0|1>" answers a question, "d" clicks download.
+const files = [], blobs = [];
+global.window = {crypto: globalThis.crypto};
+let link = {};
+global.document = {
+  readyState: "complete", getElementById: () => null, body: {appendChild() {}},
+  createElement: () => (link = {click() { files.push(link.download); }, remove() {}}),
+};
+URL.createObjectURL = (blob) => { blobs.push(blob); return "blob:x"; };
+URL.revokeObjectURL = () => {};
+require(process.argv[2]);
+window.WiseResults.lesson("0001");
+for (const step of process.argv[3].split(",")) {
+  if (step === "d") window.WiseResults.download();
+  else {
+    const [, id, right] = step.split(":");
+    window.WiseResults.record(id, "Q " + id, "A", right === "1", "E");
+  }
+}
+Promise.all(blobs.map((b) => b.text())).then((texts) => console.log(
+  JSON.stringify(texts.map((text, i) => ({name: files[i], text})))));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not installed")
+class QuizDownloadTests(WiseTestCase):
+    """The real page script, through download, to the importer."""
+
+    def page_load(self, steps):
+        page = Path(self.temp.name) / "page.js"
+        page.write_text(QUIZ_PAGE, encoding="utf-8")
+        script = SCRIPT.parent.parent / "skills/teach/templates/results.js"
+        result = subprocess.run(["node", str(page), str(script), steps],
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def import_all(self, downloads):
+        folder = Path(tempfile.mkdtemp(dir=self.temp.name))
+        for number, download in enumerate(downloads):
+            path = folder / f"{number}-{download['name']}"
+            path.write_text(download["text"], encoding="utf-8")
+            self.out("import-lesson", str(path))
+
+    def count(self, kind):
+        return sum(1 for node in self.nodes() if node["type"] == kind)
+
+    def test_repeated_and_incremental_downloads_record_each_answer_once(self):
+        downloads = self.page_load("a:q1:0,d,d,a:q2:1,d")
+        self.assertEqual(len({d["name"] for d in downloads}), 1)
+        self.import_all(downloads)
+        self.assertEqual(self.count("qa"), 2)
+        self.assertEqual(self.count("question"), 1)
+
+    def test_a_page_reload_is_a_new_attempt(self):
+        self.import_all(self.page_load("a:q1:0,d") + self.page_load("a:q1:1,d"))
+        self.assertEqual(self.count("qa"), 2)
+
+
+class LessonAnswerIdentityTests(WiseTestCase):
+    def result(self, *answer_ids):
+        folder = Path(tempfile.mkdtemp(dir=self.temp.name))
+        path = folder / "r.json"
+        path.write_text(json.dumps({"result_id": "r-1", "lesson": "0001", "answers": [
+            {"id": answer_id, "q": f"Q {answer_id}", "answer": "A", "correct": False}
+            for answer_id in answer_ids]}), encoding="utf-8")
+        return path
+
+    def test_a_later_file_adds_only_new_answers(self):
+        self.out("import-lesson", str(self.result("q1")))
+        report = self.out("import-lesson", str(self.result("q1", "q2")))
+        self.assertIn("1 answers · 1 wrong", report)
+        self.assertEqual(sorted(n["q"] for n in self.nodes() if n["type"] == "qa"),
+                         ["Q q1", "Q q2"])
+        self.assertEqual(sum(1 for n in self.nodes() if n["type"] == "question"), 2)
+
+    def test_same_file_again_is_skipped(self):
+        self.out("import-lesson", str(self.result("q1")))
+        self.assertIn("already imported", self.out("import-lesson", str(self.result("q1"))))
+        self.assertEqual(sum(1 for n in self.nodes() if n["type"] == "qa"), 1)
+
+    def test_a_non_string_answer_id_is_rejected(self):
+        result = self.run_wise("import-lesson", str(self.result(7)), check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("id must be a string", result.stderr)
+
+
 class StateBoundaryTests(WiseTestCase):
     """Archive and backup writes stay inside .wise-code, or change nothing."""
 

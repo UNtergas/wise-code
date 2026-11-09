@@ -74,7 +74,7 @@ TYPES = {
     "qa": {"prefix": "QA", "required": ["q", "a", "source"], "fields": {
         "date": "date", "source": QA_SOURCES, "q": "str", "a": "str",
         "verdict": VERDICTS, "hints": "int", "followup": "str",
-        "result": "str", "project": "str", "confidence": CONFIDENCE,
+        "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
         "said_hash": "str"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
@@ -2132,13 +2132,30 @@ def parse_lesson_result(data):
             raise WiseError(f"answer {number}: correct must be true or false; "
                             f"got {answer.get('correct')!r}")
         texts = {}
-        for key in ("q", "answer", "expected"):
+        for key in ("id", "q", "answer", "expected"):
             value = answer.get(key, "")
             if not isinstance(value, str):
                 raise WiseError(f"answer {number}: {key} must be a string; got {value!r}")
             texts[key] = value.strip()
         parsed.append(dict(texts, correct=answer["correct"]))
     return result_id, date, lesson, parsed
+
+
+def unseen_answers(graph, result_id, answers):
+    """The answers this result hasn't recorded yet.
+
+    One attempt can be downloaded many times, so identity is per answer. A file
+    from before answers had ids counts as seen once its result has any record.
+    """
+    recorded = [n for n in graph.of_type("qa") if n.get("result") == result_id]
+    seen = {n.get("answer_id") for n in recorded}
+    unseen = []
+    for answer in answers:
+        if answer["id"] in seen if answer["id"] else recorded:
+            continue
+        seen.add(answer["id"])
+        unseen.append(answer)
+    return unseen
 
 
 def import_lesson_file(graph, path):
@@ -2149,14 +2166,15 @@ def import_lesson_file(graph, path):
         raise WiseError(f"{path}: not valid JSON ({error})") from None
     except WiseError as error:
         raise WiseError(f"{path}: {error}") from None
-    if any(n.get("result") == result_id for n in graph.of_type("qa")):
+    unseen = unseen_answers(graph, result_id, answers)
+    if answers and not unseen:
         print(f"skip {Path(path).name}: result {result_id} already imported")
         return 0
     lesson_node = next((n["id"] for n in graph.of_type("lesson")
                         if lesson and (lesson in n.get("path", "") or lesson == n["id"])), None)
     concepts = graph.out(lesson_node, "covers") if lesson_node else []
     created = 0
-    for answer in answers:
+    for answer in unseen:
         correct = answer["correct"]
         qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": date,
               "created": iso(today()), "source": "lesson",
@@ -2164,6 +2182,8 @@ def import_lesson_file(graph, path):
               "a": answer["answer"] or "(no answer)",
               "verdict": "correct" if correct else "wrong", "result": result_id,
               "at": stamp_now()}
+        if answer["id"]:
+            qa["answer_id"] = answer["id"]
         graph.nodes[qa["id"]] = qa
         for concept in concepts:
             graph.edges.add((qa["id"], "about", concept))
@@ -2179,7 +2199,7 @@ def import_lesson_file(graph, path):
                 graph.edges.add((question["id"], "tests", concept))
         created += 1
     graph.dirty = True
-    wrong = sum(1 for a in answers if not a["correct"])
+    wrong = sum(1 for a in unseen if not a["correct"])
     print(f"imported {Path(path).name}: {created} answers · {wrong} wrong → question bank")
     return created
 

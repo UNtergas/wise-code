@@ -15,6 +15,9 @@
   var lessonId = "";
   var answers = {};
   var order = [];
+  // One page load is one attempt: every download from it shares this id, so
+  // the importer can tell a repeated download from a new try.
+  var resultId = "";
 
   function hex(bytes) {
     var values = new Uint8Array(bytes);
@@ -51,7 +54,7 @@
 
   function download() {
     var stamp = today().replace(/-/g, "");
-    var resultId = "lesson-" + lessonId + "-" + stamp + "-" + hex(2);
+    resultId = resultId || "lesson-" + lessonId + "-" + stamp + "-" + hex(4);
     var data = {
       lesson: lessonId,
       result_id: resultId,
@@ -75,7 +78,7 @@
     record: function (id, question, answer, correct, expected) {
       if (answers[id]) return;
       answers[id] = {
-        q: String(question), answer: String(answer), correct: !!correct,
+        id: String(id), q: String(question), answer: String(answer), correct: !!correct,
         expected: expected == null ? "" : String(expected)
       };
       order.push(id);

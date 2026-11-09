@@ -165,14 +165,16 @@ QA also gets an `at` timestamp so records within one day are ordered.
 
 Lessons are static HTML, so a quiz inside one can't write to the repo. The
 lesson's **Download results** button (`skills/teach/templates/results.js`) saves
-`{lesson, result_id, date, answers: [{q, answer, correct, expected}]}`. Put the
+`{lesson, result_id, date, answers: [{id, q, answer, correct, expected}]}`. Put the
 file in `.wise-code/inbox/` (imported at the next session start) or run
 `wise.py import-lesson <file>`. Imported inbox files move to `inbox/done/` under
 a free name (`r-2.json`), never over an earlier one; a symlinked `inbox/`,
 `done/` or `backups/` is refused before the graph changes. Each answer becomes a `lesson` QA, wrong answers
-enter the question bank, and a `result_id` is never imported twice. The whole
+enter the question bank. A page load is one attempt with one `result_id`, and
+each answer in it is recorded once however many times it is downloaded; a
+reload is a new attempt. The whole
 file is checked before anything is recorded: `correct` must be a JSON boolean
-and `q`, `answer`, `expected` strings, so a malformed file is rejected with the
+and `id`, `q`, `answer`, `expected` strings, so a malformed file is rejected with the
 number of the bad answer and the graph stays unchanged.
 
 ## Shelf graph
