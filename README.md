@@ -120,7 +120,7 @@ The skills above are Claude-only: Claude is the teacher. Codex installs from the
 same repository (`.codex-plugin/`) but loads only `codex/skills/`, a separate
 senior-developer role you call in on purpose, never on its own:
 
-- `$wise-code:consult` — at your assist level (Hint stays a hint) and logged.
+- `$wise-code:consult` — at your assist level (Hint stays a hint) and logged when the project has `.wise-code/`.
   Two kinds: a *doubt* about a teacher decision, hint or explanation (Codex
   asks what you tried and know, then checks the teacher's claim against the code
   and primary sources), or an independent *question* on syntax, config or a tool

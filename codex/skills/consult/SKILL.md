@@ -41,7 +41,8 @@ A consult is one of two kinds:
 - **question**: an independent question (syntax, config, a tool, an API) with
   no teacher claim behind it.
 
-Both follow the learner's assist level and both are logged. For a quick lookup
+Both follow the learner's assist level and both are logged when the project has
+`.wise-code/`. For a quick lookup
 answered in full and not logged, the learner uses `$wise-code:google` instead;
 mention it once if they seem to want that.
 
@@ -63,7 +64,9 @@ mention it once if they seem to want that.
 ## 1. Find the project and the level
 
 1. Find the project's `.wise-code/`: the nearest one from the working folder,
-   not above the Git root. Never read another project's.
+   not above the Git root. Never read another project's. No `.wise-code/`: tell
+   the learner in your first message that this consult won't be logged, and
+   that running Learn with Claude here turns logging on. Don't create the folder.
 2. If it has `profile.md`, read `Assist level:` and `Level overrides:`. A topic
    or language override that matches the question beats the default. No
    `Assist level:` line means Hint. If `Learning mode: paused`, or there is no
@@ -117,7 +120,11 @@ view.
 
 ## 4. Record it
 
-Record every consult once, after your answer, from the project folder. A doubt:
+If the project has no `.wise-code/`, skip this section and stop after your
+answer: there is no journal, and no teacher to read it.
+
+Otherwise record every consult once, after your answer, from the project
+folder. A doubt:
 
 ```bash
 python3 "<plugin root>/scripts/consult.py" add --kind doubt --topic "<short topic>" \

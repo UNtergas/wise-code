@@ -100,7 +100,7 @@ Single self-contained HTML file in `./lessons/`.
 
 ## Assets
 
-Reuse is default. Before authoring a lesson, read `./assets/` and build from what's there. Anything a second lesson could reuse → component in `./assets/`, linked, never inlined. First component every workspace earns: shared stylesheet linked by all lessons, so they read as one course. Start it by copying [templates/lesson.css](templates/lesson.css) into `./assets/lesson.css`, and [templates/results.js](templates/results.js) into `./assets/results.js`; edit the copies, never the plugin templates. Library grows w/ workspace.
+Reuse is default. Before authoring a lesson, read `./assets/` and build from what's there. Anything a second lesson could reuse → component in `./assets/`, linked, never inlined. First component every workspace earns: shared stylesheet linked by all lessons, so they read as one course. Start it by copying [templates/lesson.css](templates/lesson.css) into `./assets/lesson.css`, and [templates/results.js](templates/results.js) into `./assets/results.js`; edit the copies, never the plugin templates. Library grows w/ workspace. Before building a quiz lesson, check `./assets/results.js`: a copy without `id: String(id)` is older and records repeat downloads as new evidence. Diff it against the template. No local edits → replace it w/ the template. Local edits → keep them, show the learner the diff, and apply the template's changes once they agree.
 
 ## Reference docs
 

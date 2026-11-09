@@ -100,6 +100,22 @@ class SkillLayoutTests(unittest.TestCase):
                        "<plugin root>/skills/learn/assist-levels.md"):
             self.assertIn(needed, consult)
 
+    def test_consult_without_state_says_up_front_it_is_not_logged(self):
+        text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
+        find_project = text.split("## 1. Find the project")[1].split("## 2.")[0]
+        self.assertIn("No `.wise-code/`", find_project)
+        self.assertIn("won't be logged", find_project)
+        record = text.split("## 4. Record it")[1]
+        self.assertIn("If the project has no `.wise-code/`, skip this section", record)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("logged when the project has `.wise-code/`", readme)
+
+    def test_teach_refreshes_an_old_results_script_without_losing_local_edits(self):
+        teach = (ROOT / "skills/teach/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("`id: String(id)`", teach)
+        self.assertIn("local edits", teach)
+        self.assertIn("id: String(id)", (ROOT / "skills/teach/templates/results.js").read_text(encoding="utf-8"))
+
     def test_bare_consult_asks_everything_in_one_message(self):
         text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("invoked with nothing else", text)
