@@ -378,6 +378,34 @@ def find_state(start, create=False):
     return state
 
 
+def checked_dir(state, *parts, create=False):
+    """state/parts..., refusing a symlink or non-directory at any level."""
+    path = state
+    for part in parts:
+        path = path / part
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise WiseError(f"{path} is a symlink or not a directory; refusing")
+        if create:
+            path.mkdir(mode=0o700, exist_ok=True)
+    return path
+
+
+def new_backup_dir(state, kind):
+    """A new, empty folder under state/backups; never an existing one."""
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    parent = checked_dir(state, "backups", create=True)
+    return Path(tempfile.mkdtemp(prefix=f"{kind}-{stamp}-", dir=parent))
+
+
+def free_path(path):
+    """path, or path with -2, -3... if the name is taken (even by a dead link)."""
+    candidate, number = path, 1
+    while os.path.lexists(candidate):
+        number += 1
+        candidate = path.with_name(f"{path.stem}-{number}{path.suffix}")
+    return candidate
+
+
 # ---------------------------------------------------------------- store
 
 class Graph:
@@ -2158,19 +2186,20 @@ def import_lesson_file(graph, path):
 
 def cmd_import_lesson(graph, args):
     paths = [Path(p) for p in args.paths]
-    inbox = graph.state / "inbox"
+    inbox = checked_dir(graph.state, "inbox")
     if args.inbox and inbox.is_dir():
         paths += sorted(p for p in inbox.glob("*.json") if p.is_file() and not p.is_symlink())
     if not paths:
         print("nothing to import")
         return 0
+    # Checked before the first import, so a bad archive folder changes nothing.
+    if any(path.parent == inbox for path in paths):
+        done = checked_dir(graph.state, "inbox", "done", create=True)
     for path in paths:
         import_lesson_file(graph, path)
         graph.save()
         if path.parent == inbox:
-            done = inbox / "done"
-            done.mkdir(exist_ok=True)
-            shutil.move(str(path), str(done / path.name))
+            shutil.move(str(path), str(free_path(done / path.name)))
     return 0
 
 
@@ -2489,11 +2518,12 @@ def cmd_import_md(graph, args):
     if args.dry_run:
         print("dry run: nothing written, nothing moved")
         return 0
+    # Made before the save, so a bad backup folder changes nothing.
+    backup = new_backup_dir(state, "import") if importer.moved else None
     graph.dirty = True
     graph.save()
     # Imported Markdown moves to a backup so it can't drift from the graph.
     if importer.moved:
-        backup = state / "backups" / f"import-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}"
         for path in importer.moved:
             target = backup / path.relative_to(state)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -2532,7 +2562,7 @@ def reset_progress(graph):
 
 
 def cmd_reset_progress(graph, args):
-    backup = graph.state / "backups" / f"reset-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}" / "graph"
+    backup = new_backup_dir(graph.state, "reset") / "graph"
     if graph.dir.is_dir():
         shutil.copytree(graph.dir, backup)
     print(f"backup {backup} · cleared {reset_progress(graph)}")

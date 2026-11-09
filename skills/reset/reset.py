@@ -2,14 +2,12 @@
 
 import argparse
 import contextlib
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import stat
 import sys
-import tempfile
 
 
 sys.dont_write_bytecode = True
@@ -110,12 +108,10 @@ def _reset(cwd, confirmation, graph):
     if confirmation is None:
         return result
 
-    backup_parent = state / "backups"
-    if backup_parent.is_symlink() or (backup_parent.exists() and not backup_parent.is_dir()):
-        raise ValueError("Backup path must be a real directory; nothing reset.")
-    backup_parent.mkdir(mode=0o700, exist_ok=True)
-    prefix = datetime.now(timezone.utc).strftime("reset-%Y%m%dT%H%M%SZ-")
-    backup = Path(tempfile.mkdtemp(prefix=prefix, dir=backup_parent))
+    try:
+        backup = wise.new_backup_dir(state, "reset")
+    except wise.WiseError as error:
+        raise ValueError("Backup path must be a real directory; nothing reset.") from error
     try:
         # Finish all backups and prepare replacements before touching active notes.
         for name, data in notes.items():
