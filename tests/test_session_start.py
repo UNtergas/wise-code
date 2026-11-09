@@ -475,7 +475,27 @@ class ConsultJournalHookTests(HookCase):
         self.journal(("2026-11-01", False))
         self.assertIn("senior consult", self.context(source="compact"))
 
-    def test_paused_learning_or_symlinked_journal_stays_quiet(self):
+    def test_paused_learning_still_announces_pending_consults(self):
+        self.state(mode="paused")
+        path = self.journal(("2026-11-01", True))
+        context = self.context()
+        self.assertIn("1 senior consult not yet acknowledged", context)
+        self.assertIn(str(path), context)
+        self.assertIn("Learning stays off", context)
+        self.assertNotIn(str(ROOT / "skills/learn/SKILL.md"), context)
+
+    def test_active_learning_announcement_has_no_learning_off_note(self):
+        self.graph_state()
+        self.journal(("2026-11-01", False))
+        self.assertNotIn("Learning stays off", self.context())
+
+    def test_paused_learning_with_every_consult_acknowledged_stays_silent(self):
+        self.state(mode="paused")
+        self.journal(("2026-11-01", False))
+        self.consult("ack", *self.pending_ids())
+        self.assertIsNone(self.run_hook())
+
+    def test_symlinked_journal_stays_quiet(self):
         state = self.graph_state()
         target = self.root / "outside.md"
         target.write_text("## 2026-11-01 10:00 — t\nDisagrees with teacher: no\n",

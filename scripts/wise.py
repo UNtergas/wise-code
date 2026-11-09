@@ -74,7 +74,7 @@ TYPES = {
     "qa": {"prefix": "QA", "required": ["q", "a", "source"], "fields": {
         "date": "date", "source": QA_SOURCES, "q": "str", "a": "str",
         "verdict": VERDICTS, "hints": "int", "followup": "str",
-        "result": "str", "project": "str", "confidence": CONFIDENCE,
+        "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
         "said_hash": "str"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
@@ -376,6 +376,34 @@ def find_state(start, create=False):
     state = (root or start) / ".wise-code"
     state.mkdir()
     return state
+
+
+def checked_dir(state, *parts, create=False):
+    """state/parts..., refusing a symlink or non-directory at any level."""
+    path = state
+    for part in parts:
+        path = path / part
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise WiseError(f"{path} is a symlink or not a directory; refusing")
+        if create:
+            path.mkdir(mode=0o700, exist_ok=True)
+    return path
+
+
+def new_backup_dir(state, kind):
+    """A new, empty folder under state/backups; never an existing one."""
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    parent = checked_dir(state, "backups", create=True)
+    return Path(tempfile.mkdtemp(prefix=f"{kind}-{stamp}-", dir=parent))
+
+
+def free_path(path):
+    """path, or path with -2, -3... if the name is taken (even by a dead link)."""
+    candidate, number = path, 1
+    while os.path.lexists(candidate):
+        number += 1
+        candidate = path.with_name(f"{path.stem}-{number}{path.suffix}")
+    return candidate
 
 
 # ---------------------------------------------------------------- store
@@ -2104,13 +2132,30 @@ def parse_lesson_result(data):
             raise WiseError(f"answer {number}: correct must be true or false; "
                             f"got {answer.get('correct')!r}")
         texts = {}
-        for key in ("q", "answer", "expected"):
+        for key in ("id", "q", "answer", "expected"):
             value = answer.get(key, "")
             if not isinstance(value, str):
                 raise WiseError(f"answer {number}: {key} must be a string; got {value!r}")
             texts[key] = value.strip()
         parsed.append(dict(texts, correct=answer["correct"]))
     return result_id, date, lesson, parsed
+
+
+def unseen_answers(graph, result_id, answers):
+    """The answers this result hasn't recorded yet.
+
+    One attempt can be downloaded many times, so identity is per answer. A file
+    from before answers had ids counts as seen once its result has any record.
+    """
+    recorded = [n for n in graph.of_type("qa") if n.get("result") == result_id]
+    seen = {n.get("answer_id") for n in recorded}
+    unseen = []
+    for answer in answers:
+        if answer["id"] in seen if answer["id"] else recorded:
+            continue
+        seen.add(answer["id"])
+        unseen.append(answer)
+    return unseen
 
 
 def import_lesson_file(graph, path):
@@ -2121,14 +2166,15 @@ def import_lesson_file(graph, path):
         raise WiseError(f"{path}: not valid JSON ({error})") from None
     except WiseError as error:
         raise WiseError(f"{path}: {error}") from None
-    if any(n.get("result") == result_id for n in graph.of_type("qa")):
+    unseen = unseen_answers(graph, result_id, answers)
+    if answers and not unseen:
         print(f"skip {Path(path).name}: result {result_id} already imported")
         return 0
     lesson_node = next((n["id"] for n in graph.of_type("lesson")
                         if lesson and (lesson in n.get("path", "") or lesson == n["id"])), None)
     concepts = graph.out(lesson_node, "covers") if lesson_node else []
     created = 0
-    for answer in answers:
+    for answer in unseen:
         correct = answer["correct"]
         qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": date,
               "created": iso(today()), "source": "lesson",
@@ -2136,6 +2182,8 @@ def import_lesson_file(graph, path):
               "a": answer["answer"] or "(no answer)",
               "verdict": "correct" if correct else "wrong", "result": result_id,
               "at": stamp_now()}
+        if answer["id"]:
+            qa["answer_id"] = answer["id"]
         graph.nodes[qa["id"]] = qa
         for concept in concepts:
             graph.edges.add((qa["id"], "about", concept))
@@ -2151,26 +2199,27 @@ def import_lesson_file(graph, path):
                 graph.edges.add((question["id"], "tests", concept))
         created += 1
     graph.dirty = True
-    wrong = sum(1 for a in answers if not a["correct"])
+    wrong = sum(1 for a in unseen if not a["correct"])
     print(f"imported {Path(path).name}: {created} answers · {wrong} wrong → question bank")
     return created
 
 
 def cmd_import_lesson(graph, args):
     paths = [Path(p) for p in args.paths]
-    inbox = graph.state / "inbox"
+    inbox = checked_dir(graph.state, "inbox")
     if args.inbox and inbox.is_dir():
         paths += sorted(p for p in inbox.glob("*.json") if p.is_file() and not p.is_symlink())
     if not paths:
         print("nothing to import")
         return 0
+    # Checked before the first import, so a bad archive folder changes nothing.
+    if any(path.parent == inbox for path in paths):
+        done = checked_dir(graph.state, "inbox", "done", create=True)
     for path in paths:
         import_lesson_file(graph, path)
         graph.save()
         if path.parent == inbox:
-            done = inbox / "done"
-            done.mkdir(exist_ok=True)
-            shutil.move(str(path), str(done / path.name))
+            shutil.move(str(path), str(free_path(done / path.name)))
     return 0
 
 
@@ -2489,11 +2538,12 @@ def cmd_import_md(graph, args):
     if args.dry_run:
         print("dry run: nothing written, nothing moved")
         return 0
+    # Made before the save, so a bad backup folder changes nothing.
+    backup = new_backup_dir(state, "import") if importer.moved else None
     graph.dirty = True
     graph.save()
     # Imported Markdown moves to a backup so it can't drift from the graph.
     if importer.moved:
-        backup = state / "backups" / f"import-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}"
         for path in importer.moved:
             target = backup / path.relative_to(state)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -2532,7 +2582,7 @@ def reset_progress(graph):
 
 
 def cmd_reset_progress(graph, args):
-    backup = graph.state / "backups" / f"reset-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}" / "graph"
+    backup = new_backup_dir(graph.state, "reset") / "graph"
     if graph.dir.is_dir():
         shutil.copytree(graph.dir, backup)
     print(f"backup {backup} · cleared {reset_progress(graph)}")

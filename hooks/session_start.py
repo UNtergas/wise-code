@@ -121,6 +121,12 @@ def consult_counts(state):
             sys.path.pop(0)
 
 
+CONSULT_LEARNING_OFF = (
+    " Learning stays off in this project: reviewing these doesn't resume it, so "
+    "run no start check or lesson and don't change the learning mode."
+)
+
+
 def consult_context(state, new, disagreeing):
     plural = "s" if new != 1 else ""
     verb = "disagrees" if disagreeing == 1 else "disagree"
@@ -298,7 +304,9 @@ def restore(payload):
     # The shelf is opt-in per project and works without a Learn profile.
     shelf_config = state / "shelf.md"
     shelf = shelf_config.is_file() and not shelf_config.is_symlink()
-    if not learning and not shelf:
+    # A senior's handoff doesn't depend on learning: a paused learner can consult.
+    new, disagreeing = consult_counts(state)
+    if not learning and not shelf and not new:
         return None
     parts = []
     if learning:
@@ -306,9 +314,10 @@ def restore(payload):
         legacy = [] if has_graph(state) else legacy_notes(state)
         if legacy:
             parts.append(import_context(state, legacy))
-        new, disagreeing = consult_counts(state)
-        if new:
-            parts.append(consult_context(state, new, disagreeing))
+    if new:
+        parts.append(consult_context(state, new, disagreeing)
+                     + ("" if learning else CONSULT_LEARNING_OFF))
+    if learning:
         if payload.get("source") in NEW_SESSION_SOURCES:
             pending = (graph_start_check_pending(state) if has_graph(state)
                        else start_check_pending(state / "session-recap.md"))

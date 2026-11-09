@@ -120,14 +120,14 @@ The skills above are Claude-only: Claude is the teacher. Codex installs from the
 same repository (`.codex-plugin/`) but loads only `codex/skills/`, a separate
 senior-developer role you call in on purpose, never on its own:
 
-- `$wise-code:consult` — at your assist level (Hint stays a hint) and logged.
+- `$wise-code:consult` — at your assist level (Hint stays a hint) and logged when the project has `.wise-code/`.
   Two kinds: a *doubt* about a teacher decision, hint or explanation (Codex
   asks what you tried and know, then checks the teacher's claim against the code
   and primary sources), or an independent *question* on syntax, config or a tool
   (it asks only if you gave no context). It never edits your code or the
   learning graph. Each consult is appended to `.wise-code/consult/journal.md`
-  through `scripts/consult.py`; at the next session start (or compaction)
-  Claude is told how many consults it hasn't acknowledged yet and how many
+  through `scripts/consult.py`; at the next session start (or compaction),
+  even while learning is paused, Claude is told how many consults it hasn't acknowledged yet and how many
   doubts disagree with it, reads them, and re-examines its own call with you.
   It then acknowledges each entry it went through (`consult.py ack <id>`, kept
   in `.wise-code/consult-acks.txt`); an entry stays pending, and is announced

@@ -1187,6 +1187,176 @@ class MarkdownImportTests(WiseTestCase):
         self.assertFalse((state / "graph").exists())
 
 
+QUIZ_PAGE = r"""
+// Loads the real results.js with a stub page, then runs the steps in argv[3]:
+// "a:<id>:<0|1>" answers a question, "d" clicks download.
+const files = [], blobs = [];
+global.window = {crypto: globalThis.crypto};
+let link = {};
+global.document = {
+  readyState: "complete", getElementById: () => null, body: {appendChild() {}},
+  createElement: () => (link = {click() { files.push(link.download); }, remove() {}}),
+};
+URL.createObjectURL = (blob) => { blobs.push(blob); return "blob:x"; };
+URL.revokeObjectURL = () => {};
+require(process.argv[2]);
+window.WiseResults.lesson("0001");
+for (const step of process.argv[3].split(",")) {
+  if (step === "d") window.WiseResults.download();
+  else {
+    const [, id, right] = step.split(":");
+    window.WiseResults.record(id, "Q " + id, "A", right === "1", "E");
+  }
+}
+Promise.all(blobs.map((b) => b.text())).then((texts) => console.log(
+  JSON.stringify(texts.map((text, i) => ({name: files[i], text})))));
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node not installed")
+class QuizDownloadTests(WiseTestCase):
+    """The real page script, through download, to the importer."""
+
+    def page_load(self, steps):
+        page = Path(self.temp.name) / "page.js"
+        page.write_text(QUIZ_PAGE, encoding="utf-8")
+        script = SCRIPT.parent.parent / "skills/teach/templates/results.js"
+        result = subprocess.run(["node", str(page), str(script), steps],
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def import_all(self, downloads):
+        folder = Path(tempfile.mkdtemp(dir=self.temp.name))
+        for number, download in enumerate(downloads):
+            path = folder / f"{number}-{download['name']}"
+            path.write_text(download["text"], encoding="utf-8")
+            self.out("import-lesson", str(path))
+
+    def count(self, kind):
+        return sum(1 for node in self.nodes() if node["type"] == kind)
+
+    def test_repeated_and_incremental_downloads_record_each_answer_once(self):
+        downloads = self.page_load("a:q1:0,d,d,a:q2:1,d")
+        self.assertEqual(len({d["name"] for d in downloads}), 1)
+        self.import_all(downloads)
+        self.assertEqual(self.count("qa"), 2)
+        self.assertEqual(self.count("question"), 1)
+
+    def test_a_page_reload_is_a_new_attempt(self):
+        self.import_all(self.page_load("a:q1:0,d") + self.page_load("a:q1:1,d"))
+        self.assertEqual(self.count("qa"), 2)
+
+
+class LessonAnswerIdentityTests(WiseTestCase):
+    def result(self, *answer_ids):
+        folder = Path(tempfile.mkdtemp(dir=self.temp.name))
+        path = folder / "r.json"
+        path.write_text(json.dumps({"result_id": "r-1", "lesson": "0001", "answers": [
+            {"id": answer_id, "q": f"Q {answer_id}", "answer": "A", "correct": False}
+            for answer_id in answer_ids]}), encoding="utf-8")
+        return path
+
+    def test_a_later_file_adds_only_new_answers(self):
+        self.out("import-lesson", str(self.result("q1")))
+        report = self.out("import-lesson", str(self.result("q1", "q2")))
+        self.assertIn("1 answers · 1 wrong", report)
+        self.assertEqual(sorted(n["q"] for n in self.nodes() if n["type"] == "qa"),
+                         ["Q q1", "Q q2"])
+        self.assertEqual(sum(1 for n in self.nodes() if n["type"] == "question"), 2)
+
+    def test_same_file_again_is_skipped(self):
+        self.out("import-lesson", str(self.result("q1")))
+        self.assertIn("already imported", self.out("import-lesson", str(self.result("q1"))))
+        self.assertEqual(sum(1 for n in self.nodes() if n["type"] == "qa"), 1)
+
+    def test_a_non_string_answer_id_is_rejected(self):
+        result = self.run_wise("import-lesson", str(self.result(7)), check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("id must be a string", result.stderr)
+
+
+class StateBoundaryTests(WiseTestCase):
+    """Archive and backup writes stay inside .wise-code, or change nothing."""
+
+    def setUp(self):
+        super().setUp()
+        self.state = self.project / ".wise-code"
+        self.state.mkdir()
+        self.outside = Path(self.temp.name).resolve() / "outside"
+        self.outside.mkdir()
+        (self.outside / "keep.json").write_text("PRECIOUS", encoding="utf-8")
+
+    def link(self, path):
+        path.symlink_to(self.outside, target_is_directory=True)
+
+    def inbox_result(self, name="r.json", result_id="r-1"):
+        inbox = self.state / "inbox"
+        inbox.mkdir(exist_ok=True)
+        path = inbox / name
+        path.write_text(json.dumps({"result_id": result_id, "answers": [
+            {"q": "Q", "answer": "A", "correct": True}]}), encoding="utf-8")
+        return path
+
+    def assert_refused(self, *args):
+        result = self.run_wise(*args, check=False)
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+        self.assertIn("symlink", result.stderr)
+        self.assertEqual([p.name for p in self.outside.iterdir()], ["keep.json"])
+        self.assertEqual((self.outside / "keep.json").read_text(encoding="utf-8"), "PRECIOUS")
+
+    def test_symlinked_done_is_refused_before_the_graph_changes(self):
+        (self.state / "inbox").mkdir()
+        self.link(self.state / "inbox" / "done")
+        source = self.inbox_result("keep.json")
+        self.assert_refused("import-lesson", "--inbox")
+        self.assertTrue(source.exists())
+        self.assertFalse((self.state / "graph" / "nodes.jsonl").exists())
+
+    def test_symlinked_inbox_is_refused(self):
+        self.link(self.state / "inbox")
+        self.assert_refused("import-lesson", "--inbox")
+        self.assertFalse((self.state / "graph" / "nodes.jsonl").exists())
+
+    def test_archive_name_collision_keeps_both_results(self):
+        done = self.state / "inbox" / "done"
+        done.mkdir(parents=True)
+        (done / "r.json").write_text("EARLIER", encoding="utf-8")
+        self.inbox_result()
+        self.out("import-lesson", "--inbox")
+        self.assertEqual((done / "r.json").read_text(encoding="utf-8"), "EARLIER")
+        self.assertEqual(json.loads((done / "r-2.json").read_text(encoding="utf-8"))["result_id"], "r-1")
+        self.assertEqual(list((self.state / "inbox").glob("*.json")), [])
+
+    def test_archive_never_moves_through_a_symlink_at_the_destination(self):
+        done = self.state / "inbox" / "done"
+        done.mkdir(parents=True)
+        self.link(done / "r.json")
+        self.inbox_result()
+        self.out("import-lesson", "--inbox")
+        self.assertEqual([p.name for p in self.outside.iterdir()], ["keep.json"])
+        self.assertTrue((done / "r-2.json").is_file())
+
+    def test_reset_progress_refuses_symlinked_backups_and_keeps_status(self):
+        self.run_wise("add", "concept", "name=Strings", "status=demonstrated")
+        self.link(self.state / "backups")
+        self.assert_refused("reset-progress")
+        self.assertEqual(self.nodes()[0]["status"], "demonstrated")
+
+    def test_import_md_refuses_symlinked_backups_and_moves_nothing(self):
+        state = fixture.build(self.project)
+        self.link(state / "backups")
+        self.assert_refused("import-md")
+        self.assertTrue((state / "qa-history.md").exists())
+        self.assertFalse((state / "graph" / "nodes.jsonl").exists())
+
+    def test_backups_in_the_same_second_do_not_collide(self):
+        self.run_wise("add", "concept", "name=Strings")
+        for _ in range(3):
+            self.run_wise("reset-progress")
+        self.assertEqual(len(list((self.state / "backups").glob("reset-*/graph/nodes.jsonl"))), 3)
+
+
 class TokenBudgetTests(unittest.TestCase):
     """Proof for the grill's metric: every replacing query fits the cap."""
 
