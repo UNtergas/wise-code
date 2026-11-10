@@ -374,16 +374,26 @@ class CodexProfileTests(SetupCase):
         self.assertIn("--codex-plugin-root", result.stdout)
         self.assertNotIn("None", result.stdout)
 
-    def follow_repair(self, moved):
-        """Do what the conflict says; return the check after it and the profile."""
+    def backslash_root(self, name):
+        """A plugin folder whose path has a backslash, which a TOML basic string
+        escapes, as on Windows (there the backslash is a separator)."""
+        root = Path(self.temp.name) / "back\\slash" / name
+        (root / ".codex-plugin").mkdir(parents=True)
+        return root
+
+    def follow_repair(self, old, moved, written):
+        """Do what the conflict says to the grant, written in the file as
+        `written(path)`; return the check after it and the profile."""
         result = self.setup("check", "--codex-plugin-root", str(moved))
         self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
-        old, new = str(self.codex_plugin), str(moved)
-        self.assertIn(f"change the path {json.dumps(old)} to {json.dumps(new)}", result.stdout)
+        self.assertIn(f"change the path {json.dumps(str(old))} to {json.dumps(str(moved))}",
+                      result.stdout)
         self.assertNotIn("add the line", result.stdout)
-        text = self.profile.read_text(encoding="utf-8").replace(old, new)
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(written(old), text)
+        text = text.replace(written(old), written(moved))
         self.profile.write_text(text, encoding="utf-8")
-        return self.setup("check", "--codex-plugin-root", new), text
+        return self.setup("check", "--codex-plugin-root", str(moved)), text
 
     def assert_valid_toml(self, text):
         try:
@@ -392,19 +402,30 @@ class CodexProfileTests(SetupCase):
             self.skipTest("tomllib needs Python 3.11+")
         tomllib.loads(text)
 
+    def regrant(self, old, line):
+        """Apply for the plugin at `old`, then rewrite its grant as `line`."""
+        self.setup("apply", "--codex-plugin-root", str(old))
+        text = self.profile.read_text(encoding="utf-8")
+        generated = json.dumps(str(old)) + ' = "read"\n'
+        self.assertIn(generated, text)
+        self.profile.write_text(text.replace(generated, line), encoding="utf-8")
+
     def test_a_commented_plugin_grant_is_still_found(self):
         # Review on df00b9e: a trailing comment hid the grant, and the advice to
         # add it again made a duplicate key ("Cannot overwrite a value").
-        self.setup("apply")
-        self.edit_grant(self.grant_line().rstrip("\n") + "  # plugin access\n")
-        after, text = self.follow_repair(self.moved_plugin())
+        # Review on eed373f: the test swapped the raw path, which a basic string
+        # stores escaped, so it failed on Windows.
+        old = self.backslash_root("old")
+        self.regrant(old, json.dumps(str(old)) + ' = "read"  # plugin access\n')
+        after, text = self.follow_repair(old, self.backslash_root("new"),
+                                         lambda path: json.dumps(str(path))[1:-1])
         self.assert_valid_toml(text)
         self.assertRegex(after.stdout, r"(?m)^edited +Codex senior profile")
 
     def test_a_literal_string_plugin_grant_is_still_found(self):
-        self.setup("apply")
-        self.edit_grant(f"'{self.codex_plugin}' = 'read'\n")
-        after, text = self.follow_repair(self.moved_plugin())
+        old = self.backslash_root("old")
+        self.regrant(old, f"'{old}' = 'read'\n")
+        after, text = self.follow_repair(old, self.backslash_root("new"), str)
         self.assert_valid_toml(text)
         self.assertRegex(after.stdout, r"(?m)^edited +Codex senior profile")
 
