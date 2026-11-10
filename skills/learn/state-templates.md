@@ -15,6 +15,7 @@ Do not replace existing state with a fresh template.
 Learning mode: active
 Onboarding: complete
 Sandbox setup: [done / skipped]
+Codex senior: [on / off]
 
 ## Project
 Situation: [New / Existing / Known]

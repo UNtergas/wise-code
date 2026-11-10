@@ -74,9 +74,14 @@ Switch levels in chat at any time:
 
 ## Sandbox setup
 
-Learn's first onboarding starts with `scripts/setup.py check`. If anything is
-missing, you run `scripts/setup.py apply` yourself (Claude never changes its own
-sandbox), then onboarding continues. It sets up:
+Learn's first onboarding asks whether you want **Claude only** or **Claude +
+Codex senior**, records it in your profile (`Codex senior: off/on`), then runs
+`scripts/setup.py check`. If anything is missing, you run `scripts/setup.py
+apply` yourself (Claude never changes its own sandbox), then onboarding
+continues. With Claude only, both commands take `--claude-only`: only the
+Claude sandbox below is set up, and the Codex senior and consult folder read
+`n/a`, so Codex never blocks onboarding. Changed your mind later? Ask Claude
+to add or drop the senior. It sets up:
 
 - **Claude** — this project's `.claude/settings.local.json` (not committed):
   shell sandbox on and fail-closed (`failIfUnavailable`), `~/.ssh`, `~/.aws`,
@@ -89,7 +94,7 @@ sandbox), then onboarding continues. It sets up:
   can't run (native Windows, or Linux without `bubblewrap` and `socat`), setup
   reports a conflict instead of writing a setting that would stop Claude Code
   from starting: use WSL2 or install the packages, or skip.
-- **Codex senior** — `~/.codex/senior.config.toml`, used with
+- **Codex senior** (Claude + Codex senior only) — `~/.codex/senior.config.toml`, used with
   `codex --profile senior`: filesystem denied except the project and the plugin
   (read) and `.wise-code/consult/` (write); shell network only to docs hosts;
   live web search (hosted search isn't limited by the host list). Skipped when
@@ -107,7 +112,7 @@ sandbox), then onboarding continues. It sets up:
   again. **Upgrading:** if you edited your profile before this gate existed,
   your next onboarding stops once at it; `check` ends with a `WARNING:` line
   saying so and giving the command.
-- **`.wise-code/consult/`** — created up front, so the senior never needs write
+- **`.wise-code/consult/`** (Claude + Codex senior only) — created up front, so the senior never needs write
   access to `.wise-code/` itself.
 
 `apply` merges into existing settings and never overwrites a file it didn't

@@ -613,6 +613,44 @@ class CodexProfileTests(SetupCase):
                       self.profile.read_text(encoding="utf-8"))
 
 
+class ClaudeOnlyTests(SetupCase):
+    """A learner who doesn't want the Codex senior is never asked to set it up."""
+
+    def test_check_asks_only_for_the_claude_sandbox(self):
+        self.fake_codex()
+        result = self.setup("check", "--claude-only")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^missing +Claude sandbox")
+        self.assertRegex(result.stdout, r"(?m)^n/a +consult folder")
+        self.assertRegex(result.stdout, r"(?m)^n/a +Codex senior profile")
+        # The printed command keeps the choice, so copying it can't set up Codex.
+        self.assertRegex(result.stdout, r'(?m)^run: .*setup\.py"? apply --claude-only')
+
+    def test_apply_writes_only_the_claude_sandbox(self):
+        self.fake_codex()
+        result = self.setup("apply", "--claude-only")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIs(self.claude()["sandbox"]["enabled"], True)
+        self.assertFalse(self.profile.exists())
+        self.assertFalse((self.project / ".wise-code").exists())
+        self.assertEqual(self.setup("check", "--claude-only").returncode, 0)
+
+    def test_an_edited_codex_profile_does_not_block(self):
+        self.setup("apply")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"~/notes" = "read"\n')
+        result = self.setup("check", "--claude-only")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("WARNING", result.stdout)
+
+    def test_without_the_flag_codex_is_still_checked(self):
+        self.fake_codex()
+        self.setup("apply", "--claude-only")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^missing +Codex senior profile")
+
+
 class OnboardingGateTests(unittest.TestCase):
     def test_onboarding_runs_the_check_first_and_lets_the_learner_apply(self):
         text = (ROOT / "skills/learn/onboarding.md").read_text(encoding="utf-8")
@@ -621,6 +659,16 @@ class OnboardingGateTests(unittest.TestCase):
         for needed in ("scripts/setup.py\" check", "scripts/setup.py\" apply",
                        "Sandbox setup: skipped", "the learner runs"):
             self.assertIn(needed, text)
+
+    def test_onboarding_asks_about_the_senior_before_checking(self):
+        text = (ROOT / "skills/learn/onboarding.md").read_text(encoding="utf-8")
+        section = text[text.index("## Sandbox setup"):text.index("## Project")]
+        self.assertLess(section.index("Claude + Codex senior"), section.index("setup.py\" check"))
+        for needed in ("Claude only", "--claude-only", "Codex senior: off",
+                       "Codex senior: on"):
+            self.assertIn(needed, section)
+        template = (ROOT / "skills/learn/state-templates.md").read_text(encoding="utf-8")
+        self.assertIn("Codex senior: [on / off]", template)
 
 
 if __name__ == "__main__":

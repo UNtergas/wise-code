@@ -13,6 +13,9 @@ only) edited or accepted:
   the plugin, write only the consult folder, live web search, docs hosts only for
   shell network. n/a when Codex isn't installed.
 
+With `--claude-only` (the learner chose no Codex senior), the consult folder and
+the Codex profile are n/a: only the Claude sandbox is checked or applied.
+
 `check` changes nothing and exits 1 if anything is missing, conflicts or is
 edited. A Codex profile the learner edited is reported as `edited` with every
 setting line that differs from what setup writes, and blocks until the learner
@@ -451,6 +454,10 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
 def items(args):
     start = Path.cwd().resolve()
     project = wise.git_root(start) or start
+    if getattr(args, "claude_only", False):
+        why = "Claude only: no Codex senior chosen"
+        return [Item("consult folder", "n/a", why), claude_item(project),
+                Item("Codex senior profile", "n/a", why)]
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     plugin = Path(args.codex_plugin_root).resolve() if args.codex_plugin_root else None
     return [consult_item(project), claude_item(project), codex_item(codex_home, plugin, project)]
@@ -481,7 +488,8 @@ def cmd_check(args):
         return 0
     if any(i.status in ("missing", "conflict") for i in found):
         script = Path(__file__).resolve()
-        print(f'run: python3 "{script}" apply   (then check again)')
+        only = " --claude-only" if args.claude_only else ""
+        print(f'run: python3 "{script}" apply{only}   (then check again)')
     warn(found)
     return 1
 
@@ -534,14 +542,18 @@ def main(argv=None):
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("--codex-plugin-root",
                         help="the wise-code folder Codex installed, if not detected")
+    choice = argparse.ArgumentParser(add_help=False)
+    choice.add_argument("--claude-only", action="store_true",
+                        help="the learner chose no Codex senior: skip its folder and profile")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name, func, text in (("check", cmd_check, "report; change nothing"),
-                             ("apply", cmd_apply, "create what is missing"),
-                             ("accept-profile", cmd_accept_profile,
-                              "approve your edited Codex profile as it is now"),
-                             ("show-codex", cmd_show_codex,
-                              "print the Codex profile setup would write")):
-        commands.add_parser(name, parents=[shared], help=text).set_defaults(func=func)
+    for name, func, text, parents in (
+            ("check", cmd_check, "report; change nothing", [shared, choice]),
+            ("apply", cmd_apply, "create what is missing", [shared, choice]),
+            ("accept-profile", cmd_accept_profile,
+             "approve your edited Codex profile as it is now", [shared]),
+            ("show-codex", cmd_show_codex, "print the Codex profile setup would write",
+             [shared])):
+        commands.add_parser(name, parents=parents, help=text).set_defaults(func=func)
     args = parser.parse_args(argv)
     try:
         return args.func(args)
