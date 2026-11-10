@@ -289,13 +289,17 @@ def claude_item(project):
 
 
 def find_codex_plugin(codex_home):
-    """The installed wise-code plugin under CODEX_HOME, or None."""
-    if not codex_home.is_dir():
-        return None
-    for manifest in sorted(codex_home.rglob(".codex-plugin/plugin.json")):
+    """The folder holding every installed version of wise-code in Codex, or None.
+
+    Codex installs a plugin at plugins/cache/<marketplace>/<plugin>/<version>
+    and loads it from there. Granting the folder above the versions keeps the
+    profile valid across updates. Marketplace clones under .tmp are only
+    sources, and their .staging checkouts vanish after a refresh.
+    """
+    for manifest in sorted((codex_home / "plugins/cache").glob("*/*/*/.codex-plugin/plugin.json")):
         try:
             if json.loads(manifest.read_text(encoding="utf-8")).get("name") == "wise-code":
-                return manifest.parent.parent
+                return manifest.parent.parent.parent
         except (OSError, ValueError, UnicodeError, AttributeError):
             continue
     return None
@@ -426,9 +430,11 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
             return f"updated {path}"
         return Item(name, "missing", f"{path} grants the old plugin folder {granted}; "
                     f"apply regenerates it for {root}", apply)
+    grant = '{} = "read"'
     return Item(name, "conflict", f"{path} was edited and grants {granted}, but the plugin "
-                f"is now at {root}; compare it with `setup.py show-codex` and update the "
-                "plugin line by hand")
+                f"is now at {root}. Your edits are kept: in that file, replace the line "
+                f"{grant.format(toml_string(granted))} with {grant.format(toml_string(root))}, "
+                "then check again")
 
 
 def items(args):

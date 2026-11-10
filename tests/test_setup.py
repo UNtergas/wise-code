@@ -33,10 +33,17 @@ class SetupCase(unittest.TestCase):
         (self.project / ".git").mkdir()
         self.settings = self.project / ".claude/settings.local.json"
         self.profile = self.codex_home / "senior.config.toml"
-        self.codex_plugin = self.codex_home / "plugins/cache/wise-code"
-        (self.codex_plugin / ".codex-plugin").mkdir(parents=True)
-        (self.codex_plugin / ".codex-plugin/plugin.json").write_text(
-            json.dumps({"name": "wise-code"}), encoding="utf-8")
+        # Codex installs a plugin at plugins/cache/<marketplace>/<plugin>/<version>;
+        # the profile grants the folder above the versions.
+        self.codex_plugin = self.codex_home / "plugins/cache/wise-code/wise-code"
+        self.manifest = self.plugin_copy(self.codex_plugin / "0.12.3")
+
+    def plugin_copy(self, folder):
+        """A wise-code plugin folder, as Codex unpacks one; returns its manifest."""
+        manifest = folder / ".codex-plugin/plugin.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps({"name": "wise-code"}), encoding="utf-8")
+        return manifest
 
     def tool(self, name):
         path = self.bin / name
@@ -285,6 +292,30 @@ class CodexProfileTests(SetupCase):
         (new / ".codex-plugin").mkdir(parents=True)
         return new
 
+    def test_a_marketplace_checkout_is_not_the_installed_plugin(self):
+        # A Codex marketplace refresh clones into .tmp/marketplaces/.staging and
+        # renames it; sorted first, that transient checkout was granted.
+        for checkout in (".tmp/marketplaces/.staging/marketplace-linux-x/checkout",
+                         ".tmp/marketplaces/wise-code"):
+            self.plugin_copy(self.codex_home / checkout)
+        self.assertEqual(self.setup("apply").returncode, 0)
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(json.dumps(str(self.codex_plugin)) + ' = "read"', text)
+        self.assertNotIn(".tmp", text)
+
+    def test_a_plugin_update_keeps_an_accepted_profile(self):
+        # Granting the version folder made every update a conflict by hand.
+        import shutil
+        self.setup("apply")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"kotlinlang.org" = "allow"\n')
+        self.assertEqual(self.setup("accept-profile").returncode, 0)
+        self.plugin_copy(self.codex_plugin / "0.12.4")
+        shutil.rmtree(self.codex_plugin / "0.12.3")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertRegex(result.stdout, r"(?m)^accepted +Codex senior profile")
+
     def test_moved_plugin_regenerates_an_unedited_profile(self):
         # A marker-only check kept granting the old plugin folder (review on #26).
         self.setup("apply")
@@ -305,10 +336,14 @@ class CodexProfileTests(SetupCase):
         with self.profile.open("a", encoding="utf-8") as stream:
             stream.write('"~/notes" = "read"\n')
         before = self.profile.read_bytes()
-        result = self.setup("apply", "--codex-plugin-root", str(self.moved_plugin()))
+        moved = self.moved_plugin()
+        result = self.setup("apply", "--codex-plugin-root", str(moved))
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
-        self.assertIn("show-codex", result.stdout)
+        # The fix is one line: say exactly which, so nobody diffs by hand.
+        old = json.dumps(str(self.codex_plugin)) + ' = "read"'
+        new = json.dumps(str(moved)) + ' = "read"'
+        self.assertIn(f"replace the line {old} with {new}", result.stdout)
         self.assertEqual(self.profile.read_bytes(), before)
 
     def test_an_untouched_profile_is_ok(self):
@@ -443,7 +478,7 @@ class CodexProfileTests(SetupCase):
         with self.profile.open("a", encoding="utf-8") as stream:
             stream.write('"~/notes" = "read"\n')
         # The plugin isn't found under CODEX_HOME, but the granted folder exists.
-        (self.codex_plugin / ".codex-plugin/plugin.json").unlink()
+        self.manifest.unlink()
         result = self.setup("check")
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
