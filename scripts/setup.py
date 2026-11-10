@@ -134,15 +134,17 @@ def toml_unstring(text):
     return "".join(out)
 
 
-GRANT = re.compile(r'^"((?:[^"\\]|\\.)*)" = "read"$')
+# TOML allows any spacing around `=`; a learner's reformat must not hide it.
+GRANT = re.compile(r'^"((?:[^"\\]|\\.)*)"[ \t]*=[ \t]*"read"$')
 
 
 def granted_plugin(profile):
     """The plugin folder a setup-written profile grants read on, or None."""
     section = None
     for line in profile.splitlines():
+        line = line.strip()
         if line.startswith("["):
-            section = line.strip()
+            section = line
             continue
         match = GRANT.match(line)
         if section == "[permissions.senior.filesystem]" and match:
@@ -419,8 +421,9 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
     if root is None:
         if granted and Path(granted).is_dir():
             return verified_item(name, path, text, granted, accepted)
-        return Item(name, "conflict", f"{path} grants {granted}, which is gone, and wise-code "
-                    f"wasn't found under {codex_home}; pass --codex-plugin-root PATH")
+        what = f"grants {granted}, which is gone" if granted else "grants no plugin folder"
+        return Item(name, "conflict", f"{path} {what}, and wise-code wasn't found under "
+                    f"{codex_home}; pass --codex-plugin-root PATH")
     if granted == str(root):
         return verified_item(name, path, text, granted, accepted)
     if granted and text == codex_profile(granted):
@@ -430,11 +433,15 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
             return f"updated {path}"
         return Item(name, "missing", f"{path} grants the old plugin folder {granted}; "
                     f"apply regenerates it for {root}", apply)
-    grant = '{} = "read"'
+    if granted is None:
+        return Item(name, "conflict", f"{path} was edited and grants no plugin folder, so the "
+                    "senior can't read wise-code. Your edits are kept: in that file, add the "
+                    f'line {toml_string(root)} = "read" under [permissions.senior.filesystem], '
+                    "then check again")
     return Item(name, "conflict", f"{path} was edited and grants {granted}, but the plugin "
-                f"is now at {root}. Your edits are kept: in that file, replace the line "
-                f"{grant.format(toml_string(granted))} with {grant.format(toml_string(root))}, "
-                "then check again")
+                f"is now at {root}. Your edits are kept: in that file, under "
+                f"[permissions.senior.filesystem], change the path {toml_string(granted)} to "
+                f"{toml_string(root)}, then check again")
 
 
 def items(args):

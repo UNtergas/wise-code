@@ -340,11 +340,50 @@ class CodexProfileTests(SetupCase):
         result = self.setup("apply", "--codex-plugin-root", str(moved))
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
-        # The fix is one line: say exactly which, so nobody diffs by hand.
-        old = json.dumps(str(self.codex_plugin)) + ' = "read"'
-        new = json.dumps(str(moved)) + ' = "read"'
-        self.assertIn(f"replace the line {old} with {new}", result.stdout)
+        # The fix is one path: say exactly which, so nobody diffs by hand.
+        self.assertIn(f"change the path {json.dumps(str(self.codex_plugin))} to "
+                      f"{json.dumps(str(moved))}", result.stdout)
         self.assertEqual(self.profile.read_bytes(), before)
+
+    def grant_line(self):
+        return json.dumps(str(self.codex_plugin)) + ' = "read"\n'
+
+    def edit_grant(self, new):
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(self.grant_line(), text)
+        self.profile.write_text(text.replace(self.grant_line(), new), encoding="utf-8")
+
+    def test_a_removed_plugin_grant_says_to_add_it(self):
+        # Review on 79d8260: the repair said `replace the line "None" = "read"`.
+        self.setup("apply")
+        self.edit_grant("")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn(f"add the line {self.grant_line().strip()} under "
+                      "[permissions.senior.filesystem]", result.stdout)
+        self.assertNotIn("None", result.stdout)
+
+    def test_a_removed_grant_without_a_detected_plugin_needs_the_path(self):
+        import shutil
+        self.setup("apply")
+        self.edit_grant("")
+        shutil.rmtree(self.codex_home / "plugins")
+        result = self.setup("check")
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn("--codex-plugin-root", result.stdout)
+        self.assertNotIn("None", result.stdout)
+
+    def test_a_respaced_plugin_grant_is_still_found(self):
+        # Valid TOML spacing must not hide the grant from the repair message.
+        self.setup("apply")
+        self.edit_grant("  " + json.dumps(str(self.codex_plugin)) + '="read"  \n')
+        moved = self.moved_plugin()
+        result = self.setup("check", "--codex-plugin-root", str(moved))
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn(f"change the path {json.dumps(str(self.codex_plugin))} to "
+                      f"{json.dumps(str(moved))}", result.stdout)
+        self.assertNotIn("None", result.stdout)
 
     def test_an_untouched_profile_is_ok(self):
         self.setup("apply")
