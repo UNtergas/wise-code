@@ -18,12 +18,24 @@ change .gitignore unless requested; announce the edit first.
 
 ## Sandbox setup
 
-Before the first onboarding question, check the sandbox setup from the project
-folder:
+Before the first onboarding question, ask in a native picker whether they want
+a second opinion from Codex:
+
+- Claude only — Claude teaches; no Codex setup.
+- Claude + Codex senior — Codex, read-only, reviews on request (needs Codex installed).
+
+Record `Codex senior: off` or `Codex senior: on` in `profile.md`; don't ask again
+while it's recorded. If they later ask to add or drop the senior, update that
+line and run this section's check again. Then check the sandbox setup from the
+project folder. For Claude + Codex senior:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/setup.py" check
 ```
+
+For Claude only, add `--claude-only` to `check` and to the `apply` you give
+the learner (the `run:` line `check` prints already carries it). Codex lines
+then read `n/a` and nothing Codex-related blocks onboarding.
 
 Exit 0: continue with Project; say nothing about it.
 
@@ -45,8 +57,9 @@ When they say it's done, run `check` again.
 Otherwise, show the
 learner the `missing` and `conflict` lines as printed, in one short message:
 it turns on Claude Code's shell sandbox for this project
-(`.claude/settings.local.json`), creates `.wise-code/consult/`, and, if Codex is
-installed, writes the read-only senior profile (`~/.codex/senior.config.toml`).
+(`.claude/settings.local.json`) and, with the Codex senior only, creates
+`.wise-code/consult/` and writes the read-only senior profile
+(`~/.codex/senior.config.toml`).
 Then give the command the learner runs, and wait:
 
 ```bash

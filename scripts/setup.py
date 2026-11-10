@@ -13,6 +13,9 @@ only) edited or accepted:
   the plugin, write only the consult folder, live web search, docs hosts only for
   shell network. n/a when Codex isn't installed.
 
+With `--claude-only` (the learner chose no Codex senior), the consult folder and
+the Codex profile are n/a: only the Claude sandbox is checked or applied.
+
 `check` changes nothing and exits 1 if anything is missing, conflicts or is
 edited. A Codex profile the learner edited is reported as `edited` with every
 setting line that differs from what setup writes, and blocks until the learner
@@ -134,19 +137,24 @@ def toml_unstring(text):
     return "".join(out)
 
 
-GRANT = re.compile(r'^"((?:[^"\\]|\\.)*)" = "read"$')
+# A learner's valid TOML must not hide the grant: basic or literal strings,
+# any spacing around `=`, a trailing comment.
+GRANT = re.compile(r'^(?:"((?:[^"\\]|\\.)*)"|\'([^\']*)\')[ \t]*=[ \t]*'
+                   r'(?:"read"|\'read\')[ \t]*(?:#.*)?$')
 
 
 def granted_plugin(profile):
     """The plugin folder a setup-written profile grants read on, or None."""
     section = None
     for line in profile.splitlines():
+        line = line.strip()
         if line.startswith("["):
-            section = line.strip()
+            section = line
             continue
         match = GRANT.match(line)
         if section == "[permissions.senior.filesystem]" and match:
-            path = toml_unstring(match.group(1))
+            basic, literal = match.groups()
+            path = toml_unstring(basic) if basic is not None else literal
             if not path.startswith(":"):
                 return path
     return None
@@ -289,13 +297,17 @@ def claude_item(project):
 
 
 def find_codex_plugin(codex_home):
-    """The installed wise-code plugin under CODEX_HOME, or None."""
-    if not codex_home.is_dir():
-        return None
-    for manifest in sorted(codex_home.rglob(".codex-plugin/plugin.json")):
+    """The folder holding every installed version of wise-code in Codex, or None.
+
+    Codex installs a plugin at plugins/cache/<marketplace>/<plugin>/<version>
+    and loads it from there. Granting the folder above the versions keeps the
+    profile valid across updates. Marketplace clones under .tmp are only
+    sources, and their .staging checkouts vanish after a refresh.
+    """
+    for manifest in sorted((codex_home / "plugins/cache").glob("*/*/*/.codex-plugin/plugin.json")):
         try:
             if json.loads(manifest.read_text(encoding="utf-8")).get("name") == "wise-code":
-                return manifest.parent.parent
+                return manifest.parent.parent.parent
         except (OSError, ValueError, UnicodeError, AttributeError):
             continue
     return None
@@ -415,8 +427,9 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
     if root is None:
         if granted and Path(granted).is_dir():
             return verified_item(name, path, text, granted, accepted)
-        return Item(name, "conflict", f"{path} grants {granted}, which is gone, and wise-code "
-                    f"wasn't found under {codex_home}; pass --codex-plugin-root PATH")
+        what = f"grants {granted}, which is gone" if granted else "grants no plugin folder"
+        return Item(name, "conflict", f"{path} {what}, and wise-code wasn't found under "
+                    f"{codex_home}; pass --codex-plugin-root PATH")
     if granted == str(root):
         return verified_item(name, path, text, granted, accepted)
     if granted and text == codex_profile(granted):
@@ -426,14 +439,25 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
             return f"updated {path}"
         return Item(name, "missing", f"{path} grants the old plugin folder {granted}; "
                     f"apply regenerates it for {root}", apply)
+    if granted is None:
+        return Item(name, "conflict", f"{path} was edited and grants no plugin folder, so the "
+                    "senior can't read wise-code. Your edits are kept: in that file, add the "
+                    f'line {toml_string(root)} = "read" under [permissions.senior.filesystem] '
+                    "(if a line there already grants a wise-code folder, change its path "
+                    "instead: a second one is invalid TOML), then check again")
     return Item(name, "conflict", f"{path} was edited and grants {granted}, but the plugin "
-                f"is now at {root}; compare it with `setup.py show-codex` and update the "
-                "plugin line by hand")
+                f"is now at {root}. Your edits are kept: in that file, under "
+                f"[permissions.senior.filesystem], change the path {toml_string(granted)} to "
+                f"{toml_string(root)}, then check again")
 
 
 def items(args):
     start = Path.cwd().resolve()
     project = wise.git_root(start) or start
+    if getattr(args, "claude_only", False):
+        why = "Claude only: no Codex senior chosen"
+        return [Item("consult folder", "n/a", why), claude_item(project),
+                Item("Codex senior profile", "n/a", why)]
     codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
     plugin = Path(args.codex_plugin_root).resolve() if args.codex_plugin_root else None
     return [consult_item(project), claude_item(project), codex_item(codex_home, plugin, project)]
@@ -464,7 +488,8 @@ def cmd_check(args):
         return 0
     if any(i.status in ("missing", "conflict") for i in found):
         script = Path(__file__).resolve()
-        print(f'run: python3 "{script}" apply   (then check again)')
+        only = " --claude-only" if args.claude_only else ""
+        print(f'run: python3 "{script}" apply{only}   (then check again)')
     warn(found)
     return 1
 
@@ -517,14 +542,18 @@ def main(argv=None):
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("--codex-plugin-root",
                         help="the wise-code folder Codex installed, if not detected")
+    choice = argparse.ArgumentParser(add_help=False)
+    choice.add_argument("--claude-only", action="store_true",
+                        help="the learner chose no Codex senior: skip its folder and profile")
     commands = parser.add_subparsers(dest="command", required=True)
-    for name, func, text in (("check", cmd_check, "report; change nothing"),
-                             ("apply", cmd_apply, "create what is missing"),
-                             ("accept-profile", cmd_accept_profile,
-                              "approve your edited Codex profile as it is now"),
-                             ("show-codex", cmd_show_codex,
-                              "print the Codex profile setup would write")):
-        commands.add_parser(name, parents=[shared], help=text).set_defaults(func=func)
+    for name, func, text, parents in (
+            ("check", cmd_check, "report; change nothing", [shared, choice]),
+            ("apply", cmd_apply, "create what is missing", [shared, choice]),
+            ("accept-profile", cmd_accept_profile,
+             "approve your edited Codex profile as it is now", [shared]),
+            ("show-codex", cmd_show_codex, "print the Codex profile setup would write",
+             [shared])):
+        commands.add_parser(name, parents=parents, help=text).set_defaults(func=func)
     args = parser.parse_args(argv)
     try:
         return args.func(args)

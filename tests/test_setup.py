@@ -33,10 +33,17 @@ class SetupCase(unittest.TestCase):
         (self.project / ".git").mkdir()
         self.settings = self.project / ".claude/settings.local.json"
         self.profile = self.codex_home / "senior.config.toml"
-        self.codex_plugin = self.codex_home / "plugins/cache/wise-code"
-        (self.codex_plugin / ".codex-plugin").mkdir(parents=True)
-        (self.codex_plugin / ".codex-plugin/plugin.json").write_text(
-            json.dumps({"name": "wise-code"}), encoding="utf-8")
+        # Codex installs a plugin at plugins/cache/<marketplace>/<plugin>/<version>;
+        # the profile grants the folder above the versions.
+        self.codex_plugin = self.codex_home / "plugins/cache/wise-code/wise-code"
+        self.manifest = self.plugin_copy(self.codex_plugin / "0.12.3")
+
+    def plugin_copy(self, folder):
+        """A wise-code plugin folder, as Codex unpacks one; returns its manifest."""
+        manifest = folder / ".codex-plugin/plugin.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(json.dumps({"name": "wise-code"}), encoding="utf-8")
+        return manifest
 
     def tool(self, name):
         path = self.bin / name
@@ -285,6 +292,30 @@ class CodexProfileTests(SetupCase):
         (new / ".codex-plugin").mkdir(parents=True)
         return new
 
+    def test_a_marketplace_checkout_is_not_the_installed_plugin(self):
+        # A Codex marketplace refresh clones into .tmp/marketplaces/.staging and
+        # renames it; sorted first, that transient checkout was granted.
+        for checkout in (".tmp/marketplaces/.staging/marketplace-linux-x/checkout",
+                         ".tmp/marketplaces/wise-code"):
+            self.plugin_copy(self.codex_home / checkout)
+        self.assertEqual(self.setup("apply").returncode, 0)
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(json.dumps(str(self.codex_plugin)) + ' = "read"', text)
+        self.assertNotIn(".tmp", text)
+
+    def test_a_plugin_update_keeps_an_accepted_profile(self):
+        # Granting the version folder made every update a conflict by hand.
+        import shutil
+        self.setup("apply")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"kotlinlang.org" = "allow"\n')
+        self.assertEqual(self.setup("accept-profile").returncode, 0)
+        self.plugin_copy(self.codex_plugin / "0.12.4")
+        shutil.rmtree(self.codex_plugin / "0.12.3")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertRegex(result.stdout, r"(?m)^accepted +Codex senior profile")
+
     def test_moved_plugin_regenerates_an_unedited_profile(self):
         # A marker-only check kept granting the old plugin folder (review on #26).
         self.setup("apply")
@@ -305,11 +336,109 @@ class CodexProfileTests(SetupCase):
         with self.profile.open("a", encoding="utf-8") as stream:
             stream.write('"~/notes" = "read"\n')
         before = self.profile.read_bytes()
-        result = self.setup("apply", "--codex-plugin-root", str(self.moved_plugin()))
+        moved = self.moved_plugin()
+        result = self.setup("apply", "--codex-plugin-root", str(moved))
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
-        self.assertIn("show-codex", result.stdout)
+        # The fix is one path: say exactly which, so nobody diffs by hand.
+        self.assertIn(f"change the path {json.dumps(str(self.codex_plugin))} to "
+                      f"{json.dumps(str(moved))}", result.stdout)
         self.assertEqual(self.profile.read_bytes(), before)
+
+    def grant_line(self):
+        return json.dumps(str(self.codex_plugin)) + ' = "read"\n'
+
+    def edit_grant(self, new):
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(self.grant_line(), text)
+        self.profile.write_text(text.replace(self.grant_line(), new), encoding="utf-8")
+
+    def test_a_removed_plugin_grant_says_to_add_it(self):
+        # Review on 79d8260: the repair said `replace the line "None" = "read"`.
+        self.setup("apply")
+        self.edit_grant("")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn(f"add the line {self.grant_line().strip()} under "
+                      "[permissions.senior.filesystem]", result.stdout)
+        self.assertNotIn("None", result.stdout)
+
+    def test_a_removed_grant_without_a_detected_plugin_needs_the_path(self):
+        import shutil
+        self.setup("apply")
+        self.edit_grant("")
+        shutil.rmtree(self.codex_home / "plugins")
+        result = self.setup("check")
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn("--codex-plugin-root", result.stdout)
+        self.assertNotIn("None", result.stdout)
+
+    def backslash_root(self, name):
+        """A plugin folder whose path has a backslash, which a TOML basic string
+        escapes, as on Windows (there the backslash is a separator)."""
+        root = Path(self.temp.name) / "back\\slash" / name
+        (root / ".codex-plugin").mkdir(parents=True)
+        return root
+
+    def follow_repair(self, old, moved, written):
+        """Do what the conflict says to the grant, written in the file as
+        `written(path)`; return the check after it and the profile."""
+        result = self.setup("check", "--codex-plugin-root", str(moved))
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn(f"change the path {json.dumps(str(old))} to {json.dumps(str(moved))}",
+                      result.stdout)
+        self.assertNotIn("add the line", result.stdout)
+        text = self.profile.read_text(encoding="utf-8")
+        self.assertIn(written(old), text)
+        text = text.replace(written(old), written(moved))
+        self.profile.write_text(text, encoding="utf-8")
+        return self.setup("check", "--codex-plugin-root", str(moved)), text
+
+    def assert_valid_toml(self, text):
+        try:
+            import tomllib
+        except ImportError:  # Python < 3.11: no parser to check with
+            self.skipTest("tomllib needs Python 3.11+")
+        tomllib.loads(text)
+
+    def regrant(self, old, line):
+        """Apply for the plugin at `old`, then rewrite its grant as `line`."""
+        self.setup("apply", "--codex-plugin-root", str(old))
+        text = self.profile.read_text(encoding="utf-8")
+        generated = json.dumps(str(old)) + ' = "read"\n'
+        self.assertIn(generated, text)
+        self.profile.write_text(text.replace(generated, line), encoding="utf-8")
+
+    def test_a_commented_plugin_grant_is_still_found(self):
+        # Review on df00b9e: a trailing comment hid the grant, and the advice to
+        # add it again made a duplicate key ("Cannot overwrite a value").
+        # Review on eed373f: the test swapped the raw path, which a basic string
+        # stores escaped, so it failed on Windows.
+        old = self.backslash_root("old")
+        self.regrant(old, json.dumps(str(old)) + ' = "read"  # plugin access\n')
+        after, text = self.follow_repair(old, self.backslash_root("new"),
+                                         lambda path: json.dumps(str(path))[1:-1])
+        self.assert_valid_toml(text)
+        self.assertRegex(after.stdout, r"(?m)^edited +Codex senior profile")
+
+    def test_a_literal_string_plugin_grant_is_still_found(self):
+        old = self.backslash_root("old")
+        self.regrant(old, f"'{old}' = 'read'\n")
+        after, text = self.follow_repair(old, self.backslash_root("new"), str)
+        self.assert_valid_toml(text)
+        self.assertRegex(after.stdout, r"(?m)^edited +Codex senior profile")
+
+    def test_a_respaced_plugin_grant_is_still_found(self):
+        # Valid TOML spacing must not hide the grant from the repair message.
+        self.setup("apply")
+        self.edit_grant("  " + json.dumps(str(self.codex_plugin)) + '="read"  \n')
+        moved = self.moved_plugin()
+        result = self.setup("check", "--codex-plugin-root", str(moved))
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        self.assertIn(f"change the path {json.dumps(str(self.codex_plugin))} to "
+                      f"{json.dumps(str(moved))}", result.stdout)
+        self.assertNotIn("None", result.stdout)
 
     def test_an_untouched_profile_is_ok(self):
         self.setup("apply")
@@ -443,7 +572,7 @@ class CodexProfileTests(SetupCase):
         with self.profile.open("a", encoding="utf-8") as stream:
             stream.write('"~/notes" = "read"\n')
         # The plugin isn't found under CODEX_HOME, but the granted folder exists.
-        (self.codex_plugin / ".codex-plugin/plugin.json").unlink()
+        self.manifest.unlink()
         result = self.setup("check")
         self.assertEqual(result.returncode, 1)
         self.assertRegex(result.stdout, r"(?m)^edited +Codex senior profile")
@@ -484,6 +613,44 @@ class CodexProfileTests(SetupCase):
                       self.profile.read_text(encoding="utf-8"))
 
 
+class ClaudeOnlyTests(SetupCase):
+    """A learner who doesn't want the Codex senior is never asked to set it up."""
+
+    def test_check_asks_only_for_the_claude_sandbox(self):
+        self.fake_codex()
+        result = self.setup("check", "--claude-only")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^missing +Claude sandbox")
+        self.assertRegex(result.stdout, r"(?m)^n/a +consult folder")
+        self.assertRegex(result.stdout, r"(?m)^n/a +Codex senior profile")
+        # The printed command keeps the choice, so copying it can't set up Codex.
+        self.assertRegex(result.stdout, r'(?m)^run: .*setup\.py"? apply --claude-only')
+
+    def test_apply_writes_only_the_claude_sandbox(self):
+        self.fake_codex()
+        result = self.setup("apply", "--claude-only")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIs(self.claude()["sandbox"]["enabled"], True)
+        self.assertFalse(self.profile.exists())
+        self.assertFalse((self.project / ".wise-code").exists())
+        self.assertEqual(self.setup("check", "--claude-only").returncode, 0)
+
+    def test_an_edited_codex_profile_does_not_block(self):
+        self.setup("apply")
+        with self.profile.open("a", encoding="utf-8") as stream:
+            stream.write('"~/notes" = "read"\n')
+        result = self.setup("check", "--claude-only")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("WARNING", result.stdout)
+
+    def test_without_the_flag_codex_is_still_checked(self):
+        self.fake_codex()
+        self.setup("apply", "--claude-only")
+        result = self.setup("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"(?m)^missing +Codex senior profile")
+
+
 class OnboardingGateTests(unittest.TestCase):
     def test_onboarding_runs_the_check_first_and_lets_the_learner_apply(self):
         text = (ROOT / "skills/learn/onboarding.md").read_text(encoding="utf-8")
@@ -492,6 +659,16 @@ class OnboardingGateTests(unittest.TestCase):
         for needed in ("scripts/setup.py\" check", "scripts/setup.py\" apply",
                        "Sandbox setup: skipped", "the learner runs"):
             self.assertIn(needed, text)
+
+    def test_onboarding_asks_about_the_senior_before_checking(self):
+        text = (ROOT / "skills/learn/onboarding.md").read_text(encoding="utf-8")
+        section = text[text.index("## Sandbox setup"):text.index("## Project")]
+        self.assertLess(section.index("Claude + Codex senior"), section.index("setup.py\" check"))
+        for needed in ("Claude only", "--claude-only", "Codex senior: off",
+                       "Codex senior: on"):
+            self.assertIn(needed, section)
+        template = (ROOT / "skills/learn/state-templates.md").read_text(encoding="utf-8")
+        self.assertIn("Codex senior: [on / off]", template)
 
 
 if __name__ == "__main__":
