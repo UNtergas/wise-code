@@ -100,9 +100,12 @@ to add or drop the senior. It sets up:
   live web search (hosted search isn't limited by the host list). Skipped when
   Codex isn't installed. A `sandbox_mode` or `[sandbox_workspace_write]` in
   `~/.codex/config.toml` or the project's `.codex/config.toml` is a conflict:
-  while loaded, Codex ignores permission profiles. When the plugin moves (for
-  example on update), `apply` regenerates an unedited profile for the new
-  folder; an edited one is reported as a conflict. A profile you edited is
+  while loaded, Codex ignores permission profiles. The plugin grant is the
+  folder Codex installs wise-code under,
+  `~/.codex/plugins/cache/<marketplace>/wise-code`, above its version folders,
+  so updates don't move it. If it does move, `apply` regenerates an unedited
+  profile for the new folder; an edited one is a conflict that names the path
+  to change (or the line to add, if the grant is gone). A profile you edited is
   never reported `ok` and never rewritten. `check` says `edited`, lists every
   setting that differs from what setup writes (a removed `":root" = "deny"`,
   say), and onboarding waits until you approve exactly those settings with
