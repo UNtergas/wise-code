@@ -374,6 +374,40 @@ class CodexProfileTests(SetupCase):
         self.assertIn("--codex-plugin-root", result.stdout)
         self.assertNotIn("None", result.stdout)
 
+    def follow_repair(self, moved):
+        """Do what the conflict says; return the check after it and the profile."""
+        result = self.setup("check", "--codex-plugin-root", str(moved))
+        self.assertRegex(result.stdout, r"(?m)^conflict +Codex senior profile")
+        old, new = str(self.codex_plugin), str(moved)
+        self.assertIn(f"change the path {json.dumps(old)} to {json.dumps(new)}", result.stdout)
+        self.assertNotIn("add the line", result.stdout)
+        text = self.profile.read_text(encoding="utf-8").replace(old, new)
+        self.profile.write_text(text, encoding="utf-8")
+        return self.setup("check", "--codex-plugin-root", new), text
+
+    def assert_valid_toml(self, text):
+        try:
+            import tomllib
+        except ImportError:  # Python < 3.11: no parser to check with
+            self.skipTest("tomllib needs Python 3.11+")
+        tomllib.loads(text)
+
+    def test_a_commented_plugin_grant_is_still_found(self):
+        # Review on df00b9e: a trailing comment hid the grant, and the advice to
+        # add it again made a duplicate key ("Cannot overwrite a value").
+        self.setup("apply")
+        self.edit_grant(self.grant_line().rstrip("\n") + "  # plugin access\n")
+        after, text = self.follow_repair(self.moved_plugin())
+        self.assert_valid_toml(text)
+        self.assertRegex(after.stdout, r"(?m)^edited +Codex senior profile")
+
+    def test_a_literal_string_plugin_grant_is_still_found(self):
+        self.setup("apply")
+        self.edit_grant(f"'{self.codex_plugin}' = 'read'\n")
+        after, text = self.follow_repair(self.moved_plugin())
+        self.assert_valid_toml(text)
+        self.assertRegex(after.stdout, r"(?m)^edited +Codex senior profile")
+
     def test_a_respaced_plugin_grant_is_still_found(self):
         # Valid TOML spacing must not hide the grant from the repair message.
         self.setup("apply")

@@ -134,8 +134,10 @@ def toml_unstring(text):
     return "".join(out)
 
 
-# TOML allows any spacing around `=`; a learner's reformat must not hide it.
-GRANT = re.compile(r'^"((?:[^"\\]|\\.)*)"[ \t]*=[ \t]*"read"$')
+# A learner's valid TOML must not hide the grant: basic or literal strings,
+# any spacing around `=`, a trailing comment.
+GRANT = re.compile(r'^(?:"((?:[^"\\]|\\.)*)"|\'([^\']*)\')[ \t]*=[ \t]*'
+                   r'(?:"read"|\'read\')[ \t]*(?:#.*)?$')
 
 
 def granted_plugin(profile):
@@ -148,7 +150,8 @@ def granted_plugin(profile):
             continue
         match = GRANT.match(line)
         if section == "[permissions.senior.filesystem]" and match:
-            path = toml_unstring(match.group(1))
+            basic, literal = match.groups()
+            path = toml_unstring(basic) if basic is not None else literal
             if not path.startswith(":"):
                 return path
     return None
@@ -436,8 +439,9 @@ def existing_profile_item(name, path, text, root, codex_home, accepted):
     if granted is None:
         return Item(name, "conflict", f"{path} was edited and grants no plugin folder, so the "
                     "senior can't read wise-code. Your edits are kept: in that file, add the "
-                    f'line {toml_string(root)} = "read" under [permissions.senior.filesystem], '
-                    "then check again")
+                    f'line {toml_string(root)} = "read" under [permissions.senior.filesystem] '
+                    "(if a line there already grants a wise-code folder, change its path "
+                    "instead: a second one is invalid TOML), then check again")
     return Item(name, "conflict", f"{path} was edited and grants {granted}, but the plugin "
                 f"is now at {root}. Your edits are kept: in that file, under "
                 f"[permissions.senior.filesystem], change the path {toml_string(granted)} to "
