@@ -247,7 +247,8 @@ wise.py add session goal="Retry queue" finished+="Backoff in src/queue.rs (a1b2c
   ideas tied to this project: the source of the next start check).
 - `start_check` is `pending` when written. The start check sets it to
   `done 2026-10-29 · 3/4` or `skipped 2026-10-29`; never `done` without asking.
-- Adding a session links that day's unlinked records to it (`in`).
+- Adding a session links every unlinked record since the last session to it
+  (`in`), including ones added on that session's day after its recap.
 - `wise.py session --pending` / `--last` read them.
 
 ## Decisions

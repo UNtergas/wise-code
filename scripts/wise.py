@@ -1138,7 +1138,12 @@ def cmd_add(graph, args):
 
 
 def link_session(graph, session_id):
-    """Attach this session's unlinked records: everything dated after the last session."""
+    """Attach this session's unlinked records: everything since the last session.
+
+    The earlier session's own day counts: a record added that day after its
+    recap is still unlinked, and belongs to this session. Records the earlier
+    session took are skipped below, since they already have an `in` edge.
+    """
     session = graph.nodes[session_id]
     earlier = [s["date"] for s in graph.of_type("session")
                if s["id"] != session_id and s.get("date", "") < session["date"]]
@@ -1146,7 +1151,7 @@ def link_session(graph, session_id):
     for node in list(graph.nodes.values()):
         if node["type"] not in RELS["in"][0] or graph.out(node["id"], "in"):
             continue
-        if since < node.get("date", node.get("created", "")) <= session["date"]:
+        if since <= node.get("date", node.get("created", "")) <= session["date"]:
             graph.link(node["id"], "in", session_id)
 
 
