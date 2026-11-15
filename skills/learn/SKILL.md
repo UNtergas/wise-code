@@ -101,10 +101,14 @@ learner opened with a build request: say in one line that you will check the las
 session first, then do it. Then import any lesson results waiting in
 `.wise-code/inbox/` (`wise.py import-lesson --inbox`).
 
-1. Take the `checkpoints` of every pending session (newest first).
+1. The check is on the newest pending session; `wise.py session --pending` lists
+   its `checkpoints`, numbered in that order. Close any older pending session
+   with `wise.py start-check skip <id>`: its check points are too old to test
+   fairly, and its misses are already in the question bank.
    Don't show the recap yet: it holds the answers. After the free recall, ask
-   at most 5 questions in all. If `wise.py due --limit 2` lists questions, they take up
-   to 2 of those 5 places, so older material is reviewed without a separate quiz.
+   at most 5 questions in all. If `wise.py due --limit 2` lists questions, they
+   take up to 2 of those 5 places, so older material is reviewed without a
+   separate quiz.
 2. **Free recall**, before any question. Ask: "Without looking anything up,
    from memory: what did you build and decide last session, and why? A few lines."
    Wait. Recalling it unprompted is the strongest review there is, and it shows
@@ -112,11 +116,13 @@ session first, then do it. Then import any lesson results waiting in
    (`finished`, `decided`, `learned`, `checkpoints`): say in two or three lines
    what they recalled correctly and correct what they got wrong; don't list
    what they left out, since that is what you ask next. Record it:
-   `wise.py add qa source=start-check q="Free recall: <session goal>" a="<gist>"
-   said="<their words>" verdict=<correct|partial|wrong> confidence=<as prefixed>`
-   (`correct` only when every check point was covered).
-3. **Open questions**, one per check point the recall missed or got wrong; skip
-   the ones it covered. The learner answers in their own words (a why, a
+   `wise.py start-check recall <session> --covers <all|none|1,3> --said "<their
+   words>" [--confidence <as prefixed>] [--answer "<gist>"]`. `--covers` names
+   the check points the recall really stated, by number; unsure whether one was
+   covered → it wasn't. The script derives the verdict from that and prints the
+   check points left to ask (`ask next: …`).
+3. **Open questions**, one per `ask next` check point; skip
+   the ones the recall covered. The learner answers in their own words (a why, a
    tradeoff, or "explain how X works in this project"). Ask one, wait, then the
    next. Each ends with the confidence-prefix reminder (materials.md,
    "Confusions and repair").
@@ -129,8 +135,10 @@ session first, then do it. Then import any lesson results waiting in
    evidence than producing it, so never use one where an open question works.
 5. After each answer: verdict (`correct`, `partial`, `wrong`) and one to three
    lines of feedback grounded in the recap and the code. Record it right away, so
-   an interrupted check keeps its progress: `wise.py add qa source=start-check
-   q=… a=… verdict=… confidence=<as prefixed> --about <concept>`. A `wrong` or
+   an interrupted check keeps its progress: `wise.py start-check point <session>
+   <n> <verdict> --said "<their words>" [--confidence <as prefixed>] [--about
+   <concept>]`, or `--picked "<the option>"` in place of `--said` for a
+   multiple-choice answer. A `wrong` or
    `partial` answer adds a question (`wise.py add question … points+=… --tests
    <concept>`; box 1, due tomorrow) and, for a missed fact, offers an atomic card.
    A due question from the bank is asked as an open question after the check
@@ -138,13 +146,15 @@ session first, then do it. Then import any lesson results waiting in
    `wise.py answer <id> <verdict> --source start-check --said "<their words>"
    --answer "<gist>" [--hit <points>] [--confidence <as prefixed>] [--asked "<variant>"]` instead
    of `add qa`: that reschedules it.
-6. End with the score, then show the session's `open` items so this session starts
-   where the last one stopped. Mark each checked session:
-   `wise.py set <id> start_check="done <date> · <score>"` (this is the
-   "Start check: pending" → done step; never mark done without asking).
+6. Close it with `wise.py start-check done <session>`: the script computes the
+   score from the recorded answers (check points the recall covered, plus those
+   answered `correct`) and marks the session (the "Start check: pending" → done
+   step; it refuses without a free recall, so never mark done without asking,
+   and never by `set`). Tell the learner the score it prints, then show the
+   session's `open` items so this session starts where the last one stopped.
 
-If the learner says "skip", stop, mark the pending sessions
-`start_check="skipped <date>"`, and continue. Never answer the questions for the
+If the learner says "skip", stop, run `wise.py start-check skip <session>` for
+each pending session, and continue. Never answer the questions for the
 learner or reveal the correct option before they answer. The check runs once per
 recap: a `done` or `skipped` entry is never checked again.
 
@@ -157,9 +167,19 @@ reply. Gather evidence first: this conversation, this session's QA
 (`wise.py check-said`; a `missing` quote is a misattribution: tell the learner
 and fix it before the recap), and the
 Git log and diff since the session started. Add it with `wise.py add session
-goal=… finished+=… learned+=… decided+=… open+=… checkpoints+=…` as in
+goal=… finished+=… learned+=… decided+=… open+=… checkpoints+=… [full_steps=N]`
+(`full_steps`: how many steps you implemented at Full code this session) as in
 [materials.md](materials.md); it starts as `Start check: pending`
 (`start_check=pending`) and links the day's records to itself.
+
+Then run `wise.py lint-session`. It reports what this session's records show was
+skipped: answers without the learner's words or a confidence prefix, quotes not
+checked, Full code steps without an explain-back, a start check closed without
+a free recall, too few check points. Fix what can still be fixed (run
+`check-said`, add check points with `wise.py set <id> checkpoints+=…`) and show
+the remaining `flag:` lines to the learner as they are, under "Process", in the
+recap. They are about how you ran the session, not about the learner; never
+drop or soften one.
 
 Show the learner the recap in chat: what was finished, what they learned, what is
 still open. Keep it short; the graph holds the full entry. Tell them in one line

@@ -257,7 +257,7 @@ class QueryTests(WiseTestCase):
         session = self.out("add", "session", "goal=Retry queue", "checkpoints+=Backoff doubles",
                            day="2026-10-27").strip()
         self.assertEqual(self.run_wise("session", "--pending", "--quiet").returncode, 0)
-        self.assertIn("checkpoints: Backoff doubles", self.out("session", "--pending"))
+        self.assertIn("checkpoints: 1. Backoff doubles", self.out("session", "--pending"))
         self.assertIn(f"→ in {session}", self.out("show", qa))
         self.run_wise("set", session, "start_check=done 2026-10-28 · 3/4")
         self.assertEqual(self.run_wise("session", "--pending", "--quiet", check=False).returncode, 1)

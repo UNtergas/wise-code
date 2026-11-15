@@ -125,7 +125,7 @@ class ExplainBackTests(unittest.TestCase):
         text = guide("skills/learn/behavior.md")
         self.assertLess(text.index("**Explain-back**"), text.index("give a concise **Implementation report**"))
         section = text[text.index("**Explain-back**"):text.index("give a concise **Implementation report**")]
-        for rule in ("one question", "wait", "source=checkpoint", "said=", "skip"):
+        for rule in ("one question", "wait", "source=explain-back", "said=", "skip"):
             self.assertIn(rule, section)
         self.assertIn("`Explain-back`", text)  # a named callout heading
         self.assertIn("Explain-back", guide("skills/learn/assist-levels.md"))

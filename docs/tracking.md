@@ -17,6 +17,11 @@ session count and lessons opened say nothing about what you can do unaided.
 | Weekly | The five-command review below, then one Quiz round | 10 min |
 | Monthly | `/wise-code:reflect`, `/wise-code:correct`, read the rendered views | 30 min |
 
+At session end, read the "Process" lines of the recap (`wise.py lint-session`):
+they say which rules the session skipped, such as answers without a confidence
+prefix or a Full code step without an explain-back. Flags that keep coming back
+are the thing to change first.
+
 The session loop only works if you end sessions out loud ("wrap up", "done for
 today"). No recap means no start check next time, and that session's check
 points are never tested.

@@ -77,13 +77,13 @@ class UnprefixedAnswersTests(WiseTestCase):
         self.qa("repair")
         self.qa("quiz")
         out = self.out("calibration")
-        self.assertIn("no confidence: 3 of 4 checkpoint, quiz and repair answers", out)
+        self.assertIn("no confidence: 3 of 4 checkpoint, quiz, repair and explain-back answers", out)
 
     def test_sources_that_carry_no_prefix_are_not_counted(self):
         self.qa("checkpoint", "confidence=mid")
         self.run_wise("add", "qa", "source=asked", "q=Q", "a=A", "verdict=n/a")
         self.run_wise("add", "qa", "source=start-check", "q=Q", "a=A", "verdict=wrong")
-        self.assertIn("no confidence: 0 of 1 checkpoint, quiz and repair answers",
+        self.assertIn("no confidence: 0 of 1 checkpoint, quiz, repair and explain-back answers",
                       self.out("calibration"))
 
     def test_since_applies_to_the_count(self):

@@ -139,7 +139,9 @@ wise.py add qa source=checkpoint q="Why store spans as UTF-8 offsets?" \
 
 - `source`: `checkpoint` (reasoning at a Build or Design checkpoint), `review`
   (Code review finding), `quiz`, `lesson`, `explore` (a prediction checked
-  against the code), `critique`, `reflect`, `start-check`, `shelf` (points to a
+  against the code), `critique`, `reflect`, `start-check` (written by
+  `wise.py start-check`), `explain-back` (the question after a Full code step),
+  `shelf` (points to a
   shelf citation), `asked` (the learner asked; `a` is the gist of your answer).
 - `a` is a gist of one to three lines, never a transcript. For `asked`, log only
   questions with lasting value (a concept, a why, a tradeoff), not lookups.
@@ -260,7 +262,7 @@ wise.py add card front="Rust: what does slicing a &str at a non-char boundary do
 wise.py export anki
 ```
 
-  Its last line, `no confidence: N of M checkpoint, quiz and repair answers`,
+  Its last line, `no confidence: N of M checkpoint, quiz, repair and explain-back answers`,
   counts the answers the table leaves out. When N is not small, the table
   describes little: remind the learner of the prefix.
 - Fronts under about 15 words, backs under about 25, no tabs or line breaks.
@@ -289,8 +291,22 @@ wise.py add session goal="Retry queue" finished+="Backoff in src/queue.rs (a1b2c
 
 - Fields: `finished`, `learned`, `decided`, `open`, `checkpoints` (3 to 5 testable
   ideas tied to this project: the source of the next start check).
-- `start_check` is `pending` when written. The start check sets it to
-  `done 2026-10-29 · 3/4` or `skipped 2026-10-29`; never `done` without asking.
+- `start_check` is `pending` when written. Only `wise.py start-check` closes it:
+  - `start-check recall <session> --covers all|none|1,3 --said "…"`: the free
+    recall. The verdict comes from the check points covered; the missed ones are
+    stored and printed as `ask next`.
+  - `start-check point <session> <n> <verdict> --said "…" | --picked "<option>"`:
+    one answer on check point `n`.
+  - `start-check done <session>`: sets `done 2026-10-29 · 3/4`, the score
+    computed from those answers; refused without a recall.
+  - `start-check skip <session>`: sets `skipped 2026-10-29`.
+  Never set `start_check` by hand: `lint-session` reports a check marked done
+  without a recall, or with a score its answers don't give.
+- `full_steps=N`: steps Claude implemented at Full code. `lint-session` compares
+  it with the session's `explain-back` answers.
+- `wise.py lint-session [<session>]` (the latest by default) prints `flag:`
+  lines for the rules the session's records show were skipped, or `no flags`.
+  It reads only records, so a rule that leaves no record can't be checked.
 - Adding a session links every unlinked record since the last session to it
   (`in`), including ones added on that session's day after its recap.
 - `wise.py session --pending` / `--last` read them.

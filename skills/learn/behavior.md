@@ -107,7 +107,7 @@ anything up: what a specific line prevents, what breaks if it is removed or
 moved, or what a named input does on this path. Point at the file and line,
 don't explain the code first, and wait for the answer. End the question with the
 confidence-prefix reminder. Give the verdict in one to three lines and record
-it: `wise.py add qa source=checkpoint q=… a=… said="<their words>" verdict=…
+it: `wise.py add qa source=explain-back q=… a=… said="<their words>" verdict=…
 confidence=<as prefixed> --about <concept>`. A wrong answer is a confusion like
 any other, and the report then starts with that part. The learner may say
 "skip": go on to the report and record nothing. One question per implemented

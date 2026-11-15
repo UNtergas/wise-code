@@ -12,6 +12,7 @@ Standard library only, Python 3.9+. Spec: docs/graph.md. Usage: wise.py --help.
 """
 
 import argparse
+import collections
 import datetime as dt
 import difflib
 import errno
@@ -54,7 +55,7 @@ WEAK_RECOVERY = 2
 
 VERDICTS = ("correct", "partial", "wrong", "n/a")
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
-              "reflect", "asked", "start-check", "shelf", "repair")
+              "reflect", "asked", "start-check", "shelf", "repair", "explain-back")
 CONFIDENCE = ("low", "mid", "high")
 # Confusions skipped with "skip repair" that may stay open at once. One more
 # skip is refused: the learner repairs one first.
@@ -67,10 +68,10 @@ SAID_CHECKS = ("unchecked", "ok", "missing", "unverified")
 SAID_SEP = " … "
 SAID_MIN_WORDS, SAID_MAX_WORDS = 3, 40
 # QA sources where `a` is the learner's reasoning, so `said` is required.
-LEARNER_QA_SOURCES = ("checkpoint", "explore", "reflect", "repair")
+LEARNER_QA_SOURCES = ("checkpoint", "explore", "reflect", "repair", "explain-back")
 # Sources whose questions end with the confidence-prefix reminder; `calibration`
 # reports how many of their answers came without one.
-CONFIDENCE_SOURCES = ("checkpoint", "quiz", "repair")
+CONFIDENCE_SOURCES = ("checkpoint", "quiz", "repair", "explain-back")
 
 # Field kinds: "str", "list", "int", "date", "range" (a line range, "12-40" or
 # "7"), or a tuple of allowed values.
@@ -86,7 +87,7 @@ TYPES = {
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
-        "said_hash": "str", "missed": "list"}},
+        "said_hash": "str", "missed": "list", "point": "int"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
         "legacy": "str", "points": "list"}},
@@ -95,7 +96,7 @@ TYPES = {
     "session": {"prefix": "S", "required": ["goal"], "fields": {
         "date": "date", "goal": "str", "finished": "list", "learned": "list",
         "decided": "list", "open": "list", "checkpoints": "list",
-        "start_check": "str"}},
+        "start_check": "str", "full_steps": "int"}},
     "decision": {"prefix": "D", "required": ["title"], "fields": {
         "date": "date", "title": "str", "status": ("pending", "settled"),
         "stage": ("awaiting-reasoning", "choice-confirmation",
@@ -183,6 +184,8 @@ RELS = {
     "in": (("qa", "decision", "reflection", "feedback", "question", "card",
             "record"), ("session",)),
     "answers": (("qa",), ("question",)),
+    # A start-check answer and the session whose check points it was asked on.
+    "checks": (("qa",), ("session",)),
     "tests": (("question", "card"), ("concept",)),
     "prereq": (("concept",), ("concept",)),
     "covers": (TIER2 + ("record", "section"), ("concept",)),
@@ -1371,17 +1374,21 @@ def points_hit(question, hit):
         return None
     usage = (f"{question['id']} has {len(points)} key points; pass --hit all, --hit none, "
              f"or the numbers the answer covered (--hit 1,3)")
-    if hit is None:
-        raise WiseError(usage)
-    if hit in ("all", "none"):
-        numbers = set(range(1, len(points) + 1)) if hit == "all" else set()
-    else:
-        parts = [part.strip() for part in hit.split(",")]
-        if not all(part.isdigit() and 1 <= int(part) <= len(points) for part in parts):
-            raise WiseError(f"--hit {hit!r} is not a list of point numbers; {usage}")
-        numbers = {int(part) for part in parts}
+    numbers = chosen_numbers(hit, len(points), "--hit", usage)
     missed = [point for number, point in enumerate(points, 1) if number not in numbers]
     return len(numbers), missed
+
+
+def chosen_numbers(value, count, flag, usage):
+    """The set of item numbers (from 1) a flag names: "all", "none" or "1,3"."""
+    if value is None:
+        raise WiseError(usage)
+    if value in ("all", "none"):
+        return set(range(1, count + 1)) if value == "all" else set()
+    parts = [part.strip() for part in value.split(",")]
+    if not all(part.isdigit() and 1 <= int(part) <= count for part in parts):
+        raise WiseError(f"{flag} {value!r} is not a list of numbers from 1 to {count}; {usage}")
+    return {int(part) for part in parts}
 
 
 def verdict_limit(hit_count, total):
@@ -1389,6 +1396,189 @@ def verdict_limit(hit_count, total):
     if hit_count == total:
         return "correct"
     return "partial" if hit_count else "wrong"
+
+
+# ---------------------------------------------------------------- start check
+
+def checked_session(graph, token, pending=True):
+    session = graph.nodes[graph.resolve(token)]
+    if session["type"] != "session":
+        raise WiseError(f"{session['id']} is not a session")
+    if pending and session.get("start_check") != "pending":
+        raise WiseError(f"{session['id']}: start check is not pending "
+                        f"({session.get('start_check', '-')}); a check runs once")
+    return session
+
+
+def check_answers(graph, session):
+    """(the free recall or None, {point number: its answer}) recorded for a session."""
+    answers = [graph.nodes[i] for i in graph.into(session["id"], "checks")]
+    recall = next((qa for qa in answers if "point" not in qa), None)
+    return recall, {qa["point"]: qa for qa in answers if "point" in qa}
+
+
+def check_score(graph, session):
+    """Check points covered: by the recall, or by a correct answer on the point."""
+    points = session.get("checkpoints", [])
+    recall, by_point = check_answers(graph, session)
+    missed = set(recall.get("missed", [])) if recall else set(points)
+    covered = {n for n, text in enumerate(points, 1) if text not in missed}
+    covered |= {n for n, qa in by_point.items() if qa.get("verdict") == "correct"}
+    return len(covered), len(points)
+
+
+def add_check_answer(graph, session, fields, about=()):
+    """One start-check QA, tied to the session it checks."""
+    qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": iso(today()),
+          "created": iso(today()), "source": "start-check", "at": stamp_now(),
+          **{key: value for key, value in fields.items() if value not in (None, "", [])}}
+    problems = validate_node(qa) + attribution_problems(qa)
+    if problems:
+        raise WiseError("; ".join(problems))
+    mark_said(qa, None)
+    graph.nodes[qa["id"]] = qa
+    graph.dirty = True
+    graph.link(qa["id"], "checks", session["id"])
+    for concept in about:
+        graph.link(qa["id"], "about", concept)
+    return qa
+
+
+def cmd_start_check(graph, args):
+    """Record and score a start check against the session's check points."""
+    action = args.action
+    session = checked_session(graph, args.session, pending=action in ("recall", "point"))
+    points = session.get("checkpoints", [])
+    sid = session["id"]
+    if action == "skip":
+        if session.get("start_check") == "pending":
+            session["start_check"] = f"skipped {iso(today())}"
+            graph.touch(session)
+            graph.save()
+        print(f"{sid} · start check {session['start_check']}")
+        return 0
+    if action == "done":
+        if session.get("start_check") == "pending":
+            if not check_answers(graph, session)[0]:
+                raise WiseError(f"{sid}: no free recall recorded; run wise.py start-check "
+                                f"recall {sid} … first, or wise.py start-check skip {sid}")
+            covered, total = check_score(graph, session)
+            session["start_check"] = f"done {iso(today())} · {covered}/{total}"
+            graph.touch(session)
+            graph.save()
+        print(f"{sid} · start check {session['start_check']}")
+        return 0
+    if not points:
+        raise WiseError(f"{sid} has no check points, so there is nothing to check; "
+                        f"run wise.py start-check skip {sid}")
+    if not said_parts(args.said or "") and not (action == "point" and args.picked):
+        extra = ", or --picked \"<the option>\" for a multiple-choice answer" \
+            if action == "point" else ""
+        raise WiseError(f"{sid}: needs --said \"<the learner's exact words>\"{extra}")
+    recall, by_point = check_answers(graph, session)
+    about = [graph.resolve(c) for c in args.about or []]
+    if action == "recall":
+        if recall:
+            raise WiseError(f"{sid} already has its free recall ({recall['id']})")
+        usage = (f"{sid} has {len(points)} check points; pass --covers all, --covers none, "
+                 f"or the numbers the recall covered (--covers 1,3)")
+        covered = chosen_numbers(args.covers, len(points), "--covers", usage)
+        missed = [text for n, text in enumerate(points, 1) if n not in covered]
+        qa = add_check_answer(graph, session, {
+            "q": f"Free recall: {session.get('goal', '')}",
+            "a": args.answer or "(answered in chat)", "said": args.said,
+            "verdict": verdict_limit(len(covered), len(points)),
+            "confidence": args.confidence, "missed": missed}, about)
+        graph.save()
+        print(f"{qa['id']} · {qa['verdict']} · recalled {len(covered)} of {len(points)} "
+              f"check points")
+        for n, text in enumerate(points, 1):
+            if n not in covered:
+                print(f"ask next: {n}. {text}")
+    else:
+        if not 1 <= args.point <= len(points):
+            raise WiseError(f"{sid} has check points 1 to {len(points)}; got {args.point}")
+        if args.verdict not in ("correct", "partial", "wrong"):
+            raise WiseError("verdict: correct, partial or wrong")
+        if args.point in by_point:
+            raise WiseError(f"{sid}: check point {args.point} is already answered "
+                            f"({by_point[args.point]['id']})")
+        qa = add_check_answer(graph, session, {
+            "q": points[args.point - 1], "point": args.point,
+            "a": args.answer or args.picked or "(answered in chat)",
+            "said": args.said, "verdict": args.verdict, "confidence": args.confidence}, about)
+        graph.save()
+        print(f"{qa['id']} · check point {args.point} · {qa['verdict']}")
+    if is_confusion(qa):
+        print(f"confusion: {qa['id']} · repair before building on "
+              f"{', '.join(about) or 'this concept'}")
+    return 0
+
+
+# ---------------------------------------------------------------- session lint
+
+def lint_flags(graph, session):
+    """Rules this session's records show were skipped, as readable lines.
+
+    Only what the records can show. A rule followed leaves a trace (a quote, a
+    prefix, a recall); a missing trace is reported, never guessed around.
+    """
+    sid, day = session["id"], session.get("date", "")
+    answers = [n for n in map(graph.nodes.get, graph.into(sid, "in")) if n["type"] == "qa"]
+    flags = []
+    quoted = LEARNER_QA_SOURCES + ("quiz",)
+    unquoted = sorted(n["id"] for n in answers
+                      if n.get("source") in quoted and not n.get("said"))
+    if unquoted:
+        flags.append(f"{len(unquoted)} answers without the learner's words: "
+                     f"{', '.join(unquoted[:5])}{' …' if len(unquoted) > 5 else ''}")
+    checks = collections.Counter(said_check_of(n) for n in answers if n.get("said"))
+    if checks["missing"]:
+        ids = sorted(n["id"] for n in answers
+                     if n.get("said") and said_check_of(n) == "missing")
+        flags.append(f"{checks['missing']} quotes found in none of the learner's messages "
+                     f"(misattributed): {', '.join(ids[:5])}")
+    if checks["unchecked"]:
+        flags.append(f"{checks['unchecked']} quotes not checked against the transcript; "
+                     f"run wise.py check-said")
+    scored = [n for n in answers if n.get("source") in CONFIDENCE_SOURCES
+              and n.get("verdict") in ("correct", "partial", "wrong")]
+    unprefixed = sum(1 for n in scored if n.get("confidence") not in CONFIDENCE)
+    if unprefixed:
+        flags.append(f"{unprefixed} of {len(scored)} answers without a confidence prefix")
+    points = len(session.get("checkpoints", []))
+    if points < 3:
+        flags.append(f"{points} check points; the next start check needs 3 to 5")
+    steps = session.get("full_steps", 0)
+    explained = sum(1 for n in answers if n.get("source") == "explain-back")
+    if steps > explained:
+        flags.append(f"{steps} Full code steps, {explained} explain-backs "
+                     f"(a skipped one counts as missing)")
+    for other in graph.of_type("session"):
+        state = other.get("start_check", "")
+        if state.startswith(f"done {day}"):
+            if not check_answers(graph, other)[0]:
+                flags.append(f"start check on {other['id']} was marked done without a "
+                             f"free recall")
+            elif not state.endswith("· %d/%d" % check_score(graph, other)):
+                flags.append(f"start check on {other['id']} says {state.split('· ')[-1]}; "
+                             f"its answers give %d/%d" % check_score(graph, other))
+    return len(answers), flags
+
+
+def cmd_lint_session(graph, args):
+    sessions = sorted(graph.of_type("session"), key=lambda n: (n.get("date", ""), n["id"]))
+    if not sessions:
+        print("no sessions yet")
+        return 0
+    session = checked_session(graph, args.id, pending=False) if args.id else sessions[-1]
+    count, flags = lint_flags(graph, session)
+    print(f"{session['id']} · {session.get('date', '')} · {count} answers")
+    for flag in flags:
+        print(f"flag: {flag}")
+    if not flags:
+        print("no flags")
+    return 0
 
 
 # ---------------------------------------------------------------- confusions and repair
@@ -1638,9 +1828,12 @@ def cmd_session(graph, args):
     for node in sessions[: args.limit]:
         printer.line(summary(graph, node))
         if args.pending or args.last:
-            for field in ("finished", "learned", "decided", "open", "checkpoints"):
+            for field in ("finished", "learned", "decided", "open"):
                 for item in node.get(field, []):
                     printer.line(f"  {field}: {short(item, 140)}")
+            # Numbered: `start-check --covers` and `point` name them by number.
+            for number, item in enumerate(node.get("checkpoints", []), 1):
+                printer.line(f"  checkpoints: {number}. {short(item, 140)}")
     printer.done(max(0, len(sessions) - args.limit))
     if not sessions:
         print("no pending start check" if args.pending else "no sessions yet")
@@ -2782,6 +2975,23 @@ def build_parser():
     p.add_argument("--hints", type=int, default=0)
     p.add_argument("--schedule", action="store_true", help="reschedule for any source")
     p.set_defaults(func=cmd_answer, write=True)
+
+    p = sub.add_parser("start-check", help="record and score a start check")
+    p.add_argument("action", choices=("recall", "point", "done", "skip"))
+    p.add_argument("session")
+    p.add_argument("point", nargs="?", type=int, help="point: the check point's number")
+    p.add_argument("verdict", nargs="?", help="point: correct, partial or wrong")
+    p.add_argument("--covers", help="recall: check points it covered: all, none or 1,3")
+    p.add_argument("--said", help="verbatim span of the learner's answer")
+    p.add_argument("--picked", help="point: the option chosen in a multiple-choice question")
+    p.add_argument("--answer", help="gist of the learner's answer")
+    p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
+    p.add_argument("--about", action="append", help="concept the answer is about")
+    p.set_defaults(func=cmd_start_check, write=True)
+
+    p = sub.add_parser("lint-session", help="rules a session's records show were skipped")
+    p.add_argument("id", nargs="?", help="a session; the latest when left out")
+    p.set_defaults(func=cmd_lint_session, write=False)
 
     p = sub.add_parser("edit", help="edit one node in $EDITOR")
     p.add_argument("id")
