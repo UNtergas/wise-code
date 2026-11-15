@@ -1642,7 +1642,7 @@ def cmd_history(graph, args):
         if wanted and wanted not in graph.out(node["id"], "about"):
             continue
         items.append(node)
-    items.sort(key=lambda n: (n.get("date", ""), n["id"]), reverse=True)
+    items.sort(key=order, reverse=True)  # `at` orders records within a day
     printer = Printer("pass --concept, --since or --source")
     for node in items[: args.limit]:
         printer.line(summary(graph, node))

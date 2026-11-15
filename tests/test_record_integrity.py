@@ -57,3 +57,13 @@ class AnkiExportTests(WiseTestCase):
         self.run_wise("add", "card", 'front=What is a "move"?', "back=Ownership transfer")
         self.assertEqual(self.card_rows(), [
             'What is a "move"?\tOwnership transfer\twise-code'])
+
+
+class HistoryOrderTests(WiseTestCase):
+    def test_history_within_one_day_is_newest_first(self):
+        for number in range(8):
+            self.run_wise("add", "qa", "source=asked", f"q=question {number}", "a=gist",
+                          "verdict=n/a")
+        shown = [line.rsplit("Q: question ", 1)[1]
+                 for line in self.out("history").splitlines()]
+        self.assertEqual(shown, [str(n) for n in range(7, -1, -1)])
