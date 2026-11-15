@@ -45,6 +45,13 @@ DEFAULT_LIMIT = 10
 # Leitner boxes: box -> days until the next review.
 BOXES = {1: 1, 2: 3, 3: 7, 4: 21, 5: 60}
 
+# A question that reached this box was answered correctly at least twice, so
+# the wording itself may be what is remembered: `due` marks it "ask a variant".
+VARIANT_BOX = 3
+# Later correct answers on a concept after which an earlier miss stops counting
+# as weak (`weak`). `mistakes` keeps counting it: a recovered miss still happened.
+WEAK_RECOVERY = 2
+
 VERDICTS = ("correct", "partial", "wrong", "n/a")
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
               "reflect", "asked", "start-check", "shelf", "repair")
@@ -1286,9 +1293,16 @@ def cmd_answer(graph, args):
     if problem:
         # Checked before any change, so a bad stored box never half-applies.
         raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
+    asked = question["q"] if args.asked is None else " ".join(args.asked.split())
+    if not asked:
+        raise WiseError("--asked needs the question as it was asked; leave it out "
+                        "when the bank's wording was used")
+    # Right but unsure is not yet retained: the question comes back at the
+    # same interval instead of a longer one.
+    unsure = args.verdict == "correct" and args.confidence == "low"
     if args.source in ("quiz", "start-check") or args.schedule:
         box = question.get("box", 1)
-        if args.verdict == "correct":
+        if args.verdict == "correct" and not unsure:
             box = min(box + 1, 5)
         elif args.verdict == "wrong":
             box = 1
@@ -1296,7 +1310,7 @@ def cmd_answer(graph, args):
         question["due"] = iso(today() + dt.timedelta(days=BOXES[box]))
         graph.touch(question)
     qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": iso(today()),
-          "created": iso(today()), "source": args.source, "q": question["q"],
+          "created": iso(today()), "source": args.source, "q": asked,
           "a": args.answer or "(answered in chat)", "verdict": args.verdict,
           "at": stamp_now()}
     if args.hints:
@@ -1312,7 +1326,8 @@ def cmd_answer(graph, args):
     for concept in graph.out(qid, "tests"):
         graph.link(qa["id"], "about", concept)
     graph.save()
-    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}")
+    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}"
+          f"{' · kept in its box: low confidence' if unsure else ''}")
     if is_confusion(qa):
         print(f"confusion: {qa['id']} · repair before building on "
               f"{', '.join(graph.out(qid, 'tests')) or 'this concept'}")
@@ -1532,7 +1547,8 @@ def cmd_due(graph, args):
                 order.append(by_topic[topic].pop(0))
     printer = Printer("pass --limit or --topic")
     for node in order[: args.limit]:
-        printer.line(summary(graph, node))
+        variant = " · ask a variant" if node.get("box", 1) >= VARIANT_BOX else ""
+        printer.line(summary(graph, node) + variant)
     printer.done(max(0, len(order) - args.limit))
     if not order:
         upcoming = sorted(n.get("due", "") for n in graph.of_type("question"))
@@ -1575,17 +1591,27 @@ def recent_misses(graph, limit_days=None):
 
 def cmd_weak(graph, args):
     misses = recent_misses(graph, args.days)
-    scored = []
+    scored, still_open = [], {}
+def open_misses(graph, concept, miss_ids):
+    """The misses on a concept not yet followed by WEAK_RECOVERY correct answers."""
+    correct = [order(n) for n in map(graph.nodes.get, graph.into(concept, "about"))
+               if n["type"] == "qa" and n.get("verdict") == "correct"]
+    return [i for i in miss_ids
+            if sum(1 for c in correct if c > order(graph.nodes[i])) < WEAK_RECOVERY]
+
+
     for node in graph.of_type("concept"):
-        score = len(misses.get(node["id"], [])) + (3 if node.get("status") == "reinforce" else 0)
+        still_open[node["id"]] = open_misses(graph, node["id"], misses.get(node["id"], []))
+        score = len(still_open[node["id"]]) + (3 if node.get("status") == "reinforce" else 0)
         if score:
             scored.append((-score, node["id"]))
     scored.sort()
     printer = Printer("pass --limit or --days")
-    shown = 0
     for score, concept in scored[: args.limit]:
-        printer.line(f"{summary(graph, graph.nodes[concept])} · misses {len(misses.get(concept, []))}")
-        shown += 1
+        recovered = len(misses.get(concept, [])) - len(still_open[concept])
+        printer.line(f"{summary(graph, graph.nodes[concept])} · open misses "
+                     f"{len(still_open[concept])}"
+                     f"{f' · recovered {recovered}' if recovered else ''}")
         if args.with_prereqs:
             for pre in graph.out(concept, "prereq"):
                 printer.line(f"  prereq: {summary(graph, graph.nodes[pre])}")
@@ -2678,6 +2704,8 @@ def build_parser():
     p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
+    p.add_argument("--asked", help="the question as asked, when it was a variant "
+                   "of the bank's wording")
     p.add_argument("--hints", type=int, default=0)
     p.add_argument("--schedule", action="store_true", help="reschedule for any source")
     p.set_defaults(func=cmd_answer, write=True)
