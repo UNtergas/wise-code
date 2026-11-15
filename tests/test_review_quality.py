@@ -96,3 +96,38 @@ class VariantTests(WiseTestCase):
         bad = self.run_wise("answer", self.kept, "correct", "--asked", "  ", check=False)
         self.assertEqual(bad.returncode, 2)
         self.assertIn("--asked", bad.stderr)
+
+
+class DueCountHookTests(hooks.HookCase):
+    wise = hooks.GraphHookTests.wise
+    graph_state = hooks.GraphHookTests.graph_state
+
+    def add_question(self, text, due):
+        self.wise("add", "question", f"q={text}", "a=A", f"due={due}")
+
+    def test_new_sessions_are_told_how_many_questions_are_due(self):
+        self.graph_state()
+        self.add_question("Why does backoff double?", "2020-01-01")
+        self.add_question("Why jitter?", "2020-01-02")
+        self.add_question("Not yet", "2999-01-01")
+        for source, expected in (("startup", True), ("clear", True), ("resume", False),
+                                 ("compact", False)):
+            with self.subTest(source=source):
+                context = self.context(source=source)
+                self.assertEqual("2 questions are due for review" in context, expected)
+                self.assertNotIn("backoff", context)  # a count, never the content
+
+    def test_one_due_question_reads_in_the_singular(self):
+        self.graph_state()
+        self.add_question("Why jitter?", "2020-01-02")
+        self.assertIn("1 question is due for review", self.context())
+
+    def test_nothing_due_says_nothing(self):
+        self.graph_state()
+        self.add_question("Not yet", "2999-01-01")
+        self.assertNotIn("due for review", self.context())
+
+    def test_a_broken_graph_says_nothing(self):
+        state = self.graph_state()
+        (state / "graph" / "nodes.jsonl").write_text("{not json\n", encoding="utf-8")
+        self.assertNotIn("due for review", self.context())

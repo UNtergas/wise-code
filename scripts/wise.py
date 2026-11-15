@@ -1524,13 +1524,16 @@ def concept_filter(graph, topic):
     return graph.resolve(topic)
 
 
-def cmd_due(graph, args):
+def due_questions(graph):
+    """Questions due today or earlier; one with no due date is due now."""
     now = iso(today())
+    return [n for n in graph.of_type("question") if n.get("due", now) <= now]
+
+
+def cmd_due(graph, args):
     wanted = concept_filter(graph, args.topic)
     due = []
-    for node in graph.of_type("question"):
-        if node.get("due", now) > now and not args.early:
-            continue
+    for node in graph.of_type("question") if args.early else due_questions(graph):
         concepts = graph.out(node["id"], "tests")
         if wanted and wanted not in concepts:
             continue
@@ -1589,9 +1592,6 @@ def recent_misses(graph, limit_days=None):
     return counts
 
 
-def cmd_weak(graph, args):
-    misses = recent_misses(graph, args.days)
-    scored, still_open = [], {}
 def open_misses(graph, concept, miss_ids):
     """The misses on a concept not yet followed by WEAK_RECOVERY correct answers."""
     correct = [order(n) for n in map(graph.nodes.get, graph.into(concept, "about"))
@@ -1600,6 +1600,9 @@ def open_misses(graph, concept, miss_ids):
             if sum(1 for c in correct if c > order(graph.nodes[i])) < WEAK_RECOVERY]
 
 
+def cmd_weak(graph, args):
+    misses = recent_misses(graph, args.days)
+    scored, still_open = [], {}
     for node in graph.of_type("concept"):
         still_open[node["id"]] = open_misses(graph, node["id"], misses.get(node["id"], []))
         score = len(still_open[node["id"]]) + (3 if node.get("status") == "reinforce" else 0)
@@ -2701,11 +2704,11 @@ def build_parser():
     p.add_argument("id")
     p.add_argument("verdict")
     p.add_argument("--answer", help="gist of the learner's answer")
+    p.add_argument("--asked", help="the question as asked, when it was a variant "
+                   "of the bank's wording")
     p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
-    p.add_argument("--asked", help="the question as asked, when it was a variant "
-                   "of the bank's wording")
     p.add_argument("--hints", type=int, default=0)
     p.add_argument("--schedule", action="store_true", help="reschedule for any source")
     p.set_defaults(func=cmd_answer, write=True)
