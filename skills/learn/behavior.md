@@ -60,6 +60,16 @@ understanding. Skip mastered explanations, not new engineering decisions.
 
 ## Agree, implement, explain
 
+**Prerequisites.** Before the first step that builds on a concept, run
+`wise.py ready <concept>`. Each `first:` line is something the step rests on
+that the learner has not yet shown: cover it before the step, deepest first, in
+the smallest way that works. Ask one question on it; if they answer it, record
+the answer and mark the concept (`wise.py set <id> status=demonstrated`); if
+they can't, explain it (at Example, with a worked example) and ask again. The
+learner may say "skip": go on, and don't mark it. `ready` only knows the
+`prereq` edges the learner agreed to, so a concept with none always reads
+`ready`: propose the edges you see missing (materials.md).
+
 **Repair gate.** Before a Design or Implementation checkpoint (or the hint or
 pseudocode for a step at Hint, Example or Pseudo), run `wise.py confusions --concept
 <each concept the step builds on> --with-prereqs`. An open confusion is repaired

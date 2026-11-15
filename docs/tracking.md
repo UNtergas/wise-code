@@ -90,8 +90,10 @@ are not yet yours.
 - `wise.py list feedback --where status=proposed`: apply or reject the fixes
   collected for wise-code itself.
 - `wise.py export anki`, then File → Import in Anki, if you review cards there.
-- Check your assist level per topic (`/wise-code:level`). Still on Example or Pseudo for a
-  topic after a month of clean answers: move it to Hint.
+- Check your assist level per topic (`/wise-code:level`) against
+  `wise.py level-advice`: it lists the concepts where your last month of answers
+  (five or more) were all correct, sure and unhinted. A topic it names that is
+  still on Example or Pseudo should move toward Hint.
 
 ## Several projects
 

@@ -181,6 +181,13 @@ the remaining `flag:` lines to the learner as they are, under "Process", in the
 recap. They are about how you ran the session, not about the learner; never
 drop or soften one.
 
+Then run `wise.py level-advice`. A `less help:` line names a concept where the
+learner's recent answers were all correct, sure and unhinted. If the topic it
+belongs to is above Hint in their profile, propose moving that topic one level
+toward Hint, in one line, with the evidence the script printed. The learner
+decides; change it only on their yes, through `/wise-code:level`. Never propose
+more help this way, and never propose at all without a `less help:` line.
+
 Show the learner the recap in chat: what was finished, what they learned, what is
 still open. Keep it short; the graph holds the full entry. Tell them in one line
 that the next session opens with a check on it. If they correct something,

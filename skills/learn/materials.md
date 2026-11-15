@@ -217,6 +217,31 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
   from a lesson quiz, so its text may only make sense next to options that are
   no longer there ("Which of these…"). Before asking it, reword it once into an
   open question on the same idea (`wise.py set <id> q="…"`) and say so in one line.
+- **Tasks.** Explaining a concept and using it are different skills; a task
+  question tests the second. It has a `check` command instead of key points:
+
+  ```sh
+  wise.py add question q="Make take_names compile without clone (.wise-code/scratch/take-names/)" \
+    a="Borrow the slice instead of taking the Vec" \
+    check="cargo test --manifest-path .wise-code/scratch/take-names/Cargo.toml" --tests ownership
+  ```
+
+  - Use one when the concept is something the learner must be able to do in
+    code (make this compile, make this test pass, fix this bug, predict the
+    error then run it): five to ten minutes, one concept. Keep why and tradeoff
+    questions as key-point questions; a bank needs both.
+  - The exercise lives in `.wise-code/scratch/<name>/`, never in the learner's
+    source. You write the starting file and the test that defines done; the
+    learner writes the solution, at every assist level. Never write or edit it.
+  - `check` is one command, run from the project root, that exits 0 only when
+    the task is solved. Run it yourself after the learner says they are done
+    and pass its real exit code: `wise.py answer <id> <verdict> --exit <code>`.
+    The script bounds the verdict: a non-zero exit is `wrong`; exit 0 is
+    `correct`, or `partial` if they needed a hint. No `--said` or `--hit`.
+  - `due` shows `task: <check>`. A task marked `ask a variant` gets a new
+    exercise on the same concept: add it as a new question with its own check.
+  - After a failing check, the compiler or test output is the feedback: have
+    the learner read it first, then hint. Don't show the solution.
 
 ## Confusions and repair
 

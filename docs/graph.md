@@ -162,6 +162,13 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
 - `start-check recall|point|done|skip <session>`: start-check answers link to
   the session they check (`checks`). `done` computes the score from them:
   check points the recall covered plus those answered `correct`.
+- Tasks: a question with `check` (a command) needs no `points`. `answer` on it
+  requires `--exit <code>` and bounds the verdict (non-zero → `wrong`); the QA
+  stores `exit`. The script never runs the command.
+- `ready <concept>`: its prerequisites (`prereq` edges, deepest first) that
+  are not `demonstrated` or have an open confusion.
+- `level-advice [--days 30] [--min 5]`: concepts whose recent learner answers
+  were all correct, not `low`, unhinted, with no open confusion.
 - `lint-session [<session>]`: `flag:` lines for rules the session's records
   show were skipped; read-only.
 - `answer` requires `--said`; `add question` requires `points`. Imported and
