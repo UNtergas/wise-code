@@ -60,6 +60,16 @@ class TaskQuestionTests(WiseTestCase):
                       "checkpoints+=C?")
         self.assertNotIn("without the learner's words", self.out("lint-session"))
 
+    def test_a_task_answer_is_not_counted_as_missing_a_confidence_prefix(self):
+        self.answer("correct", "--exit", "0")
+        self.run_wise("add", "qa", "source=checkpoint", "q=Q", "a=A", "verdict=correct",
+                      f"said={SAID}")
+        self.assertIn("no confidence: 1 of 1 ", self.out("calibration"))
+        self.run_wise("add", "session", "goal=G", "checkpoints+=A?", "checkpoints+=B?",
+                      "checkpoints+=C?")
+        self.assertIn("flag: 1 of 1 answers without a confidence prefix",
+                      self.out("lint-session"))
+
     def test_passing_after_a_hint_can_be_recorded_as_partial(self):
         self.assertEqual(self.answer("partial", "--exit", "0", "--hints", "1").returncode, 0)
 

@@ -1293,6 +1293,15 @@ def cmd_resolve(graph, args):
     return 0
 
 
+def expects_confidence(qa):
+    """A scored answer to a question that ends with the confidence-prefix reminder.
+
+    A task answer is code checked by a command: nothing to prefix.
+    """
+    return (qa.get("source") in CONFIDENCE_SOURCES and "exit" not in qa
+            and qa.get("verdict") in ("correct", "partial", "wrong"))
+
+
 def is_task(question):
     """A task is solved in code and judged by its `check` command's exit code."""
     return bool(str(question.get("check", "")).strip())
@@ -1565,8 +1574,7 @@ def lint_flags(graph, session):
     if checks["unchecked"]:
         flags.append(f"{checks['unchecked']} quotes not checked against the transcript; "
                      f"run wise.py check-said")
-    scored = [n for n in answers if n.get("source") in CONFIDENCE_SOURCES
-              and n.get("verdict") in ("correct", "partial", "wrong")]
+    scored = [n for n in answers if expects_confidence(n)]
     unprefixed = sum(1 for n in scored if n.get("confidence") not in CONFIDENCE)
     if unprefixed:
         flags.append(f"{unprefixed} of {len(scored)} answers without a confidence prefix")
@@ -1802,7 +1810,7 @@ def cmd_calibration(graph, args):
         confidence, verdict = node.get("confidence"), node.get("verdict")
         if args.since and node.get("date", "") < args.since:
             continue
-        if node.get("source") in CONFIDENCE_SOURCES and verdict in table["high"]:
+        if expects_confidence(node):
             expected += 1
             unprefixed += confidence not in table
         if confidence in table and verdict in table[confidence]:
