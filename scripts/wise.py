@@ -2357,6 +2357,10 @@ class Importer:
         self.done(path)
 
     def cards(self, path):
+        # Anki's identity for a card is its front, and cards.tsv is also what
+        # `export anki` writes: a front the graph already has is not imported
+        # again, so running the import twice, or on an export, adds nothing.
+        fronts = {n.get("front") for n in self.graph.of_type("card")}
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip() or line.startswith("#"):
                 continue
@@ -2364,6 +2368,10 @@ class Importer:
             if len(columns) < 2:
                 self.report.append(f"cards.tsv: skipped {short(line, 40)!r}")
                 continue
+            columns[:2] = [anki_unfield(c) for c in columns[:2]]
+            if columns[0] in fronts:
+                continue
+            fronts.add(columns[0])
             tags = [t for t in (columns[2].split() if len(columns) > 2 else [])
                     if t != "wise-code"]
             # A tag that names a known concept becomes an edge; others stay tags.
@@ -2621,6 +2629,12 @@ def build_parser():
     parser.add_argument("--root", help="project or shelf folder (default: nearest .wise-code)")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    def day(text):
+        try:
+            return iso(dt.date.fromisoformat(text))
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"must be YYYY-MM-DD; got {text!r}") from None
+
     def limited(p, default=DEFAULT_LIMIT):
         p.add_argument("--limit", type=int, default=default)
         return p
@@ -2629,12 +2643,6 @@ def build_parser():
     p.add_argument("type")
     p.add_argument("fields", nargs=argparse.REMAINDER)
     p.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
-    def day(text):
-        try:
-            return iso(dt.date.fromisoformat(text))
-        except ValueError:
-            raise argparse.ArgumentTypeError(f"must be YYYY-MM-DD; got {text!r}") from None
-
     p.set_defaults(func=cmd_add, write=True)
 
     p = sub.add_parser("set", help="change fields: set ID key=value key+=item --rel ID")

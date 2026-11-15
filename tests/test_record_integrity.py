@@ -85,3 +85,22 @@ class DateArgumentTests(WiseTestCase):
     def test_since_accepts_a_date(self):
         self.assertIn("Q: q", self.out("history", "--since", "2026-10-28"))
         self.assertIn("high: 1 answers", self.out("calibration", "--since", "2026-10-28"))
+
+
+class RepeatedMarkdownImportTests(WiseTestCase):
+    def test_import_md_does_not_duplicate_cards_from_its_own_export(self):
+        self.run_wise("add", "card", "front=Rust: slicing off a char boundary?",
+                      "back=It panics.")
+        self.run_wise("add", "card", "front=#[must_use] warns when?",
+                      'back="unused" results')
+        self.run_wise("export", "anki")
+        self.run_wise("import-md")
+        self.assertIn("card 2", self.out("stats"))
+
+    def test_import_md_still_imports_cards_the_graph_lacks(self):
+        self.run_wise("add", "card", "front=Known front", "back=b")
+        state = self.project / ".wise-code"
+        (state / "cards.tsv").write_text("Known front\tb\twise-code\nNew front\tb2\twise-code\n",
+                                         encoding="utf-8")
+        self.run_wise("import-md")
+        self.assertIn("card 2", self.out("stats"))
