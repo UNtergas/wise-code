@@ -158,7 +158,12 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
   first`, or `blocked` once `SKIP_CAPACITY` (2) skipped confusions are open.
   `skip-repair` stamps `skipped` on the QA and is refused at capacity.
 - `calibration`: accuracy per confidence level and the high-confidence misses,
-  then how many checkpoint, quiz and repair answers carried no confidence.
+  then how many checkpoint, quiz, repair and explain-back answers carried no confidence.
+- `start-check recall|point|done|skip <session>`: start-check answers link to
+  the session they check (`checks`). `done` computes the score from them:
+  check points the recall covered plus those answered `correct`.
+- `lint-session [<session>]`: `flag:` lines for rules the session's records
+  show were skipped; read-only.
 - `answer` requires `--said`; `add question` requires `points`. Imported and
   older questions without points stay valid.
 - Schedule: a `correct` answer at `low` confidence keeps the question in its

@@ -325,7 +325,14 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   question only to probe one known misconception).
   Up to two of those questions are due ones from the question bank, so older
   material comes back without a separate quiz.
-  Answers become `start-check` Q/A; misses enter the question bank.
+  Answers become `start-check` Q/A; misses enter the question bank. The score
+  is computed by the script from the check points your recall and answers
+  covered (`wise.py start-check`), not typed in.
+- **Process flags**: at session end `wise.py lint-session` lists the rules the
+  session's records show were skipped (an answer without your words or a
+  confidence prefix, a quote not checked, a Full code step without an
+  explain-back, a start check closed without a free recall). Claude shows them
+  in the recap as they are.
   Say "skip" to skip. On claude.ai there is no SessionStart hook, so the check
   runs when you invoke `/wise-code:learn`.
 - **Confidence and repair**: answer checkpoint, quiz and repair questions with a
