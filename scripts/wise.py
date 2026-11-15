@@ -1293,9 +1293,16 @@ def cmd_answer(graph, args):
     if problem:
         # Checked before any change, so a bad stored box never half-applies.
         raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
+    asked = question["q"] if args.asked is None else " ".join(args.asked.split())
+    if not asked:
+        raise WiseError("--asked needs the question as it was asked; leave it out "
+                        "when the bank's wording was used")
+    # Right but unsure is not yet retained: the question comes back at the
+    # same interval instead of a longer one.
+    unsure = args.verdict == "correct" and args.confidence == "low"
     if args.source in ("quiz", "start-check") or args.schedule:
         box = question.get("box", 1)
-        if args.verdict == "correct":
+        if args.verdict == "correct" and not unsure:
             box = min(box + 1, 5)
         elif args.verdict == "wrong":
             box = 1
@@ -1303,7 +1310,7 @@ def cmd_answer(graph, args):
         question["due"] = iso(today() + dt.timedelta(days=BOXES[box]))
         graph.touch(question)
     qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": iso(today()),
-          "created": iso(today()), "source": args.source, "q": question["q"],
+          "created": iso(today()), "source": args.source, "q": asked,
           "a": args.answer or "(answered in chat)", "verdict": args.verdict,
           "at": stamp_now()}
     if args.hints:
@@ -1319,7 +1326,8 @@ def cmd_answer(graph, args):
     for concept in graph.out(qid, "tests"):
         graph.link(qa["id"], "about", concept)
     graph.save()
-    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}")
+    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}"
+          f"{' · kept in its box: low confidence' if unsure else ''}")
     if is_confusion(qa):
         print(f"confusion: {qa['id']} · repair before building on "
               f"{', '.join(graph.out(qid, 'tests')) or 'this concept'}")
@@ -1539,7 +1547,8 @@ def cmd_due(graph, args):
                 order.append(by_topic[topic].pop(0))
     printer = Printer("pass --limit or --topic")
     for node in order[: args.limit]:
-        printer.line(summary(graph, node))
+        variant = " · ask a variant" if node.get("box", 1) >= VARIANT_BOX else ""
+        printer.line(summary(graph, node) + variant)
     printer.done(max(0, len(order) - args.limit))
     if not order:
         upcoming = sorted(n.get("due", "") for n in graph.of_type("question"))
@@ -2692,6 +2701,8 @@ def build_parser():
     p.add_argument("id")
     p.add_argument("verdict")
     p.add_argument("--answer", help="gist of the learner's answer")
+    p.add_argument("--asked", help="the question as asked, when it was a variant "
+                   "of the bank's wording")
     p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
