@@ -68,7 +68,7 @@ class StoreTests(WiseTestCase):
         self.assertTrue(edges.exists())
 
     def test_ids_are_dated_random_and_typed(self):
-        qid = self.out("add", "question", "q=Why?", "a=Because.").strip()
+        qid = self.out("add", "question", "points+=the point", "q=Why?", "a=Because.").strip()
         self.assertRegex(qid, r"^QB-20261028-[0-9a-f]{4}$")
 
     def test_two_machines_never_collide_and_merge_cleanly(self):
@@ -100,7 +100,7 @@ class StoreTests(WiseTestCase):
         shutil.rmtree(self.project / ".git")
         self.git(self.project, "init", "-q", "-b", "main")
         self.run_wise("add", "concept", "name=Strings")
-        qid = self.out("add", "question", "q=Why?", "a=Because.", "--tests", "strings").strip()
+        qid = self.out("add", "question", "points+=the point", "q=Why?", "a=Because.", "--tests", "strings").strip()
         self.assertTrue((self.project / ".wise-code/graph/.gitattributes").is_file())
         self.git(self.project, "add", "-A")
         self.git(self.project, "commit", "-qm", "base")
@@ -113,7 +113,7 @@ class StoreTests(WiseTestCase):
             for n in range(5):
                 self.run_wise("add", "qa", f"q={root.name} {n}", "a=A", "source=asked",
                               "--about", "strings", root=root, day=day)
-            self.run_wise("answer", qid, verdict, root=root, day=day)
+            self.run_wise("answer", qid, verdict, "--hit", "all", "--said", "the learner said this", root=root, day=day)
             self.git(root, "add", "-A")
             self.git(root, "commit", "-qm", f"work on {root.name}")
         self.git(self.project, "fetch", "-q", str(clone), "main")
@@ -234,11 +234,11 @@ class ConceptTests(WiseTestCase):
 class QueryTests(WiseTestCase):
     def test_due_and_leitner_schedule(self):
         self.run_wise("add", "concept", "name=Strings")
-        qid = self.out("add", "question", "q=Why panic?", "a=Boundary.", "--tests", "strings").strip()
+        qid = self.out("add", "question", "points+=the point", "q=Why panic?", "a=Boundary.", "--tests", "strings").strip()
         self.assertIn("nothing due; next due 2026-10-29", self.out("due"))
         self.assertIn(qid, self.out("due", day="2026-10-29"))
-        self.assertIn("box 2 · due 2026-11-01", self.out("answer", qid, "correct", day="2026-10-29"))
-        self.assertIn("box 1 · due 2026-11-02", self.out("answer", qid, "wrong", day="2026-11-01"))
+        self.assertIn("box 2 · due 2026-11-01", self.out("answer", qid, "correct", "--hit", "all", "--said", "the learner said this", day="2026-10-29"))
+        self.assertIn("box 1 · due 2026-11-02", self.out("answer", qid, "wrong", "--hit", "all", "--said", "the learner said this", day="2026-11-01"))
         history = self.out("history", "--concept", "strings")
         self.assertEqual(history.count("quiz"), 2)
 
@@ -301,18 +301,18 @@ class ValidationTests(WiseTestCase):
     def test_box_outside_leitner_range_is_refused(self):
         for box in ("0", "6", "-1"):
             with self.subTest(box=box):
-                bad = self.run_wise("add", "question", "q=Q", "a=A", f"box={box}", check=False)
+                bad = self.run_wise("add", "question", "points+=the point", "q=Q", "a=A", f"box={box}", check=False)
                 self.assertEqual(bad.returncode, 2)
                 self.assertIn("question.box must be 1 to 5", bad.stderr)
         self.assertFalse((self.project / ".wise-code" / "graph" / "nodes.jsonl").exists())
 
     def test_answer_on_a_stored_bad_box_fails_cleanly_without_writing(self):
-        qid = self.out("add", "question", "q=Q", "a=A").strip()
+        qid = self.out("add", "question", "points+=the point", "q=Q", "a=A").strip()
         nodes = self.project / ".wise-code" / "graph" / "nodes.jsonl"
         nodes.write_text(nodes.read_text(encoding="utf-8").replace('"box": 1', '"box": 0'),
                          encoding="utf-8")
         before = self.graph_bytes()
-        bad = self.run_wise("answer", qid, "partial", "--source", "quiz", check=False)
+        bad = self.run_wise("answer", qid, "partial", "--hit", "all", "--said", "the learner said this", "--source", "quiz", check=False)
         self.assertEqual(bad.returncode, 2)
         self.assertNotIn("Traceback", bad.stderr)
         self.assertIn(f"set {qid} box=1", bad.stderr)
@@ -320,7 +320,7 @@ class ValidationTests(WiseTestCase):
 
     def test_editor_cannot_store_wrong_json_types(self):
         self.run_wise("add", "concept", "name=Alpha", "notes+=one")
-        qid = self.out("add", "question", "q=Q", "a=A").strip()
+        qid = self.out("add", "question", "points+=the point", "q=Q", "a=A").strip()
         cases = [("alpha", {"notes": "a string, not a list"}, "concept.notes must be a list"),
                  ("alpha", {"aliases": ["ok", 3]}, "concept.aliases must be a list of text"),
                  ("alpha", {"rev": "2"}, "concept.rev must be a whole number"),
@@ -827,7 +827,7 @@ class MergeConflictTests(WiseTestCase):
         self.assertEqual(self.nodes_file().read_text(encoding="utf-8"), text)
 
     def question_versions(self, ours_fields, theirs_fields):
-        self.run_wise("add", "question", "q=Why?", "a=Because.")
+        self.run_wise("add", "question", "points+=the point", "q=Why?", "a=Because.")
         self.run_wise("add", "concept", "name=Other")
         [base] = [n for n in self.nodes() if n["type"] == "question"]
         seen = {"seen": [wise.version_id(base)], "updated": "2026-10-29", "rev": 1}
@@ -1475,9 +1475,9 @@ class ConfusionTests(WiseTestCase):
         self.assertIn("skips open 0/2", self.out("confusions"))
 
     def test_answer_records_confidence_and_flags_a_confusion(self):
-        qid = self.out("add", "question", "q=Why move?", "a=Ownership.", "--tests",
+        qid = self.out("add", "question", "points+=the point", "q=Why move?", "a=Ownership.", "--tests",
                        "ownership").strip()
-        out = self.out("answer", qid, "wrong", "--confidence", "high", "--answer", "copy")
+        out = self.out("answer", qid, "wrong", "--hit", "all", "--said", "the learner said this", "--confidence", "high", "--answer", "copy")
         self.assertIn("confusion:", out)
         self.assertIn("(high)", self.out("history"))
 

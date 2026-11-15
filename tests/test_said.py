@@ -241,14 +241,15 @@ class SaidTests(unittest.TestCase):
         self.run_wise("set", did, "said=keeps backups trivial")
         self.assertEqual(self.node(did)["said_check"], "unchecked")
 
-    def test_answer_takes_an_optional_quote(self):
+    def test_answer_requires_the_quote(self):
         self.run_wise("add", "concept", "name=Ownership")
-        qid = self.out("add", "question", "q=Who frees it?", "a=The owner",
+        qid = self.out("add", "question", "points+=the point", "q=Who frees it?", "a=The owner",
                        "--tests", "ownership").strip()
-        self.run_wise("answer", qid, "correct")
-        self.assertIn("said", self.run_wise("answer", qid, "correct", "--said", "no",
-                                            check=False).stderr)
-        self.run_wise("answer", qid, "correct", "--said", "the owner frees it")
+        self.assertIn("--said", self.run_wise("answer", qid, "correct", "--hit", "all",
+                                              check=False).stderr)
+        self.assertIn("said", self.run_wise("answer", qid, "correct", "--hit", "all",
+                                            "--said", "no", check=False).stderr)
+        self.run_wise("answer", qid, "correct", "--hit", "all", "--said", "the owner frees it")
 
     # ---- the checker
 

@@ -59,7 +59,8 @@ the learner's source files.
    and this project's code, naming each point they missed. Equivalent reasoning in the learner's own words is correct; don't demand
    the reference wording. If the reference answer turns out to be wrong, say so,
    fix it (`wise.py set <id> a="…"`), and don't count the answer against the learner.
-5. Record it: `wise.py answer <id> <verdict> --hit <all|none|1,3> --answer "<gist>" [--confidence <as
+5. Record it: `wise.py answer <id> <verdict> --hit <all|none|1,3> --said "<their exact
+   words>" --answer "<gist>" [--confidence <as
    prefixed>] [--hints N] [--asked "<the variant you asked>"]`. When it prints
    `confusion:`, say so in one line: the
    next build step on that concept starts with a repair. When it prints `kept in
