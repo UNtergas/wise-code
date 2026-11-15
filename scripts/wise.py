@@ -1876,16 +1876,35 @@ def cmd_render(graph, args):
     return 0
 
 
+def anki_field(text):
+    """One field of an Anki text import, on one line with no tabs.
+
+    Anki ignores a line that starts with "#" and reads a leading double quote
+    as the start of a quoted field, so a field starting with either is quoted,
+    with its quotes doubled. Others stay as they are.
+    """
+    text = " ".join(str(text).replace("\t", " ").split())
+    if text.startswith(("#", '"')):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def anki_unfield(text):
+    """The text anki_field wrote, for reading an export back."""
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        return text[1:-1].replace('""', '"')
+    return text
+
+
 def cmd_export(graph, args):
     if args.format != "anki":
         raise WiseError("export formats: anki")
     deck = args.deck or graph.state.parent.name
-    clean = lambda text: " ".join(str(text).replace("\t", " ").split())  # noqa: E731
     rows = ["#separator:Tab", "#html:false", "#notetype:Basic",
             f"#deck:wise-code::{deck}", "#tags column:3"]
     for node in sorted(graph.of_type("card"), key=lambda n: n["id"]):
         tags = ["wise-code", *node.get("tags", []), *graph.out(node["id"], "tests")]
-        rows.append(f"{clean(node['front'])}\t{clean(node['back'])}\t"
+        rows.append(f"{anki_field(node['front'])}\t{anki_field(node['back'])}\t"
                     f"{' '.join(dict.fromkeys(tags))}")
     target = Path(args.out) if args.out else graph.state / "cards.tsv"
     target.write_text("\n".join(rows) + "\n", encoding="utf-8")

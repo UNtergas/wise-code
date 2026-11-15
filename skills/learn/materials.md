@@ -226,7 +226,9 @@ wise.py export anki
   duplicates on the front. Check with `wise.py find "<front words>" --type card`
   before adding.
 - `export anki` writes `.wise-code/cards.tsv` (`#separator:Tab`, `#html:false`,
-  `#notetype:Basic`, `#deck:wise-code::<project>`, `#tags column:3`). The file is
+  `#notetype:Basic`, `#deck:wise-code::<project>`, `#tags column:3`). A front or
+  back that starts with `#` or `"` is written quoted, so Anki doesn't read it as
+  a comment or a quoted field (`#[derive(Debug)]` is safe to put on a card). The file is
   an export, regenerated each time; edit cards in the graph. Re-importing it in
   Anki (File → Import) updates notes by front and keeps their schedule.
 
