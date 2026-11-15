@@ -45,6 +45,13 @@ DEFAULT_LIMIT = 10
 # Leitner boxes: box -> days until the next review.
 BOXES = {1: 1, 2: 3, 3: 7, 4: 21, 5: 60}
 
+# A question that reached this box was answered correctly at least twice, so
+# the wording itself may be what is remembered: `due` marks it "ask a variant".
+VARIANT_BOX = 3
+# Later correct answers on a concept after which an earlier miss stops counting
+# as weak (`weak`). `mistakes` keeps counting it: a recovered miss still happened.
+WEAK_RECOVERY = 2
+
 VERDICTS = ("correct", "partial", "wrong", "n/a")
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
               "reflect", "asked", "start-check", "shelf", "repair")
@@ -1573,19 +1580,29 @@ def recent_misses(graph, limit_days=None):
     return counts
 
 
+def open_misses(graph, concept, miss_ids):
+    """The misses on a concept not yet followed by WEAK_RECOVERY correct answers."""
+    correct = [order(n) for n in map(graph.nodes.get, graph.into(concept, "about"))
+               if n["type"] == "qa" and n.get("verdict") == "correct"]
+    return [i for i in miss_ids
+            if sum(1 for c in correct if c > order(graph.nodes[i])) < WEAK_RECOVERY]
+
+
 def cmd_weak(graph, args):
     misses = recent_misses(graph, args.days)
-    scored = []
+    scored, still_open = [], {}
     for node in graph.of_type("concept"):
-        score = len(misses.get(node["id"], [])) + (3 if node.get("status") == "reinforce" else 0)
+        still_open[node["id"]] = open_misses(graph, node["id"], misses.get(node["id"], []))
+        score = len(still_open[node["id"]]) + (3 if node.get("status") == "reinforce" else 0)
         if score:
             scored.append((-score, node["id"]))
     scored.sort()
     printer = Printer("pass --limit or --days")
-    shown = 0
     for score, concept in scored[: args.limit]:
-        printer.line(f"{summary(graph, graph.nodes[concept])} · misses {len(misses.get(concept, []))}")
-        shown += 1
+        recovered = len(misses.get(concept, [])) - len(still_open[concept])
+        printer.line(f"{summary(graph, graph.nodes[concept])} · open misses "
+                     f"{len(still_open[concept])}"
+                     f"{f' · recovered {recovered}' if recovered else ''}")
         if args.with_prereqs:
             for pre in graph.out(concept, "prereq"):
                 printer.line(f"  prereq: {summary(graph, graph.nodes[pre])}")
