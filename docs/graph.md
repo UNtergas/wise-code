@@ -18,7 +18,7 @@ On the test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
 | quiz: find due questions | 8,018 | 454 | 95% |
-| start check | 660 | 146 | 78% |
+| start check | 660 | 149 | 78% |
 | restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
 | history of one concept | 21,808 | 375 | 99% |
@@ -162,6 +162,13 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
 - `start-check recall|point|done|skip <session>`: start-check answers link to
   the session they check (`checks`). `done` computes the score from them:
   check points the recall covered plus those answered `correct`.
+- Tasks: a question with `check` (a command) needs no `points`. `answer` on it
+  requires `--exit <code>` and bounds the verdict (non-zero → `wrong`); the QA
+  stores `exit`. The script never runs the command.
+- `ready <concept>`: its prerequisites (`prereq` edges, deepest first) that
+  are not `demonstrated` or have an open confusion.
+- `level-advice [--days 30] [--min 5]`: concepts whose recent learner answers
+  were all correct, not `low`, unhinted, with no open confusion.
 - `lint-session [<session>]`: `flag:` lines for rules the session's records
   show were skipped; read-only.
 - `answer` requires `--said`; `add question` requires `points`. Imported and

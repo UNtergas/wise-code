@@ -284,7 +284,7 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
 | quiz: find due questions | 8,018 | 454 | 95% |
-| start check | 660 | 146 | 78% |
+| start check | 660 | 149 | 78% |
 | restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
 | history of one concept | 21,808 | 375 | 99% |
@@ -307,6 +307,15 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   a question that came from a lesson's multiple-choice quiz is reworded into an
   open one first. Each new session tells you how many questions are due and
   offers the quiz; it never starts one on its own.
+- **Tasks**: some questions are exercises, not explanations: "make this compile
+  without `clone`", in a scratch folder under `.wise-code/`. You write the
+  solution; a command decides (`cargo test …` exits 0 or it doesn't), not
+  Claude's opinion.
+- **Prerequisites and pacing**: before a step builds on a concept, `wise.py
+  ready` lists the prerequisites you haven't shown yet, and they come first. At
+  session end `wise.py level-advice` names the concepts where your answers
+  were clean for a month; Claude then proposes less help for that topic, and
+  you decide.
 - **Weak concepts** (`wise.py weak`): concepts marked `reinforce` or with open
   misses. A miss stops counting once two later answers on the concept are
   correct, so Teach and Quiz plan from what is weak now, not from everything you

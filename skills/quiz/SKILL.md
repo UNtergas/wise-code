@@ -47,7 +47,10 @@ the learner's source files.
    A `due` line ending in `ask a variant`, and a question whose `source` starts
    with `lesson`, are not asked as written: see "Variants" and "Multiple-choice
    stems" in materials.md. A line ending in `no key points` gets its points
-   written before you ask it ("Key points" in materials.md).
+   written before you ask it ("Key points" in materials.md). A line with
+   `task: <check>` is an exercise the learner solves in a scratch folder: give
+   the task, wait until they say it is done, run the check, and record the exit
+   code ("Tasks" in materials.md). Steps 4 and 5 below are for the others.
 3. Ask one question at a time, in chat, and wait for the answer. End it with the
    reminder "Prefix your answer with your confidence: `high:`, `mid:` or `low:`."
    Don't show the reference answer, options, or hints first. Give a hint only when asked; a hinted

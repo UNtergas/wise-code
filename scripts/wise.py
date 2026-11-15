@@ -52,6 +52,9 @@ VARIANT_BOX = 3
 # Later correct answers on a concept after which an earlier miss stops counting
 # as weak (`weak`). `mistakes` keeps counting it: a recovered miss still happened.
 WEAK_RECOVERY = 2
+# `level-advice`: a concept is ready for less help after this many of the
+# learner's own answers within this many days, all correct, none unsure or hinted.
+ADVICE_MIN_ANSWERS, ADVICE_DAYS = 5, 30
 
 VERDICTS = ("correct", "partial", "wrong", "n/a")
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
@@ -87,10 +90,10 @@ TYPES = {
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
-        "said_hash": "str", "missed": "list", "point": "int"}},
+        "said_hash": "str", "missed": "list", "point": "int", "exit": "int"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
-        "legacy": "str", "points": "list"}},
+        "legacy": "str", "points": "list", "check": "str"}},
     "card": {"prefix": "CARD", "required": ["front", "back"], "fields": {
         "front": "str", "back": "str", "tags": "list"}},
     "session": {"prefix": "S", "required": ["goal"], "fields": {
@@ -1129,11 +1132,13 @@ def cmd_add(graph, args):
         node["at"] = stamp_now()
     apply_fields(node, sets, appends, removes)
     problems = validate_node(node) + attribution_problems(node)
-    if kind == "question" and not any(str(p).strip() for p in node.get("points", [])):
+    if kind == "question" and not is_task(node) \
+            and not any(str(p).strip() for p in node.get("points", [])):
         # The rubric is written with the question, never while judging an
         # answer. Imports keep older questions without one; `due` marks those.
         problems.append(f"{node['id']}: a question needs its key points: the two or three "
-                        f"things a correct answer must contain, one points+=\"…\" each")
+                        f"things a correct answer must contain, one points+=\"…\" each "
+                        f"(or check=\"<command>\" for a task judged by its exit code)")
     if problems:
         raise WiseError("; ".join(problems))
     mark_said(node, None)
@@ -1288,6 +1293,20 @@ def cmd_resolve(graph, args):
     return 0
 
 
+def expects_confidence(qa):
+    """A scored answer to a question that ends with the confidence-prefix reminder.
+
+    A task answer is code checked by a command: nothing to prefix.
+    """
+    return (qa.get("source") in CONFIDENCE_SOURCES and "exit" not in qa
+            and qa.get("verdict") in ("correct", "partial", "wrong"))
+
+
+def is_task(question):
+    """A task is solved in code and judged by its `check` command's exit code."""
+    return bool(str(question.get("check", "")).strip())
+
+
 def cmd_answer(graph, args):
     """Record a quiz or start-check answer: QA entry plus Leitner rescheduling."""
     qid = graph.resolve(args.id)
@@ -1296,20 +1315,30 @@ def cmd_answer(graph, args):
         raise WiseError(f"{qid} is not a question")
     if args.verdict not in ("correct", "partial", "wrong"):
         raise WiseError("verdict: correct, partial or wrong")
+    task = is_task(question)
+    if task and args.exit is None:
+        raise WiseError(f"{qid} is a task: run its check ({question['check']}) and pass "
+                        f"--exit <its exit code>")
+    if task and args.hit is not None:
+        raise WiseError(f"{qid} is a task, judged by its check; leave --hit out")
+    if task and args.exit != 0 and args.verdict != "wrong":
+        raise WiseError(f"the check exited {args.exit}: the verdict can only be wrong")
+    if not task and args.exit is not None:
+        raise WiseError(f"{qid} is not a task (it has no check); leave --exit out")
     # An answer is the learner's: without their words the verdict can't be
-    # checked later, whatever the source.
-    if not said_parts(args.said or ""):
+    # checked later, whatever the source. A task's evidence is its exit code.
+    if not task and not said_parts(args.said or ""):
         raise WiseError(f"{qid}: an answer needs --said \"<the learner's exact words>\"; "
                         f"copy a span from their message, parts joined with '{SAID_SEP}'")
     problems = attribution_problems({"id": qid, "type": "qa", "source": args.source,
-                                     "said": args.said})
+                                     "said": args.said or ""})
     if problems:
         raise WiseError("; ".join(problems))
     problem = stored_problem("question", "box", question.get("box", 1))
     if problem:
         # Checked before any change, so a bad stored box never half-applies.
         raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
-    judged = points_hit(question, args.hit)
+    judged = None if task else points_hit(question, args.hit)
     if judged is not None:
         total = len(question["points"])
         limit = verdict_limit(judged[0], total)
@@ -1335,16 +1364,19 @@ def cmd_answer(graph, args):
         graph.touch(question)
     qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": iso(today()),
           "created": iso(today()), "source": args.source, "q": asked,
-          "a": args.answer or "(answered in chat)", "verdict": args.verdict,
-          "at": stamp_now()}
+          "a": args.answer or ("(solved in code)" if task else "(answered in chat)"),
+          "verdict": args.verdict, "at": stamp_now()}
+    if task:
+        qa["exit"] = args.exit
     if args.hints:
         qa["hints"] = args.hints
     if args.confidence:
         qa["confidence"] = args.confidence
     if judged and judged[1]:
         qa["missed"] = judged[1]
-    qa["said"] = args.said
-    mark_said(qa, None)
+    if args.said:
+        qa["said"] = args.said
+        mark_said(qa, None)
     graph.nodes[qa["id"]] = qa
     graph.dirty = True
     graph.link(qa["id"], "answers", qid)
@@ -1527,8 +1559,9 @@ def lint_flags(graph, session):
     answers = [n for n in map(graph.nodes.get, graph.into(sid, "in")) if n["type"] == "qa"]
     flags = []
     quoted = LEARNER_QA_SOURCES + ("quiz",)
+    # A task answer's evidence is its exit code, not a quote.
     unquoted = sorted(n["id"] for n in answers
-                      if n.get("source") in quoted and not n.get("said"))
+                      if n.get("source") in quoted and not n.get("said") and "exit" not in n)
     if unquoted:
         flags.append(f"{len(unquoted)} answers without the learner's words: "
                      f"{', '.join(unquoted[:5])}{' …' if len(unquoted) > 5 else ''}")
@@ -1541,8 +1574,7 @@ def lint_flags(graph, session):
     if checks["unchecked"]:
         flags.append(f"{checks['unchecked']} quotes not checked against the transcript; "
                      f"run wise.py check-said")
-    scored = [n for n in answers if n.get("source") in CONFIDENCE_SOURCES
-              and n.get("verdict") in ("correct", "partial", "wrong")]
+    scored = [n for n in answers if expects_confidence(n)]
     unprefixed = sum(1 for n in scored if n.get("confidence") not in CONFIDENCE)
     if unprefixed:
         flags.append(f"{unprefixed} of {len(scored)} answers without a confidence prefix")
@@ -1645,6 +1677,67 @@ def open_confusions(graph, concepts=None):
     return found
 
 
+def prereqs_first(graph, concept):
+    """Every prerequisite of a concept, deepest first (each after its own)."""
+    ordered = []
+
+    def visit(node, path):
+        for prereq in sorted(graph.out(node, "prereq")):
+            if prereq in path or prereq in ordered:
+                continue  # a cycle, or reached by another route
+            visit(prereq, path | {prereq})
+            ordered.append(prereq)
+
+    visit(concept, {concept})
+    return ordered
+
+
+def cmd_ready(graph, args):
+    """Is the ground under a concept solid: prerequisites demonstrated, unconfused."""
+    concept = graph.resolve(args.concept)
+    if graph.nodes[concept]["type"] != "concept":
+        raise WiseError(f"{concept} is not a concept")
+    prereqs = prereqs_first(graph, concept)
+    confused = {c for _, c in open_confusions(graph, set(prereqs))}
+    lines = []
+    for prereq in prereqs:
+        status = graph.nodes[prereq].get("status", "introduced")
+        if status != "demonstrated" or prereq in confused:
+            lines.append(f"first: {prereq} · {status}"
+                         f"{' · open confusion' if prereq in confused else ''} · "
+                         f"{short(graph.nodes[prereq].get('name', ''), 60)}")
+    if not lines:
+        print(f"{concept} · ready")
+        return 0
+    print(f"{concept} · not ready: {len(lines)} prerequisites to cover first")
+    for line in lines:
+        print(line)
+    return 0
+
+
+def cmd_level_advice(graph, args):
+    """Concepts where the learner's recent answers support less help."""
+    since = iso(today() - dt.timedelta(days=args.days))
+    own = CONFIDENCE_SOURCES + ("start-check",)
+    confused = {c for _, c in open_confusions(graph)}
+    found = []
+    for concept in sorted(n["id"] for n in graph.of_type("concept")):
+        answers = [n for n in map(graph.nodes.get, graph.into(concept, "about"))
+                   if n["type"] == "qa" and n.get("source") in own
+                   and n.get("verdict") in ("correct", "partial", "wrong")
+                   and n.get("date", "") >= since]
+        clean = all(n["verdict"] == "correct" and n.get("confidence") != "low"
+                    and not n.get("hints") for n in answers)
+        if len(answers) >= args.min and clean and concept not in confused:
+            found.append(f"less help: {concept} · {len(answers)} answers · "
+                         f"{len(answers)} correct · no hints")
+    for line in found:
+        print(line)
+    if not found:
+        print("no concept is ready for less help yet")
+    return 0
+
+
 def skips_open(graph):
     return sorted({qa["id"] for qa, _ in open_confusions(graph) if qa.get("skipped")})
 
@@ -1717,7 +1810,7 @@ def cmd_calibration(graph, args):
         confidence, verdict = node.get("confidence"), node.get("verdict")
         if args.since and node.get("date", "") < args.since:
             continue
-        if node.get("source") in CONFIDENCE_SOURCES and verdict in table["high"]:
+        if expects_confidence(node):
             expected += 1
             unprefixed += confidence not in table
         if confidence in table and verdict in table[confidence]:
@@ -1806,8 +1899,11 @@ def cmd_due(graph, args):
     printer = Printer("pass --limit or --topic")
     for node in order[: args.limit]:
         variant = " · ask a variant" if node.get("box", 1) >= VARIANT_BOX else ""
-        unpointed = "" if node.get("points") else " · no key points"
-        printer.line(summary(graph, node) + variant + unpointed)
+        if is_task(node):
+            how = f" · task: {short(node['check'], 120)}"
+        else:
+            how = "" if node.get("points") else " · no key points"
+        printer.line(summary(graph, node) + variant + how)
     printer.done(max(0, len(order) - args.limit))
     if not order:
         upcoming = sorted(n.get("due", "") for n in graph.of_type("question"))
@@ -1938,6 +2034,8 @@ def cmd_history(graph, args):
             printer.line(f"  A (gist): {short(node.get('a', ''), 200)}")
             for point in node.get("missed", []):
                 printer.line(f"  missed: {short(point, 200)}")
+            if "exit" in node:
+                printer.line(f"  check: exit {node['exit']}")
             for line in said_lines(node, with_note=False):
                 printer.line(line)
     printer.done(max(0, len(items) - args.limit))
@@ -2969,6 +3067,7 @@ def build_parser():
                    "of the bank's wording")
     p.add_argument("--hit", help="key points the answer covered: all, none, or "
                    "their numbers (1,3); required when the question has points")
+    p.add_argument("--exit", type=int, help="a task: the exit code of its check command")
     p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
@@ -2988,6 +3087,16 @@ def build_parser():
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--about", action="append", help="concept the answer is about")
     p.set_defaults(func=cmd_start_check, write=True)
+
+    p = sub.add_parser("ready", help="prerequisites to cover before building on a concept")
+    p.add_argument("concept")
+    p.set_defaults(func=cmd_ready, write=False)
+
+    p = sub.add_parser("level-advice", help="concepts where recent answers support less help")
+    p.add_argument("--days", type=int, default=ADVICE_DAYS)
+    p.add_argument("--min", type=int, default=ADVICE_MIN_ANSWERS,
+                   help="answers needed before a concept counts")
+    p.set_defaults(func=cmd_level_advice, write=False)
 
     p = sub.add_parser("lint-session", help="rules a session's records show were skipped")
     p.add_argument("id", nargs="?", help="a session; the latest when left out")
