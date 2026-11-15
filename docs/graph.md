@@ -17,7 +17,7 @@ On the test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
-| quiz: find due questions | 8,018 | 414 | 95% |
+| quiz: find due questions | 8,018 | 454 | 95% |
 | start check | 660 | 146 | 78% |
 | restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
@@ -168,6 +168,12 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
   `mistakes` counts every miss, recovered or not.
 - `due` marks a question at `VARIANT_BOX` (3) or higher `ask a variant`; `answer
   --asked` stores the question as asked in the QA, the bank's wording unchanged.
+- Key points: a question's `points` (a list, two or three checkable statements)
+  are its rubric. `answer` on such a question requires `--hit all|none|1,3` and
+  refuses a verdict above what the points allow (all → `correct`, some →
+  `partial`, none → `wrong`); the missed points are stored on the QA as
+  `missed`. A question without points is answered as before, and `due` marks it
+  `no key points`.
 - The session hook reports how many questions are due (a count, no content) on
   new sessions; the start check asks up to two of them.
 

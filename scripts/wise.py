@@ -83,10 +83,10 @@ TYPES = {
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
-        "said_hash": "str"}},
+        "said_hash": "str", "missed": "list"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
-        "legacy": "str"}},
+        "legacy": "str", "points": "list"}},
     "card": {"prefix": "CARD", "required": ["front", "back"], "fields": {
         "front": "str", "back": "str", "tags": "list"}},
     "session": {"prefix": "S", "required": ["goal"], "fields": {
@@ -1293,6 +1293,14 @@ def cmd_answer(graph, args):
     if problem:
         # Checked before any change, so a bad stored box never half-applies.
         raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
+    judged = points_hit(question, args.hit)
+    if judged is not None:
+        total = len(question["points"])
+        limit = verdict_limit(judged[0], total)
+        ranks = ("wrong", "partial", "correct")
+        if ranks.index(args.verdict) > ranks.index(limit):
+            raise WiseError(f"{judged[0]} of {total} key points hit: the verdict can be "
+                            f"at most {limit}")
     asked = question["q"] if args.asked is None else " ".join(args.asked.split())
     if not asked:
         raise WiseError("--asked needs the question as it was asked; leave it out "
@@ -1317,6 +1325,8 @@ def cmd_answer(graph, args):
         qa["hints"] = args.hints
     if args.confidence:
         qa["confidence"] = args.confidence
+    if judged and judged[1]:
+        qa["missed"] = judged[1]
     if args.said:
         qa["said"] = args.said
         mark_said(qa, None)
@@ -1332,6 +1342,41 @@ def cmd_answer(graph, args):
         print(f"confusion: {qa['id']} · repair before building on "
               f"{', '.join(graph.out(qid, 'tests')) or 'this concept'}")
     return 0
+
+
+def points_hit(question, hit):
+    """Which of a question's key points an answer hit, as (hit count, missed texts).
+
+    `hit` is the --hit value: "all", "none", or point numbers from 1
+    ("1,3"). A question with key points can't be answered without it, so the
+    verdict rests on points anyone can check, not on an overall impression.
+    """
+    points = question.get("points") or []
+    if not points:
+        if hit is not None:
+            raise WiseError(f"{question['id']} has no key points; leave --hit out, or add "
+                            f"them first: wise.py set {question['id']} points+=\"…\"")
+        return None
+    usage = (f"{question['id']} has {len(points)} key points; pass --hit all, --hit none, "
+             f"or the numbers the answer covered (--hit 1,3)")
+    if hit is None:
+        raise WiseError(usage)
+    if hit in ("all", "none"):
+        numbers = set(range(1, len(points) + 1)) if hit == "all" else set()
+    else:
+        parts = [part.strip() for part in hit.split(",")]
+        if not all(part.isdigit() and 1 <= int(part) <= len(points) for part in parts):
+            raise WiseError(f"--hit {hit!r} is not a list of point numbers; {usage}")
+        numbers = {int(part) for part in parts}
+    missed = [point for number, point in enumerate(points, 1) if number not in numbers]
+    return len(numbers), missed
+
+
+def verdict_limit(hit_count, total):
+    """The best verdict the points allow: every point, some, or none."""
+    if hit_count == total:
+        return "correct"
+    return "partial" if hit_count else "wrong"
 
 
 # ---------------------------------------------------------------- confusions and repair
@@ -1551,7 +1596,8 @@ def cmd_due(graph, args):
     printer = Printer("pass --limit or --topic")
     for node in order[: args.limit]:
         variant = " · ask a variant" if node.get("box", 1) >= VARIANT_BOX else ""
-        printer.line(summary(graph, node) + variant)
+        unpointed = "" if node.get("points") else " · no key points"
+        printer.line(summary(graph, node) + variant + unpointed)
     printer.done(max(0, len(order) - args.limit))
     if not order:
         upcoming = sorted(n.get("due", "") for n in graph.of_type("question"))
@@ -1677,6 +1723,8 @@ def cmd_history(graph, args):
         printer.line(summary(graph, node))
         if args.full:
             printer.line(f"  A (gist): {short(node.get('a', ''), 200)}")
+            for point in node.get("missed", []):
+                printer.line(f"  missed: {short(point, 200)}")
             for line in said_lines(node, with_note=False):
                 printer.line(line)
     printer.done(max(0, len(items) - args.limit))
@@ -2706,6 +2754,8 @@ def build_parser():
     p.add_argument("--answer", help="gist of the learner's answer")
     p.add_argument("--asked", help="the question as asked, when it was a variant "
                    "of the bank's wording")
+    p.add_argument("--hit", help="key points the answer covered: all, none, or "
+                   "their numbers (1,3); required when the question has points")
     p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)

@@ -73,7 +73,7 @@ class VariantTests(WiseTestCase):
     def setUp(self):
         super().setUp()
         self.kept = self.out("add", "question", "q=Why bytes?", "a=Core.", "box=3",
-                             "due=2026-10-01").strip()
+                             "due=2026-10-01", "points+=the core indexes bytes").strip()
         self.new = self.out("add", "question", "q=Why panic?", "a=Boundary.",
                             "due=2026-10-01").strip()
 
@@ -83,7 +83,7 @@ class VariantTests(WiseTestCase):
         self.assertNotIn("variant", lines[self.new])
 
     def test_answer_records_the_question_actually_asked(self):
-        self.run_wise("answer", self.kept, "correct", "--asked",
+        self.run_wise("answer", self.kept, "correct", "--hit", "all", "--asked",
                       "In span.rs, why can't offsets be char counts?")
         history = self.out("history", "--full")
         self.assertIn("Q: In span.rs, why can't offsets be char counts?", history)
@@ -93,7 +93,8 @@ class VariantTests(WiseTestCase):
         self.assertIn("← answers QA-", self.out("show", self.kept))
 
     def test_asked_can_t_be_empty(self):
-        bad = self.run_wise("answer", self.kept, "correct", "--asked", "  ", check=False)
+        bad = self.run_wise("answer", self.kept, "correct", "--hit", "all", "--asked", "  ",
+                            check=False)
         self.assertEqual(bad.returncode, 2)
         self.assertIn("--asked", bad.stderr)
 

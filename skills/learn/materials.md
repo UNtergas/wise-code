@@ -160,8 +160,29 @@ recognition, and are tied to this project wherever possible.
 ```sh
 wise.py add question q="The browser sends UTF-16 offsets. Why can't the core store a char index?" \
   a="Char indexes count scalar values; UTF-16 counts code units, so they differ for emoji." \
+  points+="a char index counts scalar values" \
+  points+="UTF-16 counts code units, so the two differ for emoji" \
   source="qa QA-20261028-a3f9" --tests rust-strings
 ```
+
+- **Key points.** Every question carries `points`: the two or three things a
+  correct answer must contain, one `points+="…"` each (`+=` keeps commas; a
+  plain `points=a,b` would split on them). Each is one checkable statement, not
+  a topic ("offsets are bytes because the core indexes bytes", not "offsets").
+  They are the rubric: an answer is judged point by point, never on an overall
+  impression, and the learner can read and fix them (`wise.py show <id>`).
+- **Judging.** Compare the answer with each point, in the learner's wording or
+  any equivalent reasoning, then pass what it covered: `--hit all`, `--hit none`,
+  or the numbers (`--hit 1,3`). The script caps the verdict: every point →
+  at most `correct`; some → at most `partial`; none → `wrong`. A verdict above
+  the cap is refused. A lower one is fine (all points, but only after a hint, is
+  `partial`). The missed points are stored on the QA (`missed`) and printed by
+  `history --full`; name them in your feedback. Unsure whether a point was
+  covered → it wasn't: ask a follow-up before recording, don't round up.
+- A `due` line ending in `no key points` is an older question without them.
+  Before asking it, write its points from the reference answer
+  (`wise.py set <id> points+="…"`) and say so in one line; never after you have
+  seen the answer.
 
 - `a` is a reference answer of one to three lines in project terms; cite file
   paths when it depends on this project's code.
@@ -172,8 +193,8 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
   project's terms, never as "define <principle>".
 - The script schedules (Leitner: box 1 → 1 day, 2 → 3, 3 → 7, 4 → 21, 5 → 60).
   New questions start in box 1, due tomorrow. `wise.py answer <id> correct|partial|wrong
-  --answer "<gist>" [--confidence low|mid|high] [--source start-check] [--hints N]
-  [--asked "<variant>"]` logs the QA and reschedules: correct moves up one box,
+  --hit all|none|1,3 --answer "<gist>" [--confidence low|mid|high]
+  [--source start-check] [--hints N] [--asked "<variant>"]` logs the QA and reschedules: correct moves up one box,
   partial stays, wrong returns to box 1. A correct answer prefixed `low:` stays
   in its box too (right but unsure is not yet retained); the script says so, and
   you tell the learner in a few words.

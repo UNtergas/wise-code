@@ -46,18 +46,20 @@ the learner's source files.
    Script refused → "Script blocked" in materials.md.
    A `due` line ending in `ask a variant`, and a question whose `source` starts
    with `lesson`, are not asked as written: see "Variants" and "Multiple-choice
-   stems" in materials.md.
+   stems" in materials.md. A line ending in `no key points` gets its points
+   written before you ask it ("Key points" in materials.md).
 3. Ask one question at a time, in chat, and wait for the answer. End it with the
    reminder "Prefix your answer with your confidence: `high:`, `mid:` or `low:`."
    Don't show the reference answer, options, or hints first. Give a hint only when asked; a hinted
    answer is at best `partial`. If the learner says "skip", leave that question's
    schedule unchanged.
-4. After each answer, give a verdict (`correct`, `partial`, `wrong`) and one to
-   three lines of feedback grounded in the reference answer and this project's
-   code. Equivalent reasoning in the learner's own words is correct; don't demand
+4. After each answer, judge it against the question's key points, one by one
+   ("Judging" in materials.md), then give a verdict (`correct`, `partial`,
+   `wrong`) and one to three lines of feedback grounded in the reference answer
+   and this project's code, naming each point they missed. Equivalent reasoning in the learner's own words is correct; don't demand
    the reference wording. If the reference answer turns out to be wrong, say so,
    fix it (`wise.py set <id> a="…"`), and don't count the answer against the learner.
-5. Record it: `wise.py answer <id> <verdict> --answer "<gist>" [--confidence <as
+5. Record it: `wise.py answer <id> <verdict> --hit <all|none|1,3> --answer "<gist>" [--confidence <as
    prefixed>] [--hints N] [--asked "<the variant you asked>"]`. When it prints
    `confusion:`, say so in one line: the
    next build step on that concept starts with a repair. When it prints `kept in
