@@ -67,3 +67,21 @@ class HistoryOrderTests(WiseTestCase):
         shown = [line.rsplit("Q: question ", 1)[1]
                  for line in self.out("history").splitlines()]
         self.assertEqual(shown, [str(n) for n in range(7, -1, -1)])
+
+
+class DateArgumentTests(WiseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.run_wise("add", "qa", "source=quiz", "q=q", "a=a", "verdict=wrong",
+                      "confidence=high")
+
+    def test_since_refuses_what_is_not_a_date(self):
+        for command in ("history", "calibration"):
+            for bad in ("today", "28/10/2026"):
+                result = self.run_wise(command, "--since", bad, check=False)
+                self.assertEqual(result.returncode, 2, command + " " + bad)
+                self.assertIn("YYYY-MM-DD", result.stderr)
+
+    def test_since_accepts_a_date(self):
+        self.assertIn("Q: q", self.out("history", "--since", "2026-10-28"))
+        self.assertIn("high: 1 answers", self.out("calibration", "--since", "2026-10-28"))

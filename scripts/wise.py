@@ -2629,6 +2629,12 @@ def build_parser():
     p.add_argument("type")
     p.add_argument("fields", nargs=argparse.REMAINDER)
     p.add_argument("--force", action="store_true", help=argparse.SUPPRESS)
+    def day(text):
+        try:
+            return iso(dt.date.fromisoformat(text))
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"must be YYYY-MM-DD; got {text!r}") from None
+
     p.set_defaults(func=cmd_add, write=True)
 
     p = sub.add_parser("set", help="change fields: set ID key=value key+=item --rel ID")
@@ -2710,12 +2716,12 @@ def build_parser():
     p.set_defaults(func=cmd_skip_repair, write=True)
 
     p = limited(sub.add_parser("calibration", help="confidence vs correctness"))
-    p.add_argument("--since")
+    p.add_argument("--since", type=day, help="YYYY-MM-DD")
     p.set_defaults(func=cmd_calibration, write=False)
 
     p = limited(sub.add_parser("history", help="Q/A history, newest first"))
     p.add_argument("--concept")
-    p.add_argument("--since")
+    p.add_argument("--since", type=day, help="YYYY-MM-DD")
     p.add_argument("--source", choices=QA_SOURCES)
     p.add_argument("--full", action="store_true", help="include answer gists")
     p.set_defaults(func=cmd_history, write=False)
