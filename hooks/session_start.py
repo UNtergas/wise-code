@@ -78,23 +78,27 @@ def wise_command(state):
     return f'python3 "{PLUGIN_ROOT / "scripts/wise.py"}" --root "{state.parent}"'
 
 
-def graph_start_check_pending(state):
-    """Ask the learning graph whether a session still awaits its start check.
+def graph_review_state(state):
+    """(a session still awaits its start check, how many questions are due).
 
-    Uses the same loader as wise.py, so the hook and the script never disagree.
-    Any failure (a broken graph, a symlink, an old Python) means "no", silently:
-    the hook must never stop a session from starting.
+    One read of the learning graph, through wise.py's own loader and its own
+    idea of "due", so the hook and the script never disagree. Counts only; no
+    question text reaches the hook's output. Any failure (a broken graph, a
+    symlink, an old Python) means (False, 0), silently: the hook must never
+    stop a session from starting.
     """
     try:
         sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
         import wise  # noqa: PLC0415 - loaded only when a graph exists
         # Short wait: a session start never stalls behind a long write.
         with wise.Graph(state, timeout=2) as graph:
-            return any(n.get("start_check") == "pending" for n in graph.of_type("session"))
+            pending = any(n.get("start_check") == "pending"
+                          for n in graph.of_type("session"))
+            return pending, len(wise.due_questions(graph))
     # SystemExit too: wise.py exits on Python < 3.9 at import time, and that
     # BaseException would otherwise escape and abort the hook.
     except (Exception, SystemExit):  # noqa: BLE001 - any failure stays silent
-        return False
+        return False, 0
     finally:
         if sys.path and sys.path[0] == str(PLUGIN_ROOT / "scripts"):
             sys.path.pop(0)
@@ -319,10 +323,12 @@ def restore(payload):
                      + ("" if learning else CONSULT_LEARNING_OFF))
     if learning:
         if payload.get("source") in NEW_SESSION_SOURCES:
-            pending = (graph_start_check_pending(state) if has_graph(state)
-                       else start_check_pending(state / "session-recap.md"))
+            pending, due = (graph_review_state(state) if has_graph(state)
+                            else (start_check_pending(state / "session-recap.md"), 0))
             if pending:
                 parts.append(start_check_context(state))
+            if due:
+                parts.append(due_context(due))
             inbox = state / "inbox"
             if inbox.is_dir() and not inbox.is_symlink() and any(inbox.glob("*.json")):
                 parts.append(
@@ -370,6 +376,17 @@ def start_check_context(state):
         "check from the Learn guide: multiple-choice (QCM) and open Q/A questions on "
         "the last session's check points, asked one at a time, without showing the "
         "recap first. The learner may say skip."
+    )
+
+
+def due_context(due):
+    what = "1 question is" if due == 1 else f"{due} questions are"
+    return (
+        f"Review backlog: {what} due for review in this project's question bank. "
+        "After the start check (if one is due) and before other work, tell the "
+        "learner in one line and offer `/wise-code:quiz`. The learner decides: "
+        "never start the quiz yourself, and don't mention it again this session "
+        "if they decline."
     )
 
 

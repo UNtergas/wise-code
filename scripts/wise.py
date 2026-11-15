@@ -1524,13 +1524,16 @@ def concept_filter(graph, topic):
     return graph.resolve(topic)
 
 
-def cmd_due(graph, args):
+def due_questions(graph):
+    """Questions due today or earlier; one with no due date is due now."""
     now = iso(today())
+    return [n for n in graph.of_type("question") if n.get("due", now) <= now]
+
+
+def cmd_due(graph, args):
     wanted = concept_filter(graph, args.topic)
     due = []
-    for node in graph.of_type("question"):
-        if node.get("due", now) > now and not args.early:
-            continue
+    for node in graph.of_type("question") if args.early else due_questions(graph):
         concepts = graph.out(node["id"], "tests")
         if wanted and wanted not in concepts:
             continue
