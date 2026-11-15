@@ -315,6 +315,8 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 - **Guardrails**: one row per repeated mistake: the evidence, the level that
   enforces it, and the proof that it fails on the old mistake.
 
+What to look at each week and what the numbers mean: [docs/tracking.md](docs/tracking.md).
+
 Claude proposes questions and cards and tells you in one line what it added. Edit
 or delete them freely; your own wording beats Claude's.
 
