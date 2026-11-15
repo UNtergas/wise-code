@@ -149,7 +149,8 @@ wise.py add qa source=checkpoint q="Why store spans as UTF-8 offsets?" \
   prefix their answer (`high: the move invalidates x`). Never infer or fill it in;
   no prefix → leave it out. See "Confusions and repair".
 - `followup`: what changed (`QB-…` added, concept marked `reinforce`).
-- `wise.py history [--concept X] [--since DATE] [--source S] [--full]` reads it.
+- `wise.py history [--concept X] [--since YYYY-MM-DD] [--source S] [--full]` reads
+  it, newest first. `--since` takes a date only; anything else is refused.
 
 ## Questions
 
@@ -159,8 +160,29 @@ recognition, and are tied to this project wherever possible.
 ```sh
 wise.py add question q="The browser sends UTF-16 offsets. Why can't the core store a char index?" \
   a="Char indexes count scalar values; UTF-16 counts code units, so they differ for emoji." \
+  points+="a char index counts scalar values" \
+  points+="UTF-16 counts code units, so the two differ for emoji" \
   source="qa QA-20261028-a3f9" --tests rust-strings
 ```
+
+- **Key points.** Every question carries `points`: the two or three things a
+  correct answer must contain, one `points+="…"` each (`+=` keeps commas; a
+  plain `points=a,b` would split on them). Each is one checkable statement, not
+  a topic ("offsets are bytes because the core indexes bytes", not "offsets").
+  They are the rubric: an answer is judged point by point, never on an overall
+  impression, and the learner can read and fix them (`wise.py show <id>`).
+- **Judging.** Compare the answer with each point, in the learner's wording or
+  any equivalent reasoning, then pass what it covered: `--hit all`, `--hit none`,
+  or the numbers (`--hit 1,3`). The script caps the verdict: every point →
+  at most `correct`; some → at most `partial`; none → `wrong`. A verdict above
+  the cap is refused. A lower one is fine (all points, but only after a hint, is
+  `partial`). The missed points are stored on the QA (`missed`) and printed by
+  `history --full`; name them in your feedback. Unsure whether a point was
+  covered → it wasn't: ask a follow-up before recording, don't round up.
+- A `due` line ending in `no key points` is an older question without them.
+  Before asking it, write its points from the reference answer
+  (`wise.py set <id> points+="…"`) and say so in one line; never after you have
+  seen the answer.
 
 - `a` is a reference answer of one to three lines in project terms; cite file
   paths when it depends on this project's code.
@@ -171,11 +193,26 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
   project's terms, never as "define <principle>".
 - The script schedules (Leitner: box 1 → 1 day, 2 → 3, 3 → 7, 4 → 21, 5 → 60).
   New questions start in box 1, due tomorrow. `wise.py answer <id> correct|partial|wrong
-  --answer "<gist>" [--confidence low|mid|high] [--source start-check] [--hints N]` logs the QA and
-  reschedules: correct moves up one box, partial stays, wrong returns to box 1.
+  --hit all|none|1,3 --answer "<gist>" [--confidence low|mid|high]
+  [--source start-check] [--hints N] [--asked "<variant>"]` logs the QA and reschedules: correct moves up one box,
+  partial stays, wrong returns to box 1. A correct answer prefixed `low:` stays
+  in its box too (right but unsure is not yet retained); the script says so, and
+  you tell the learner in a few words.
   Only Quiz and the start check reschedule; others only add questions or fix a
   wrong reference answer (`set <id> a="…"`).
 - `wise.py due [--topic X] [--limit N] [--early]` lists what is due, interleaved.
+- **Variants.** A line of `due` ending in `ask a variant` is a question the
+  learner has already answered correctly at least twice (box 3 or higher):
+  asking the same words again tests memory of the wording. Ask a fresh question
+  on the same idea instead: another case in this project's current code, the
+  reverse direction (given the effect, name the cause), or "what breaks if…".
+  Judge it against the idea in the reference answer, and record it with
+  `--asked "<the question you asked>"` so the history shows what was asked. The
+  bank's own wording stays as it is.
+- **Multiple-choice stems.** A question whose `source` starts with `lesson` came
+  from a lesson quiz, so its text may only make sense next to options that are
+  no longer there ("Which of these…"). Before asking it, reword it once into an
+  open question on the same idea (`wise.py set <id> q="…"`) and say so in one line.
 
 ## Confusions and repair
 
@@ -226,7 +263,9 @@ wise.py export anki
   duplicates on the front. Check with `wise.py find "<front words>" --type card`
   before adding.
 - `export anki` writes `.wise-code/cards.tsv` (`#separator:Tab`, `#html:false`,
-  `#notetype:Basic`, `#deck:wise-code::<project>`, `#tags column:3`). The file is
+  `#notetype:Basic`, `#deck:wise-code::<project>`, `#tags column:3`). A front or
+  back that starts with `#` or `"` is written quoted, so Anki doesn't read it as
+  a comment or a quoted field (`#[derive(Debug)]` is safe to put on a card). The file is
   an export, regenerated each time; edit cards in the graph. Re-importing it in
   Anki (File → Import) updates notes by front and keeps their schedule.
 
@@ -247,7 +286,8 @@ wise.py add session goal="Retry queue" finished+="Backoff in src/queue.rs (a1b2c
   ideas tied to this project: the source of the next start check).
 - `start_check` is `pending` when written. The start check sets it to
   `done 2026-10-29 · 3/4` or `skipped 2026-10-29`; never `done` without asking.
-- Adding a session links that day's unlinked records to it (`in`).
+- Adding a session links every unlinked record since the last session to it
+  (`in`), including ones added on that session's day after its recap.
 - `wise.py session --pending` / `--last` read them.
 
 ## Decisions
@@ -346,7 +386,10 @@ wise.py link LR-new supersedes LR-old
 ## Finding things
 
 - `wise.py concept <slug>` (or `show <id>`): one node and its newest links.
-- `wise.py weak [--with-prereqs]`: concepts marked `reinforce` or recently missed.
+- `wise.py weak [--with-prereqs] [--days N]`: concepts marked `reinforce`, or with
+  open misses. A miss (`wrong` or `partial`) stops counting once two later
+  answers on that concept are `correct`; the line shows `open misses` and what
+  `recovered`. `mistakes` still counts every miss: a repeat is a repeat.
 - `wise.py find <words> [--type T]`: text search over every node.
 - `wise.py list <type> [--where field=value] [--concept X]`.
 - `wise.py stats`, `wise.py check` (validation; warns about files that are gone).

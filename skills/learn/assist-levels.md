@@ -12,6 +12,7 @@ language override beats the default; an explicit per-step request beats both.
 | Level | You produce | Real code written by |
 |---|---|---|
 | **Hint** | Direction only | Learner |
+| **Example** | A worked example of a different problem, then Hint | Learner |
 | **Pseudo** | Language-aware pseudocode + concepts | Learner |
 | **Full code** | Implementation of the agreed design | You (original VibeWise loop) |
 
@@ -35,8 +36,42 @@ Act like a LeetCode hint or a good interviewer: give direction, never the answer
 - Never write code, pseudocode, signatures, or an ordered step list that adds up
   to the solution. Naming an API (`Arc`, `Depends`, `tokio::spawn`) is allowed;
   showing how to call it in this problem is not.
-- After the last hint, offer to switch this step to Pseudo. Don't switch on
-  your own.
+- After the last hint, offer to switch this step to Example (if the concept is
+  new to them) or Pseudo. Don't switch on your own.
+
+## Example
+
+For a concept the learner has never used: a new language, a new kind of problem.
+A novice given only hints spends the effort on syntax instead of the idea. A
+worked example gives them one complete solution to study; then they solve their
+own problem without one.
+
+- Give **one worked example of a different problem** that needs the same
+  concept: complete, real code in the target language, about 30 lines at most,
+  runnable as it stands. It is never the learner's problem: another domain,
+  other names, other types and data shapes, so nothing in it becomes their step
+  by renaming. If no different problem isolates the concept, say so and use Hint.
+- One example teaches one concept. Keep everything else in it as plain as
+  possible. Follow the language's official documentation for idioms and link the
+  page that covers the concept.
+- Show it in chat under `✦ Example: <concept>`. Never write it to the learner's
+  files.
+- Then the learner explains it. Ask two or three questions about specific lines,
+  one at a time, and wait for each: why this line is needed, what the compiler
+  or runtime says without it, what changes if one thing changes. Don't explain
+  the example first; their explanation is what makes it stick. End each
+  question with the confidence-prefix reminder and record each answer
+  (`wise.py add qa source=checkpoint … said="<their words>" --about <concept>`).
+  A wrong answer: explain that line, then ask one more about it.
+- Then the learner writes their own step, and the step runs at **Hint**:
+  direction only, with no code, pseudocode or signatures for their problem, and
+  no mapping of the example onto their code ("like the example, but with your
+  `Span`"). Finding that mapping is the work.
+- One example per concept. Record it:
+  `wise.py set <concept> notes+="Example given <date>: <the example's problem>"`.
+  When the concept comes up again, or is already `demonstrated`, there is no
+  second example and the step runs at Hint. The learner can still ask for
+  another explicitly.
 
 ## Pseudo
 
@@ -91,14 +126,17 @@ Inside an approved step, write the code in ub-mode's order (Robert C. Martin):
 2. **Make it right.** Run the project's checks, then the gates in
    [gates.md](gates.md) on the changed code, and fix what they report. Refactor
    only with the behavior pinned by tests, and rerun them after.
-3. **Report.** The Implementation report lists each gate's result (or "not run")
+3. **Explain-back.** One question to the learner about the code you just wrote,
+   before the report (see "Agree, implement, explain" in
+   [behavior.md](behavior.md)).
+4. **Report.** The Implementation report lists each gate's result (or "not run")
    next to the other checks.
 
 Stay inside the approved scope. A gate finding outside it is a note in the
 report, not an edit. Don't commit or push unless the learner asks; when they do,
 make small commits, each saying why, what changed and how it was checked.
 
-## Rules for Hint and Pseudo
+## Rules for Hint, Example and Pseudo
 
 - Don't edit the learner's source files. You may read, run, and test them.
 - You may write non-learning support only when the learner asks for that specific
@@ -110,7 +148,7 @@ make small commits, each saying why, what changed and how it was checked.
   2. Run the quality gates that are installed, exactly as [gates.md](gates.md)
      says, and report their findings on the changed code. Report actual
      results for every check: say what ran and what didn't.
-  3. Give feedback at the current level. In Hint, say where the problem is and
+  3. Give feedback at the current level. In Hint and Example, say where the problem is and
      what kind of problem it is (ownership, blocking call, missing validation)
      without the fix; name the principle from [principles.md](principles.md)
      it touches when one fits. In Pseudo, describe the fix as pseudocode. Quote
@@ -136,10 +174,10 @@ make small commits, each saying why, what changed and how it was checked.
 - A per-step change applies to that step only, then the stored level resumes.
 - A global or per-topic change updates `profile.md` (`Assist level:` or
   `Level overrides:`). Announce the change in one line.
-- Never lower the learner's level on your own (Hint → Pseudo → Full), even when
+- Never lower the learner's level on your own (Hint → Example → Pseudo → Full), even when
   they are slow. Offer it once after the last hint, then wait for the learner's
   answer.
 
 Headings for the new callout use the same style as behavior.md:
-`✦ Hint: <description>`, `✦ Pseudocode: <description>`,
+`✦ Hint: <description>`, `✦ Example: <description>`, `✦ Pseudocode: <description>`,
 `✦ Code review: <description>`.

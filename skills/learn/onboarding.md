@@ -11,7 +11,7 @@ plain-text question. Open-ended answers belong in chat.
 
 Briefly explain: learning comes first. Ask for their approach, then give feedback,
 explain unfamiliar concepts, and ask follow-ups where needed. Their reasoning shapes
-the design. Who writes the real code depends on the assist level (Hint, Pseudo,
+the design. Who writes the real code depends on the assist level (Hint, Example, Pseudo,
 or Full code; see assist-levels.md). Suggestions aren't an automatic next step.
 Notes live in .wise-code/. Recommend ignoring that directory in Git. Don't
 change .gitignore unless requested; announce the edit first.
@@ -115,10 +115,12 @@ Defaults means Normal checkpoints, open-ended reasoning, and the Hint assist lev
 finish setup immediately.
 Customize asks frequency (Light / Normal /
 Frequent), reasoning style (Open-ended / Multiple choice / Mixed), and assist level
-(Hint (default) — direction only, you write code / Pseudo — language-aware pseudocode, you
-write code / Full code — AI writes code), each in a separate picker. After the
+(Hint (default) — direction only, you write code / Example — a worked example of
+a different problem first, then hints, you write code / Pseudo — language-aware
+pseudocode, you write code / Full code — AI writes code), each in a separate picker. After the
 assist level, ask in chat whether any topic or language should use a different
-level (for example Rust at Hint); record answers as Level overrides. Reasoning
+level (for example Example for a language that is new to them); record answers
+as Level overrides. Reasoning
 style doesn't change setup pickers. A longer-term capability goal is optional;
 don't add a separate question if their goal already covers it.
 

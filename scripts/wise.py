@@ -45,6 +45,13 @@ DEFAULT_LIMIT = 10
 # Leitner boxes: box -> days until the next review.
 BOXES = {1: 1, 2: 3, 3: 7, 4: 21, 5: 60}
 
+# A question that reached this box was answered correctly at least twice, so
+# the wording itself may be what is remembered: `due` marks it "ask a variant".
+VARIANT_BOX = 3
+# Later correct answers on a concept after which an earlier miss stops counting
+# as weak (`weak`). `mistakes` keeps counting it: a recovered miss still happened.
+WEAK_RECOVERY = 2
+
 VERDICTS = ("correct", "partial", "wrong", "n/a")
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
               "reflect", "asked", "start-check", "shelf", "repair")
@@ -76,10 +83,10 @@ TYPES = {
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
-        "said_hash": "str"}},
+        "said_hash": "str", "missed": "list"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
-        "legacy": "str"}},
+        "legacy": "str", "points": "list"}},
     "card": {"prefix": "CARD", "required": ["front", "back"], "fields": {
         "front": "str", "back": "str", "tags": "list"}},
     "session": {"prefix": "S", "required": ["goal"], "fields": {
@@ -1138,7 +1145,12 @@ def cmd_add(graph, args):
 
 
 def link_session(graph, session_id):
-    """Attach this session's unlinked records: everything dated after the last session."""
+    """Attach this session's unlinked records: everything since the last session.
+
+    The earlier session's own day counts: a record added that day after its
+    recap is still unlinked, and belongs to this session. Records the earlier
+    session took are skipped below, since they already have an `in` edge.
+    """
     session = graph.nodes[session_id]
     earlier = [s["date"] for s in graph.of_type("session")
                if s["id"] != session_id and s.get("date", "") < session["date"]]
@@ -1146,7 +1158,7 @@ def link_session(graph, session_id):
     for node in list(graph.nodes.values()):
         if node["type"] not in RELS["in"][0] or graph.out(node["id"], "in"):
             continue
-        if since < node.get("date", node.get("created", "")) <= session["date"]:
+        if since <= node.get("date", node.get("created", "")) <= session["date"]:
             graph.link(node["id"], "in", session_id)
 
 
@@ -1281,9 +1293,24 @@ def cmd_answer(graph, args):
     if problem:
         # Checked before any change, so a bad stored box never half-applies.
         raise WiseError(f"{qid}: {problem}; fix it with wise.py set {qid} box=1")
+    judged = points_hit(question, args.hit)
+    if judged is not None:
+        total = len(question["points"])
+        limit = verdict_limit(judged[0], total)
+        ranks = ("wrong", "partial", "correct")
+        if ranks.index(args.verdict) > ranks.index(limit):
+            raise WiseError(f"{judged[0]} of {total} key points hit: the verdict can be "
+                            f"at most {limit}")
+    asked = question["q"] if args.asked is None else " ".join(args.asked.split())
+    if not asked:
+        raise WiseError("--asked needs the question as it was asked; leave it out "
+                        "when the bank's wording was used")
+    # Right but unsure is not yet retained: the question comes back at the
+    # same interval instead of a longer one.
+    unsure = args.verdict == "correct" and args.confidence == "low"
     if args.source in ("quiz", "start-check") or args.schedule:
         box = question.get("box", 1)
-        if args.verdict == "correct":
+        if args.verdict == "correct" and not unsure:
             box = min(box + 1, 5)
         elif args.verdict == "wrong":
             box = 1
@@ -1291,13 +1318,15 @@ def cmd_answer(graph, args):
         question["due"] = iso(today() + dt.timedelta(days=BOXES[box]))
         graph.touch(question)
     qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": iso(today()),
-          "created": iso(today()), "source": args.source, "q": question["q"],
+          "created": iso(today()), "source": args.source, "q": asked,
           "a": args.answer or "(answered in chat)", "verdict": args.verdict,
           "at": stamp_now()}
     if args.hints:
         qa["hints"] = args.hints
     if args.confidence:
         qa["confidence"] = args.confidence
+    if judged and judged[1]:
+        qa["missed"] = judged[1]
     if args.said:
         qa["said"] = args.said
         mark_said(qa, None)
@@ -1307,11 +1336,47 @@ def cmd_answer(graph, args):
     for concept in graph.out(qid, "tests"):
         graph.link(qa["id"], "about", concept)
     graph.save()
-    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}")
+    print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}"
+          f"{' · kept in its box: low confidence' if unsure else ''}")
     if is_confusion(qa):
         print(f"confusion: {qa['id']} · repair before building on "
               f"{', '.join(graph.out(qid, 'tests')) or 'this concept'}")
     return 0
+
+
+def points_hit(question, hit):
+    """Which of a question's key points an answer hit, as (hit count, missed texts).
+
+    `hit` is the --hit value: "all", "none", or point numbers from 1
+    ("1,3"). A question with key points can't be answered without it, so the
+    verdict rests on points anyone can check, not on an overall impression.
+    """
+    points = question.get("points") or []
+    if not points:
+        if hit is not None:
+            raise WiseError(f"{question['id']} has no key points; leave --hit out, or add "
+                            f"them first: wise.py set {question['id']} points+=\"…\"")
+        return None
+    usage = (f"{question['id']} has {len(points)} key points; pass --hit all, --hit none, "
+             f"or the numbers the answer covered (--hit 1,3)")
+    if hit is None:
+        raise WiseError(usage)
+    if hit in ("all", "none"):
+        numbers = set(range(1, len(points) + 1)) if hit == "all" else set()
+    else:
+        parts = [part.strip() for part in hit.split(",")]
+        if not all(part.isdigit() and 1 <= int(part) <= len(points) for part in parts):
+            raise WiseError(f"--hit {hit!r} is not a list of point numbers; {usage}")
+        numbers = {int(part) for part in parts}
+    missed = [point for number, point in enumerate(points, 1) if number not in numbers]
+    return len(numbers), missed
+
+
+def verdict_limit(hit_count, total):
+    """The best verdict the points allow: every point, some, or none."""
+    if hit_count == total:
+        return "correct"
+    return "partial" if hit_count else "wrong"
 
 
 # ---------------------------------------------------------------- confusions and repair
@@ -1504,13 +1569,16 @@ def concept_filter(graph, topic):
     return graph.resolve(topic)
 
 
-def cmd_due(graph, args):
+def due_questions(graph):
+    """Questions due today or earlier; one with no due date is due now."""
     now = iso(today())
+    return [n for n in graph.of_type("question") if n.get("due", now) <= now]
+
+
+def cmd_due(graph, args):
     wanted = concept_filter(graph, args.topic)
     due = []
-    for node in graph.of_type("question"):
-        if node.get("due", now) > now and not args.early:
-            continue
+    for node in graph.of_type("question") if args.early else due_questions(graph):
         concepts = graph.out(node["id"], "tests")
         if wanted and wanted not in concepts:
             continue
@@ -1527,7 +1595,9 @@ def cmd_due(graph, args):
                 order.append(by_topic[topic].pop(0))
     printer = Printer("pass --limit or --topic")
     for node in order[: args.limit]:
-        printer.line(summary(graph, node))
+        variant = " · ask a variant" if node.get("box", 1) >= VARIANT_BOX else ""
+        unpointed = "" if node.get("points") else " · no key points"
+        printer.line(summary(graph, node) + variant + unpointed)
     printer.done(max(0, len(order) - args.limit))
     if not order:
         upcoming = sorted(n.get("due", "") for n in graph.of_type("question"))
@@ -1568,19 +1638,29 @@ def recent_misses(graph, limit_days=None):
     return counts
 
 
+def open_misses(graph, concept, miss_ids):
+    """The misses on a concept not yet followed by WEAK_RECOVERY correct answers."""
+    correct = [order(n) for n in map(graph.nodes.get, graph.into(concept, "about"))
+               if n["type"] == "qa" and n.get("verdict") == "correct"]
+    return [i for i in miss_ids
+            if sum(1 for c in correct if c > order(graph.nodes[i])) < WEAK_RECOVERY]
+
+
 def cmd_weak(graph, args):
     misses = recent_misses(graph, args.days)
-    scored = []
+    scored, still_open = [], {}
     for node in graph.of_type("concept"):
-        score = len(misses.get(node["id"], [])) + (3 if node.get("status") == "reinforce" else 0)
+        still_open[node["id"]] = open_misses(graph, node["id"], misses.get(node["id"], []))
+        score = len(still_open[node["id"]]) + (3 if node.get("status") == "reinforce" else 0)
         if score:
             scored.append((-score, node["id"]))
     scored.sort()
     printer = Printer("pass --limit or --days")
-    shown = 0
     for score, concept in scored[: args.limit]:
-        printer.line(f"{summary(graph, graph.nodes[concept])} · misses {len(misses.get(concept, []))}")
-        shown += 1
+        recovered = len(misses.get(concept, [])) - len(still_open[concept])
+        printer.line(f"{summary(graph, graph.nodes[concept])} · open misses "
+                     f"{len(still_open[concept])}"
+                     f"{f' · recovered {recovered}' if recovered else ''}")
         if args.with_prereqs:
             for pre in graph.out(concept, "prereq"):
                 printer.line(f"  prereq: {summary(graph, graph.nodes[pre])}")
@@ -1637,12 +1717,14 @@ def cmd_history(graph, args):
         if wanted and wanted not in graph.out(node["id"], "about"):
             continue
         items.append(node)
-    items.sort(key=lambda n: (n.get("date", ""), n["id"]), reverse=True)
+    items.sort(key=order, reverse=True)  # `at` orders records within a day
     printer = Printer("pass --concept, --since or --source")
     for node in items[: args.limit]:
         printer.line(summary(graph, node))
         if args.full:
             printer.line(f"  A (gist): {short(node.get('a', ''), 200)}")
+            for point in node.get("missed", []):
+                printer.line(f"  missed: {short(point, 200)}")
             for line in said_lines(node, with_note=False):
                 printer.line(line)
     printer.done(max(0, len(items) - args.limit))
@@ -1871,16 +1953,35 @@ def cmd_render(graph, args):
     return 0
 
 
+def anki_field(text):
+    """One field of an Anki text import, on one line with no tabs.
+
+    Anki ignores a line that starts with "#" and reads a leading double quote
+    as the start of a quoted field, so a field starting with either is quoted,
+    with its quotes doubled. Others stay as they are.
+    """
+    text = " ".join(str(text).replace("\t", " ").split())
+    if text.startswith(("#", '"')):
+        return '"' + text.replace('"', '""') + '"'
+    return text
+
+
+def anki_unfield(text):
+    """The text anki_field wrote, for reading an export back."""
+    if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
+        return text[1:-1].replace('""', '"')
+    return text
+
+
 def cmd_export(graph, args):
     if args.format != "anki":
         raise WiseError("export formats: anki")
     deck = args.deck or graph.state.parent.name
-    clean = lambda text: " ".join(str(text).replace("\t", " ").split())  # noqa: E731
     rows = ["#separator:Tab", "#html:false", "#notetype:Basic",
             f"#deck:wise-code::{deck}", "#tags column:3"]
     for node in sorted(graph.of_type("card"), key=lambda n: n["id"]):
         tags = ["wise-code", *node.get("tags", []), *graph.out(node["id"], "tests")]
-        rows.append(f"{clean(node['front'])}\t{clean(node['back'])}\t"
+        rows.append(f"{anki_field(node['front'])}\t{anki_field(node['back'])}\t"
                     f"{' '.join(dict.fromkeys(tags))}")
     target = Path(args.out) if args.out else graph.state / "cards.tsv"
     target.write_text("\n".join(rows) + "\n", encoding="utf-8")
@@ -2333,6 +2434,10 @@ class Importer:
         self.done(path)
 
     def cards(self, path):
+        # Anki's identity for a card is its front, and cards.tsv is also what
+        # `export anki` writes: a front the graph already has is not imported
+        # again, so running the import twice, or on an export, adds nothing.
+        fronts = {n.get("front") for n in self.graph.of_type("card")}
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip() or line.startswith("#"):
                 continue
@@ -2340,6 +2445,10 @@ class Importer:
             if len(columns) < 2:
                 self.report.append(f"cards.tsv: skipped {short(line, 40)!r}")
                 continue
+            columns[:2] = [anki_unfield(c) for c in columns[:2]]
+            if columns[0] in fronts:
+                continue
+            fronts.add(columns[0])
             tags = [t for t in (columns[2].split() if len(columns) > 2 else [])
                     if t != "wise-code"]
             # A tag that names a known concept becomes an edge; others stay tags.
@@ -2597,6 +2706,12 @@ def build_parser():
     parser.add_argument("--root", help="project or shelf folder (default: nearest .wise-code)")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    def day(text):
+        try:
+            return iso(dt.date.fromisoformat(text))
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"must be YYYY-MM-DD; got {text!r}") from None
+
     def limited(p, default=DEFAULT_LIMIT):
         p.add_argument("--limit", type=int, default=default)
         return p
@@ -2637,6 +2752,10 @@ def build_parser():
     p.add_argument("id")
     p.add_argument("verdict")
     p.add_argument("--answer", help="gist of the learner's answer")
+    p.add_argument("--asked", help="the question as asked, when it was a variant "
+                   "of the bank's wording")
+    p.add_argument("--hit", help="key points the answer covered: all, none, or "
+                   "their numbers (1,3); required when the question has points")
     p.add_argument("--said", help="verbatim span of the learner's answer")
     p.add_argument("--confidence", choices=CONFIDENCE, help="what the learner prefixed")
     p.add_argument("--source", default="quiz", choices=QA_SOURCES)
@@ -2686,12 +2805,12 @@ def build_parser():
     p.set_defaults(func=cmd_skip_repair, write=True)
 
     p = limited(sub.add_parser("calibration", help="confidence vs correctness"))
-    p.add_argument("--since")
+    p.add_argument("--since", type=day, help="YYYY-MM-DD")
     p.set_defaults(func=cmd_calibration, write=False)
 
     p = limited(sub.add_parser("history", help="Q/A history, newest first"))
     p.add_argument("--concept")
-    p.add_argument("--since")
+    p.add_argument("--since", type=day, help="YYYY-MM-DD")
     p.add_argument("--source", choices=QA_SOURCES)
     p.add_argument("--full", action="store_true", help="include answer gists")
     p.set_defaults(func=cmd_history, write=False)

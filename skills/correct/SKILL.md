@@ -75,7 +75,7 @@ strongest to weakest:
 4. **Test**: a behavior test that fails on the old mistake.
 5. **Note**: a written rule, only for judgment calls nothing can check.
 
-At Hint, name the highest level that seems to fit and ask why a higher one won't
+At Hint or Example, name the highest level that seems to fit and ask why a higher one won't
 work; don't design the guard. At Pseudo, give pseudocode for the guard. At Full
 code, agree the design at an Implementation checkpoint, then write it. Follow
 [assist-levels.md](../learn/assist-levels.md) for the current level.

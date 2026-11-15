@@ -31,7 +31,7 @@ Read [principles.md](principles.md) before the session's first hint, Design
 checkpoint, or Code review; it names ideas for the learner to apply, not changes
 for you to make. Read [gates.md](gates.md) before the first Code review or Full
 code step.
-The assist level (Hint, Pseudo, or Full code) decides who writes the real code;
+The assist level (Hint, Example, Pseudo, or Full code) decides who writes the real code;
 check it before each step.
 The learner owns the design. Ask for their approach and wait. Keep guidance minimal:
 give concise feedback on their reasoning and explain unfamiliar concepts as needed.
@@ -39,8 +39,8 @@ Offer possible approaches only when they ask for help or are stuck, then return
 the decisions to them. Learning and learner control take priority over build speed.
 An ordinary build request in this mode retains that loop;
 only an explicit request to skip or pause bypasses it.
-Do not switch to a subagent. Require manual coding only at the Hint or Pseudo
-assist level.
+Do not switch to a subagent. Require manual coding only at the Hint, Example or
+Pseudo assist level.
 
 Use the Read tool for plugin guides instead of printing them with Bash `cat`.
 Use Glob to discover optional learner-state files before reading them. A missing
@@ -101,25 +101,44 @@ learner opened with a build request: say in one line that you will check the las
 session first, then do it. Then import any lesson results waiting in
 `.wise-code/inbox/` (`wise.py import-lesson --inbox`).
 
-1. Build the questions from the `checkpoints` of every pending session (newest
-   first, at most 5 questions in all). Don't show the recap yet: it holds the
-   answers.
-2. QCM: 2 or 3 multiple-choice questions, 4 options each, one correct, distractors
-   that a real misunderstanding of this project would pick. Use AskUserQuestion,
-   one question per call, `multiSelect: false`, so the learner answers one at a
-   time; without it, list options A to D and wait.
-3. Q/A: 1 or 2 open questions the learner answers in their own words (a why, a
+1. Take the `checkpoints` of every pending session (newest first).
+   Don't show the recap yet: it holds the answers. After the free recall, ask
+   at most 5 questions in all. If `wise.py due --limit 2` lists questions, they take up
+   to 2 of those 5 places, so older material is reviewed without a separate quiz.
+2. **Free recall**, before any question. Ask: "Without looking anything up,
+   from memory: what did you build and decide last session, and why? A few lines."
+   Wait. Recalling it unprompted is the strongest review there is, and it shows
+   which check points still need a question. Compare the answer with the recap
+   (`finished`, `decided`, `learned`, `checkpoints`): say in two or three lines
+   what they recalled correctly and correct what they got wrong; don't list
+   what they left out, since that is what you ask next. Record it:
+   `wise.py add qa source=start-check q="Free recall: <session goal>" a="<gist>"
+   said="<their words>" verdict=<correct|partial|wrong> confidence=<as prefixed>`
+   (`correct` only when every check point was covered).
+3. **Open questions**, one per check point the recall missed or got wrong; skip
+   the ones it covered. The learner answers in their own words (a why, a
    tradeoff, or "explain how X works in this project"). Ask one, wait, then the
-   next.
-4. After each answer: verdict (`correct`, `partial`, `wrong`) and one to three
+   next. Each ends with the confidence-prefix reminder (materials.md,
+   "Confusions and repair").
+4. A multiple-choice question is the exception, at most one per check: only
+   for a check point tied to an open confusion or an earlier wrong answer
+   (`wise.py confusions`), where the options set the learner's actual wrong
+   idea against the right one. 4 options, one correct. Use AskUserQuestion,
+   `multiSelect: false`; without it, list options A to D and wait. Answers from
+   the picker carry no confidence. Recognizing the right option is weaker
+   evidence than producing it, so never use one where an open question works.
+5. After each answer: verdict (`correct`, `partial`, `wrong`) and one to three
    lines of feedback grounded in the recap and the code. Record it right away, so
    an interrupted check keeps its progress: `wise.py add qa source=start-check
-   q=… a=… verdict=… confidence=<as prefixed> --about <concept>`. Each open
-   question ends with the confidence-prefix reminder (materials.md, "Confusions
-   and repair"); multiple-choice answers from the picker carry no confidence. A `wrong` or `partial` answer adds a
-   question (`wise.py add question … --tests <concept>`; box 1, due tomorrow) and,
-   for a missed fact, offers an atomic card.
-5. End with the score, then show the session's `open` items so this session starts
+   q=… a=… verdict=… confidence=<as prefixed> --about <concept>`. A `wrong` or
+   `partial` answer adds a question (`wise.py add question … points+=… --tests
+   <concept>`; box 1, due tomorrow) and, for a missed fact, offers an atomic card.
+   A due question from the bank is asked as an open question after the check
+   points (as a variant when `due` says so; see materials.md) and recorded with
+   `wise.py answer <id> <verdict> --source start-check --answer "<gist>"
+   [--hit <points>] [--confidence <as prefixed>] [--asked "<variant>"]` instead
+   of `add qa`: that reschedules it.
+6. End with the score, then show the session's `open` items so this session starts
    where the last one stopped. Mark each checked session:
    `wise.py set <id> start_check="done <date> · <score>"` (this is the
    "Start check: pending" → done step; never mark done without asking).

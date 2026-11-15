@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wise  # noqa: E402 - shares state lookup, errors and the pinned test date
 
 
-LEVELS = ("Hint", "Pseudo", "Full code")
+LEVELS = ("Hint", "Example", "Pseudo", "Full code")
 KINDS = ("doubt", "question")
 HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) \d\d:\d\d — ")
 DISAGREES = re.compile(r"^Disagrees with teacher: (yes|no)\b")

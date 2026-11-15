@@ -4,7 +4,7 @@ Personal Claude Code plugin for learning-first development. You own the design;
 the assist level decides how much code Claude writes.
 
 Fork of [VibeWise](https://github.com/nykooi1/vibe-wise) by Noah Kim (MIT).
-Main changes: three assist levels (`skills/learn/assist-levels.md`), a Teach mode
+Main changes: four assist levels (`skills/learn/assist-levels.md`), a Teach mode
 for topic lessons, per-project learning materials (Q/A history, question bank,
 Anki cards) with a Quiz command, and learner-first versions of several
 [pstack](https://github.com/cursor/plugins/tree/main/pstack) skills by Lauren Tan
@@ -13,10 +13,17 @@ Anki cards) with a Quiz command, and learner-first versions of several
 | Level | Claude gives | You write real code |
 |---|---|---|
 | Hint (default) | Direction only, one hint at a time | Yes |
+| Example | A worked example of a *different* problem, your explanation of it, then hints | Yes |
 | Pseudo | Language-aware pseudocode + concepts | Yes |
 | Full code | The agreed implementation | No |
 
-At Hint and Pseudo, Claude never edits your source files. When you finish a step,
+Example is for a concept that is new to you (a first project in a new language):
+you study one complete solution to another problem, explain two or three of its
+lines, then write your own step at Hint. One example per concept. At Full code,
+Claude asks you one question about the code it just wrote before it reports
+(explain-back; say "skip" to skip).
+
+At Hint, Example and Pseudo, Claude never edits your source files. When you finish a step,
 it runs a Code review: reads your changes, runs the project's checks, and gives
 feedback at your level.
 
@@ -25,7 +32,7 @@ feedback at your level.
 Build and learn:
 
 - `/wise-code:learn` — start or resume learning mode while building.
-- `/wise-code:level [hint|pseudo|full] [for <topic>]` — show or set the assist level.
+- `/wise-code:level [hint|example|pseudo|full] [for <topic>]` — show or set the assist level.
 - `/wise-code:teach [topic]` — multi-session lessons on a topic, kept in this project.
 - `/wise-code:explore <question>` — how or why existing code works: you predict,
   Claude checks the prediction against the code and its Git history. Read-only.
@@ -68,8 +75,8 @@ Review and retain:
 
 Switch levels in chat at any time:
 
-- `level hint` / `level pseudo` / `level full` — change the default.
-- `pseudo for Rust`, `hint for FastAPI`, `pseudo for writing` — per-topic override.
+- `level hint` / `level example` / `level pseudo` / `level full` — change the default.
+- `example for Rust`, `hint for FastAPI`, `pseudo for writing` — per-topic override.
 - `full code for this step` — one step only.
 
 ## Sandbox setup
@@ -200,7 +207,7 @@ the benchmark for you.
 the changed code; dryer scans the whole tree with `--threshold 0.8` and reports
 only pairs that touch changed code, so copies from unchanged files are caught.
 Code review runs the ones you have installed and reports
-the numbers; at Hint and Pseudo you fix what they find. At Full code Claude
+the numbers; at Hint, Example and Pseudo you fix what they find. At Full code Claude
 follows ub-mode's order: failing test first, make it work, then make it right
 against the gates. Missing tools are skipped; Claude never installs them.
 
@@ -276,12 +283,12 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
-| quiz: find due questions | 8,018 | 390 | 96% |
+| quiz: find due questions | 8,018 | 454 | 95% |
 | start check | 660 | 146 | 78% |
-| restore: pending decisions + weak topics | 1,619 | 246 | 85% |
+| restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
 | history of one concept | 21,808 | 375 | 99% |
-| teach: what is known | 1,671 | 229 | 87% |
+| teach: what is known | 1,671 | 275 | 84% |
 
 ## Learning materials
 
@@ -290,6 +297,20 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   keeping. Gists, not transcripts.
 - **Question bank**: why/how/tradeoff questions tied to the project. `/wise-code:quiz`
   asks the due ones and reschedules them (Leitner boxes: 1, 3, 7, 21, 60 days).
+  Each question carries two or three key points. An answer is judged point by
+  point and the script caps the verdict: every point for `correct`, at least one
+  for `partial`. The points you missed are kept with the answer
+  (`wise.py history --full`).
+  A correct answer you prefixed `low:` stays in its box: right but unsure isn't
+  retained yet. From box 3 on, Quiz asks a variant of the question (another case
+  in your current code, or the reverse direction) instead of the same words, and
+  a question that came from a lesson's multiple-choice quiz is reworded into an
+  open one first. Each new session tells you how many questions are due and
+  offers the quiz; it never starts one on its own.
+- **Weak concepts** (`wise.py weak`): concepts marked `reinforce` or with open
+  misses. A miss stops counting once two later answers on the concept are
+  correct, so Teach and Quiz plan from what is weak now, not from everything you
+  ever got wrong.
 - **Anki cards**: one atomic fact per card. `wise.py export anki` writes `cards.tsv`;
   import it with File → Import.
   Re-importing the whole file is safe: Anki matches the front, updates the note and
@@ -298,8 +319,12 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   or `/wise-code:reflect`), Claude adds an evidence-backed session recap to the
   graph: finished, learned, decided, open, and 3–5 check points.
   The next new session (startup or `/clear`, not resume or compaction) opens
-  with a start check before any other work: 2–3 multiple-choice questions and
-  1–2 open questions on those check points, recap hidden until you answer.
+  with a start check before any other work, recap hidden until you answer:
+  first you write from memory what you built and decided, then Claude asks open
+  questions on the check points you missed (at most 5; a multiple-choice
+  question only to probe one known misconception).
+  Up to two of those questions are due ones from the question bank, so older
+  material comes back without a separate quiz.
   Answers become `start-check` Q/A; misses enter the question bank.
   Say "skip" to skip. On claude.ai there is no SessionStart hook, so the check
   runs when you invoke `/wise-code:learn`.
@@ -314,6 +339,8 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   `wise.py calibration` shows how well your confidence predicts your answers.
 - **Guardrails**: one row per repeated mistake: the evidence, the level that
   enforces it, and the proof that it fails on the old mistake.
+
+What to look at each week and what the numbers mean: [docs/tracking.md](docs/tracking.md).
 
 Claude proposes questions and cards and tells you in one line what it added. Edit
 or delete them freely; your own wording beats Claude's.

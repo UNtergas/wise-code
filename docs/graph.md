@@ -17,12 +17,12 @@ On the test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
-| quiz: find due questions | 8,018 | 390 | 96% |
+| quiz: find due questions | 8,018 | 454 | 95% |
 | start check | 660 | 146 | 78% |
-| restore: pending decisions + weak topics | 1,619 | 246 | 85% |
+| restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
 | history of one concept | 21,808 | 375 | 99% |
-| teach: what is known | 1,671 | 229 | 87% |
+| teach: what is known | 1,671 | 275 | 84% |
 
 The "before" column grows with history; the "after" column doesn't.
 
@@ -158,6 +158,24 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
   first`, or `blocked` once `SKIP_CAPACITY` (2) skipped confusions are open.
   `skip-repair` stamps `skipped` on the QA and is refused at capacity.
 - `calibration`: accuracy per confidence level and the high-confidence misses.
+- Schedule: a `correct` answer at `low` confidence keeps the question in its
+  box; any other `correct` moves it up one.
+
+## Review
+
+- `weak`: concepts marked `reinforce`, or with open misses. A miss stops
+  counting after `WEAK_RECOVERY` (2) later `correct` answers on the concept.
+  `mistakes` counts every miss, recovered or not.
+- `due` marks a question at `VARIANT_BOX` (3) or higher `ask a variant`; `answer
+  --asked` stores the question as asked in the QA, the bank's wording unchanged.
+- Key points: a question's `points` (a list, two or three checkable statements)
+  are its rubric. `answer` on such a question requires `--hit all|none|1,3` and
+  refuses a verdict above what the points allow (all → `correct`, some →
+  `partial`, none → `wrong`); the missed points are stored on the QA as
+  `missed`. A question without points is answered as before, and `due` marks it
+  `no key points`.
+- The session hook reports how many questions are due (a count, no content) on
+  new sessions; the start check asks up to two of them.
 
 QA also gets an `at` timestamp so records within one day are ordered.
 
