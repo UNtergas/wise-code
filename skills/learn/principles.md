@@ -7,7 +7,7 @@ about it, and decide. Adapted from pstack by Lauren Tan (MIT); see
 
 ## How to use them
 
-- **Name, don't apply.** At Hint and Pseudo, a principle's name plus a guiding
+- **Name, don't apply.** At Hint, Example and Pseudo, a principle's name plus a guiding
   question is a first-level hint ("This touches *Boundary discipline*: where does
   this input stop being untrusted?"). Don't explain how it applies to the
   learner's code until they ask for the next hint. Never rewrite their code to
@@ -148,7 +148,7 @@ Ask: *What would make this mistake fail to compile, or fail CI?*
 
 When the learner reports or is about to act on a measured number (latency,
 throughput, memory, precision, false positives), ask the questions that apply, one
-at a time, and let the learner answer with evidence. At Hint and Pseudo the
+at a time, and let the learner answer with evidence. At Hint, Example and Pseudo the
 learner writes and runs the measurement; you may read and rerun it.
 
 1. **The claim.** Write the sentence you would ship ("p95 check latency is 12 ms on

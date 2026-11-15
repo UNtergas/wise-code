@@ -62,6 +62,7 @@ Then apply the assist level:
 | Level | Per finding you add |
 |---|---|
 | Hint | Nothing more. The learner finds the fix. |
+| Example | As Hint. |
 | Pseudo | The shape of the fix ("split into claim, then condition"), no rewritten sentence |
 | Full code | One rewritten example for the first finding only; the learner does the rest |
 

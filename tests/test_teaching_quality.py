@@ -84,3 +84,56 @@ class KeyPointTests(WiseTestCase):
         lines = {line.split(" · ")[0]: line for line in self.out("due").splitlines()}
         self.assertIn("no key points", lines[plain])
         self.assertNotIn("no key points", lines[self.qid])
+
+
+class ExampleLevelTests(unittest.TestCase):
+    def test_every_guide_that_lists_levels_knows_example(self):
+        for path in ("skills/learn/assist-levels.md", "skills/level/SKILL.md",
+                     "skills/learn/onboarding.md", "skills/learn/gates.md",
+                     "skills/critique/SKILL.md", "skills/correct/SKILL.md",
+                     "codex/skills/consult/SKILL.md", "README.md"):
+            with self.subTest(path=path):
+                self.assertIn("Example", guide(path))
+
+    def test_the_example_is_never_the_learner_s_problem(self):
+        text = guide("skills/learn/assist-levels.md")
+        section = text[text.index("## Example"):text.index("## Pseudo")]
+        for rule in ("a different problem", "never the learner's", "one concept",
+                     "explain", "Hint", "`demonstrated`"):
+            self.assertIn(rule, section)
+        self.assertIn("## Rules for Hint, Example and Pseudo", text)
+
+    def test_the_senior_journal_accepts_the_level(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import consult  # noqa: PLC0415
+        self.assertEqual(consult.LEVELS, ("Hint", "Example", "Pseudo", "Full code"))
+
+
+class ExplainBackTests(unittest.TestCase):
+    def test_full_code_asks_before_it_reports(self):
+        text = guide("skills/learn/behavior.md")
+        self.assertLess(text.index("**Explain-back**"), text.index("give a concise **Implementation report**"))
+        section = text[text.index("**Explain-back**"):text.index("give a concise **Implementation report**")]
+        for rule in ("one question", "wait", "source=checkpoint", "said=", "skip"):
+            self.assertIn(rule, section)
+        self.assertIn("`Explain-back`", text)  # a named callout heading
+        self.assertIn("Explain-back", guide("skills/learn/assist-levels.md"))
+
+
+class RecallFirstStartCheckTests(unittest.TestCase):
+    def test_free_recall_comes_before_any_question(self):
+        text = guide("skills/learn/SKILL.md")
+        check = text[text.index("## Start check"):text.index("## Session end")]
+        self.assertLess(check.index("Free recall"), check.index("Open questions"))
+        self.assertLess(check.index("Open questions"), check.index("multiple-choice"))
+        for rule in ("from memory", "Don't show the recap yet", "at most one",
+                     "at most 5 questions"):
+            self.assertIn(rule, check)
+
+    def test_hook_and_readme_describe_the_same_check(self):
+        for path in ("hooks/session_start.py", "README.md"):
+            with self.subTest(path=path):
+                text = guide(path)
+                self.assertIn("from memory", text)
+                self.assertNotIn("2–3 multiple-choice", text)
+                self.assertNotIn("(QCM)", text)

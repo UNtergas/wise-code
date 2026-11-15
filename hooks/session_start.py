@@ -373,9 +373,10 @@ def start_check_context(state):
         f"({state}) is marked 'start check: pending' (read it with "
         f"{wise_command(state)} session --pending). After asking the user's name and "
         "before other work, even if the learner opened with a task, run the Start "
-        "check from the Learn guide: multiple-choice (QCM) and open Q/A questions on "
-        "the last session's check points, asked one at a time, without showing the "
-        "recap first. The learner may say skip."
+        "check from the Learn guide: first the learner's free recall of the last "
+        "session from memory, then open questions on the check points that recall "
+        "missed, asked one at a time, without showing the recap first. The learner "
+        "may say skip."
     )
 
 

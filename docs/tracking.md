@@ -84,7 +84,7 @@ are not yet yours.
 - `wise.py list feedback --where status=proposed`: apply or reject the fixes
   collected for wise-code itself.
 - `wise.py export anki`, then File → Import in Anki, if you review cards there.
-- Check your assist level per topic (`/wise-code:level`). Still on Pseudo for a
+- Check your assist level per topic (`/wise-code:level`). Still on Example or Pseudo for a
   topic after a month of clean answers: move it to Hint.
 
 ## Several projects
@@ -103,7 +103,10 @@ done
 - Whether you can build without Claude. Test it directly: once a month, build
   one small piece with Claude closed, then run a Code review on it.
 - Speed. Nothing is timed.
-- Anything you didn't answer in your own words. A multiple-choice start-check
-  answer carries no confidence and little evidence; the open questions are the
-  ones that count.
+- Anything you didn't answer in your own words. The free recall and the open
+  questions are the evidence; a multiple-choice answer carries no confidence
+  and little weight.
+- Whether a verdict was fair, beyond its key points. `wise.py history --full`
+  shows the points you missed; if a `correct` looks generous, check the
+  question's points (`wise.py show <id>`) and fix them.
 - Whether a quote is really yours, until `wise.py check-said` has run (`check ok`).

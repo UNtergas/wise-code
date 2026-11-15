@@ -122,6 +122,8 @@ view.
      (file, function, doc section), and ask one guiding question. For a doubt,
      also say whether the teacher's claim holds. No code, pseudocode, ready
      config or step list that adds up to the answer.
+   - **Example**: as Hint. Worked examples are the teacher's to give, on a
+     problem that isn't the learner's; don't write one.
    - **Pseudo**: as Hint, plus language-aware pseudocode for the part in
      question.
    - **Full code**: the concrete answer, with code or config when it helps.
@@ -141,7 +143,7 @@ folder. A doubt:
 
 ```bash
 python3 "<plugin root>/scripts/consult.py" add --kind doubt --topic "<short topic>" \
-  --level "<Hint|Pseudo|Full code>" --asked "<their question>" \
+  --level "<Hint|Example|Pseudo|Full code>" --asked "<their question>" \
   --tried "<what they tried and knew>" --view "<your answer, as given>" \
   --disagrees <yes|no> [--what "<what the teacher got wrong>"] \
   --refs "<file:line, decision ids, links>"

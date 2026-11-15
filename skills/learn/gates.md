@@ -62,6 +62,8 @@ level in [assist-levels.md](assist-levels.md).
 - **Hint**: name the function and its number, then the kind of problem
   ("`parse_span`: CRAP 14, complexity 7, 40% covered"). Ask which branch is
   untested, or which decision could move out. One finding at a time.
+- **Example**: as Hint. A worked example is for a new concept, not for a gate
+  finding.
 - **Pseudo**: describe the split or the missing test case as pseudocode.
 - **Full code**: fix it yourself, in this order:
   - CRAP ≥ 10: split the function, test it, or both. A `match`/`switch` that

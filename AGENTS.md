@@ -215,8 +215,10 @@ WiseCode-specific checks, on top of everything above.
   history, decisions, the consult journal); writes outside `.wise-code/`;
   learner data shipped in the plugin.
 - **P1:** a skill that writes code or answers for the learner where the learner
-  should (Hint and Pseudo levels, learner-first commands).
-- Learner-first: at Hint and Pseudo, skills never edit the learner's source,
+  should (Hint and Pseudo levels, the learner's own problem at Example,
+  learner-first commands).
+- Learner-first: at Hint and Pseudo (and Example, where the only code is for a
+  different problem), skills never edit the learner's source,
   and learner-first commands keep the learner acting first.
 - Graph integrity: every write goes through `wise.py`; concurrent or
   interrupted writes can't lose records or leave a mixed graph; stored types and
