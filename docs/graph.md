@@ -18,7 +18,7 @@ On the test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
 | quiz: find due questions | 8,018 | 454 | 95% |
-| start check | 660 | 146 | 78% |
+| start check | 660 | 149 | 78% |
 | restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
 | history of one concept | 21,808 | 375 | 99% |
