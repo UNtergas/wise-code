@@ -42,12 +42,14 @@ wise.py due --limit 20                    # 5. what is waiting for review?
 2. **Confusions** should trend to zero, with `skips open 0/2`. A confusion older
    than a week is a skipped repair: ask Claude to repair it before the next build
    step, even if that step doesn't touch the concept.
-3. **Weak** with `--days 14` shows recent misses per concept. Without `--days` it
-   counts every miss ever recorded and never forgets, so always pass it.
+3. **Weak** shows concepts with open misses: a miss stops counting once two
+   later answers on the concept are correct (`recovered`). `--days 14` narrows
+   it to what went wrong recently.
 4. **Mistakes** lists concepts missed twice or more. Two misses on one concept
    is the trigger for `/wise-code:correct`: turn it into a type, lint or test
    you write, so the third miss can't happen. "guarded by G-…" means done.
-5. **Due** is the review backlog. Clear it with `/wise-code:quiz`. More than
+5. **Due** is the review backlog. Each new session tells you the count and the
+   start check takes two of them; clear the rest with `/wise-code:quiz`. More than
    about 15 waiting means questions are added faster than you review them: quiz
    before adding more.
 
@@ -60,8 +62,10 @@ wise.py list question --where box=5 --limit 50   # survived 21 days
 wise.py history --source quiz --since 2026-10-15
 ```
 
-A question climbs one box per correct answer (1, 3, 7, 21, 60 days) and drops
-to box 1 on a wrong one. Boxes 4 and 5 are what you retained for weeks; that
+A question climbs one box per correct answer (1, 3, 7, 21, 60 days), stays
+where it is on a partial answer or a correct one you prefixed `low:`, and drops
+to box 1 on a wrong one. From box 3 on, Quiz asks a variant of the question, so
+a high box means you can apply the idea, not recite the answer. Boxes 4 and 5 are what you retained for weeks; that
 count growing month over month is the retention signal. A box 1 that stays
 large means questions keep falling back: the concept needs a lesson
 (`/wise-code:teach`) or a repair, not more quizzing.

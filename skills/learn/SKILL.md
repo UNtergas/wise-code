@@ -103,7 +103,8 @@ session first, then do it. Then import any lesson results waiting in
 
 1. Build the questions from the `checkpoints` of every pending session (newest
    first, at most 5 questions in all). Don't show the recap yet: it holds the
-   answers.
+   answers. If `wise.py due --limit 2` lists questions, they take up to 2 of
+   those 5 places, so older material is reviewed without a separate quiz.
 2. QCM: 2 or 3 multiple-choice questions, 4 options each, one correct, distractors
    that a real misunderstanding of this project would pick. Use AskUserQuestion,
    one question per call, `multiSelect: false`, so the learner answers one at a
@@ -119,6 +120,11 @@ session first, then do it. Then import any lesson results waiting in
    and repair"); multiple-choice answers from the picker carry no confidence. A `wrong` or `partial` answer adds a
    question (`wise.py add question … --tests <concept>`; box 1, due tomorrow) and,
    for a missed fact, offers an atomic card.
+   A due question from the bank is asked as an open question after the check
+   points (as a variant when `due` says so; see materials.md) and recorded with
+   `wise.py answer <id> <verdict> --source start-check --answer "<gist>"
+   [--confidence <as prefixed>] [--asked "<variant>"]` instead of `add qa`: that
+   reschedules it.
 5. End with the score, then show the session's `open` items so this session starts
    where the last one stopped. Mark each checked session:
    `wise.py set <id> start_check="done <date> · <score>"` (this is the

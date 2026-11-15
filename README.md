@@ -276,12 +276,12 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
 
 | Command | Before (tokens) | After (tokens) | Saved |
 |---|---:|---:|---:|
-| quiz: find due questions | 8,018 | 390 | 96% |
+| quiz: find due questions | 8,018 | 414 | 95% |
 | start check | 660 | 146 | 78% |
-| restore: pending decisions + weak topics | 1,619 | 246 | 85% |
+| restore: pending decisions + weak topics | 1,619 | 300 | 82% |
 | correct: repeated mistakes | 23,489 | ≈1,020 | 96% |
 | history of one concept | 21,808 | 375 | 99% |
-| teach: what is known | 1,671 | 229 | 87% |
+| teach: what is known | 1,671 | 275 | 84% |
 
 ## Learning materials
 
@@ -290,6 +290,16 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   keeping. Gists, not transcripts.
 - **Question bank**: why/how/tradeoff questions tied to the project. `/wise-code:quiz`
   asks the due ones and reschedules them (Leitner boxes: 1, 3, 7, 21, 60 days).
+  A correct answer you prefixed `low:` stays in its box: right but unsure isn't
+  retained yet. From box 3 on, Quiz asks a variant of the question (another case
+  in your current code, or the reverse direction) instead of the same words, and
+  a question that came from a lesson's multiple-choice quiz is reworded into an
+  open one first. Each new session tells you how many questions are due and
+  offers the quiz; it never starts one on its own.
+- **Weak concepts** (`wise.py weak`): concepts marked `reinforce` or with open
+  misses. A miss stops counting once two later answers on the concept are
+  correct, so Teach and Quiz plan from what is weak now, not from everything you
+  ever got wrong.
 - **Anki cards**: one atomic fact per card. `wise.py export anki` writes `cards.tsv`;
   import it with File → Import.
   Re-importing the whole file is safe: Anki matches the front, updates the note and
@@ -300,6 +310,8 @@ test fixture (300 Q/A, 100 questions, 30 concepts, 5 sessions;
   The next new session (startup or `/clear`, not resume or compaction) opens
   with a start check before any other work: 2–3 multiple-choice questions and
   1–2 open questions on those check points, recap hidden until you answer.
+  Up to two of those questions are due ones from the question bank, so older
+  material comes back without a separate quiz.
   Answers become `start-check` Q/A; misses enter the question bank.
   Say "skip" to skip. On claude.ai there is no SessionStart hook, so the check
   runs when you invoke `/wise-code:learn`.

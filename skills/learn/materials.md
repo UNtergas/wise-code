@@ -172,11 +172,26 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
   project's terms, never as "define <principle>".
 - The script schedules (Leitner: box 1 → 1 day, 2 → 3, 3 → 7, 4 → 21, 5 → 60).
   New questions start in box 1, due tomorrow. `wise.py answer <id> correct|partial|wrong
-  --answer "<gist>" [--confidence low|mid|high] [--source start-check] [--hints N]` logs the QA and
-  reschedules: correct moves up one box, partial stays, wrong returns to box 1.
+  --answer "<gist>" [--confidence low|mid|high] [--source start-check] [--hints N]
+  [--asked "<variant>"]` logs the QA and reschedules: correct moves up one box,
+  partial stays, wrong returns to box 1. A correct answer prefixed `low:` stays
+  in its box too (right but unsure is not yet retained); the script says so, and
+  you tell the learner in a few words.
   Only Quiz and the start check reschedule; others only add questions or fix a
   wrong reference answer (`set <id> a="…"`).
 - `wise.py due [--topic X] [--limit N] [--early]` lists what is due, interleaved.
+- **Variants.** A line of `due` ending in `ask a variant` is a question the
+  learner has already answered correctly at least twice (box 3 or higher):
+  asking the same words again tests memory of the wording. Ask a fresh question
+  on the same idea instead: another case in this project's current code, the
+  reverse direction (given the effect, name the cause), or "what breaks if…".
+  Judge it against the idea in the reference answer, and record it with
+  `--asked "<the question you asked>"` so the history shows what was asked. The
+  bank's own wording stays as it is.
+- **Multiple-choice stems.** A question whose `source` starts with `lesson` came
+  from a lesson quiz, so its text may only make sense next to options that are
+  no longer there ("Which of these…"). Before asking it, reword it once into an
+  open question on the same idea (`wise.py set <id> q="…"`) and say so in one line.
 
 ## Confusions and repair
 
@@ -350,7 +365,10 @@ wise.py link LR-new supersedes LR-old
 ## Finding things
 
 - `wise.py concept <slug>` (or `show <id>`): one node and its newest links.
-- `wise.py weak [--with-prereqs]`: concepts marked `reinforce` or recently missed.
+- `wise.py weak [--with-prereqs] [--days N]`: concepts marked `reinforce`, or with
+  open misses. A miss (`wrong` or `partial`) stops counting once two later
+  answers on that concept are `correct`; the line shows `open misses` and what
+  `recovered`. `mistakes` still counts every miss: a repeat is a repeat.
 - `wise.py find <words> [--type T]`: text search over every node.
 - `wise.py list <type> [--where field=value] [--concept X]`.
 - `wise.py stats`, `wise.py check` (validation; warns about files that are gone).
