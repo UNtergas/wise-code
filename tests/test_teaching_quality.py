@@ -27,7 +27,17 @@ class KeyPointTests(WiseTestCase):
             "points+=convert at the boundary").strip()
 
     def answer(self, verdict, *args):
-        return self.run_wise("answer", self.qid, verdict, *args, check=False)
+        return self.run_wise("answer", self.qid, verdict, "--said", "the learner said this",
+                             *args, check=False)
+
+    def question_without_points(self):
+        """Only an import can still make one: `add question` requires points."""
+        notes = self.project / ".wise-code" / "questions.md"
+        notes.write_text("# Question Bank\n\n## QB-0001 · topic\nQ: Why?\nA: Because.\n"
+                         "Box: 1\nDue: 2026-10-01\n", encoding="utf-8")
+        self.run_wise("import-md")
+        [line] = [l for l in self.out("list", "question").splitlines() if "Why?" in l]
+        return line.split(" · ")[0]
 
     def test_points_keep_their_commas_and_order(self):
         shown = self.out("show", self.qid)
@@ -72,14 +82,15 @@ class KeyPointTests(WiseTestCase):
             self.assertIn("--hit", bad.stderr)
 
     def test_a_question_without_points_is_answered_as_before(self):
-        plain = self.out("add", "question", "q=Why?", "a=Because.").strip()
-        self.assertIn("box 2", self.out("answer", plain, "correct"))
-        refused = self.run_wise("answer", plain, "correct", "--hit", "1", check=False)
+        plain = self.question_without_points()
+        said = ("--said", "the learner said this")
+        self.assertIn("box 2", self.out("answer", plain, "correct", *said))
+        refused = self.run_wise("answer", plain, "correct", "--hit", "1", *said, check=False)
         self.assertEqual(refused.returncode, 2)
         self.assertIn("has no key points", refused.stderr)
 
     def test_due_says_when_a_question_has_no_points_yet(self):
-        plain = self.out("add", "question", "q=Why?", "a=Because.", "due=2026-10-01").strip()
+        plain = self.question_without_points()
         self.run_wise("set", self.qid, "due=2026-10-01")
         lines = {line.split(" · ")[0]: line for line in self.out("due").splitlines()}
         self.assertIn("no key points", lines[plain])

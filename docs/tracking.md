@@ -37,8 +37,9 @@ wise.py due --limit 20                    # 5. what is waiting for review?
    when you say `high:`, you should be right about nine times in ten. Lower
    means you build on things you only think you know; every "sure but missed"
    line is a misconception to repair this week. If `low` answers are mostly
-   correct, you are underconfident: commit to answers faster. The numbers mean
-   nothing without the prefix, so few answers in the table is itself a finding.
+   correct, you are underconfident: commit to answers faster. The last line,
+   `no confidence: N of M …`, counts answers you gave without a prefix: the
+   table says nothing about those, so a large N is itself a finding.
 2. **Confusions** should trend to zero, with `skips open 0/2`. A confusion older
    than a week is a skipped repair: ask Claude to repair it before the next build
    step, even if that step doesn't touch the concept.

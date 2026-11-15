@@ -166,7 +166,9 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
 ```
 
 - **Key points.** Every question carries `points`: the two or three things a
-  correct answer must contain, one `points+="…"` each (`+=` keeps commas; a
+  correct answer must contain, one `points+="…"` each. `add question` refuses a
+  question without them, so the rubric is written with the question and never
+  while judging an answer (`+=` keeps commas; a
   plain `points=a,b` would split on them). Each is one checkable statement, not
   a topic ("offsets are bytes because the core indexes bytes", not "offsets").
   They are the rubric: an answer is judged point by point, never on an overall
@@ -193,8 +195,8 @@ wise.py add question q="The browser sends UTF-16 offsets. Why can't the core sto
   project's terms, never as "define <principle>".
 - The script schedules (Leitner: box 1 → 1 day, 2 → 3, 3 → 7, 4 → 21, 5 → 60).
   New questions start in box 1, due tomorrow. `wise.py answer <id> correct|partial|wrong
-  --hit all|none|1,3 --answer "<gist>" [--confidence low|mid|high]
-  [--source start-check] [--hints N] [--asked "<variant>"]` logs the QA and reschedules: correct moves up one box,
+  --hit all|none|1,3 --said "<their exact words>" --answer "<gist>"
+  [--confidence low|mid|high] [--source start-check] [--hints N] [--asked "<variant>"]` logs the QA and reschedules: correct moves up one box,
   partial stays, wrong returns to box 1. A correct answer prefixed `low:` stays
   in its box too (right but unsure is not yet retained); the script says so, and
   you tell the learner in a few words.
@@ -258,6 +260,9 @@ wise.py add card front="Rust: what does slicing a &str at a non-char boundary do
 wise.py export anki
 ```
 
+  Its last line, `no confidence: N of M checkpoint, quiz and repair answers`,
+  counts the answers the table leaves out. When N is not small, the table
+  describes little: remind the learner of the prefix.
 - Fronts under about 15 words, backs under about 25, no tabs or line breaks.
   Make each front self-contained (name the language or topic): Anki matches
   duplicates on the front. Check with `wise.py find "<front words>" --type card`
@@ -347,8 +352,10 @@ Rule and recall wording: "Learner's words" in [behavior.md](behavior.md).
 - `said_check` is set only by `wise.py check-said`, never by hand: `unchecked`
   (new or changed quote), `ok`, `missing` (in none of their messages), or
   `unverified` (no transcript found). A check holds only for the words it
-  checked: change the quote by any means and it reads `unchecked`. `wise.py answer … --said "<span>"` records
-  one for a quiz or start-check answer; it is optional there.
+  checked: change the quote by any means and it reads `unchecked`. `wise.py answer` requires
+  `--said "<span>"`: an answer without the learner's words can't be checked
+  later, so none is recorded. An answer too short to quote (under three words):
+  ask them to put it in a sentence, which is also the better recall.
 - `wise.py check-said [--id ID] [--all] [--transcripts FOLDER]` reads this
   project's Claude Code transcripts (`~/.claude/projects/<encoded project path>/`)
   and nothing else. It counts only typed user messages: never compaction

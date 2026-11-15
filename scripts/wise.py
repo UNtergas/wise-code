@@ -68,6 +68,9 @@ SAID_SEP = " … "
 SAID_MIN_WORDS, SAID_MAX_WORDS = 3, 40
 # QA sources where `a` is the learner's reasoning, so `said` is required.
 LEARNER_QA_SOURCES = ("checkpoint", "explore", "reflect", "repair")
+# Sources whose questions end with the confidence-prefix reminder; `calibration`
+# reports how many of their answers came without one.
+CONFIDENCE_SOURCES = ("checkpoint", "quiz", "repair")
 
 # Field kinds: "str", "list", "int", "date", "range" (a line range, "12-40" or
 # "7"), or a tuple of allowed values.
@@ -1123,6 +1126,11 @@ def cmd_add(graph, args):
         node["at"] = stamp_now()
     apply_fields(node, sets, appends, removes)
     problems = validate_node(node) + attribution_problems(node)
+    if kind == "question" and not any(str(p).strip() for p in node.get("points", [])):
+        # The rubric is written with the question, never while judging an
+        # answer. Imports keep older questions without one; `due` marks those.
+        problems.append(f"{node['id']}: a question needs its key points: the two or three "
+                        f"things a correct answer must contain, one points+=\"…\" each")
     if problems:
         raise WiseError("; ".join(problems))
     mark_said(node, None)
@@ -1285,8 +1293,13 @@ def cmd_answer(graph, args):
         raise WiseError(f"{qid} is not a question")
     if args.verdict not in ("correct", "partial", "wrong"):
         raise WiseError("verdict: correct, partial or wrong")
+    # An answer is the learner's: without their words the verdict can't be
+    # checked later, whatever the source.
+    if not said_parts(args.said or ""):
+        raise WiseError(f"{qid}: an answer needs --said \"<the learner's exact words>\"; "
+                        f"copy a span from their message, parts joined with '{SAID_SEP}'")
     problems = attribution_problems({"id": qid, "type": "qa", "source": args.source,
-                                     "said": args.said or ""})
+                                     "said": args.said})
     if problems:
         raise WiseError("; ".join(problems))
     problem = stored_problem("question", "box", question.get("box", 1))
@@ -1327,9 +1340,8 @@ def cmd_answer(graph, args):
         qa["confidence"] = args.confidence
     if judged and judged[1]:
         qa["missed"] = judged[1]
-    if args.said:
-        qa["said"] = args.said
-        mark_said(qa, None)
+    qa["said"] = args.said
+    mark_said(qa, None)
     graph.nodes[qa["id"]] = qa
     graph.dirty = True
     graph.link(qa["id"], "answers", qid)
@@ -1510,10 +1522,14 @@ def cmd_calibration(graph, args):
     """How well confidence predicts correctness; high-confidence misses first."""
     table = {c: {"correct": 0, "partial": 0, "wrong": 0} for c in CONFIDENCE}
     misses = []
+    expected = unprefixed = 0
     for node in graph.of_type("qa"):
         confidence, verdict = node.get("confidence"), node.get("verdict")
         if args.since and node.get("date", "") < args.since:
             continue
+        if node.get("source") in CONFIDENCE_SOURCES and verdict in table["high"]:
+            expected += 1
+            unprefixed += confidence not in table
         if confidence in table and verdict in table[confidence]:
             table[confidence][verdict] += 1
             if confidence == "high" and verdict in ("wrong", "partial"):
@@ -1524,6 +1540,10 @@ def cmd_calibration(graph, args):
         rate = f"{100 * row['correct'] // total}% correct" if total else "no answers"
         print(f"{confidence}: {total} answers · {rate} · partial {row['partial']} · "
               f"wrong {row['wrong']}")
+    if expected:
+        # The table only describes prefixed answers; say how many it leaves out.
+        print(f"no confidence: {unprefixed} of {expected} "
+              f"{', '.join(CONFIDENCE_SOURCES[:-1])} and {CONFIDENCE_SOURCES[-1]} answers")
     misses.sort(key=order, reverse=True)
     printer = Printer("pass --since")
     for node in misses[: args.limit]:

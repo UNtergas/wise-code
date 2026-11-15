@@ -135,8 +135,8 @@ session first, then do it. Then import any lesson results waiting in
    <concept>`; box 1, due tomorrow) and, for a missed fact, offers an atomic card.
    A due question from the bank is asked as an open question after the check
    points (as a variant when `due` says so; see materials.md) and recorded with
-   `wise.py answer <id> <verdict> --source start-check --answer "<gist>"
-   [--hit <points>] [--confidence <as prefixed>] [--asked "<variant>"]` instead
+   `wise.py answer <id> <verdict> --source start-check --said "<their words>"
+   --answer "<gist>" [--hit <points>] [--confidence <as prefixed>] [--asked "<variant>"]` instead
    of `add qa`: that reschedules it.
 6. End with the score, then show the session's `open` items so this session starts
    where the last one stopped. Mark each checked session:

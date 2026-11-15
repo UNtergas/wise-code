@@ -157,7 +157,10 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
 - **Gate** (`wise.py confusions --concept X --with-prereqs`): `clear`, `repair
   first`, or `blocked` once `SKIP_CAPACITY` (2) skipped confusions are open.
   `skip-repair` stamps `skipped` on the QA and is refused at capacity.
-- `calibration`: accuracy per confidence level and the high-confidence misses.
+- `calibration`: accuracy per confidence level and the high-confidence misses,
+  then how many checkpoint, quiz and repair answers carried no confidence.
+- `answer` requires `--said`; `add question` requires `points`. Imported and
+  older questions without points stay valid.
 - Schedule: a `correct` answer at `low` confidence keeps the question in its
   box; any other `correct` moves it up one.
 

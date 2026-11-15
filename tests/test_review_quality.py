@@ -54,17 +54,17 @@ class WeakRecoveryTests(WiseTestCase):
 class ConfidenceScheduleTests(WiseTestCase):
     def setUp(self):
         super().setUp()
-        self.qid = self.out("add", "question", "q=Why panic?", "a=Boundary.").strip()
+        self.qid = self.out("add", "question", "points+=the point", "q=Why panic?", "a=Boundary.").strip()
 
     def test_a_correct_answer_at_low_confidence_stays_in_its_box(self):
-        out = self.out("answer", self.qid, "correct", "--confidence", "low", day="2026-10-29")
+        out = self.out("answer", self.qid, "correct", "--hit", "all", "--said", "the learner said this", "--confidence", "low", day="2026-10-29")
         self.assertIn("box 1 · due 2026-10-30", out)
         self.assertIn("low confidence", out)
 
     def test_other_correct_answers_still_move_up(self):
         for confidence, box in ((["--confidence", "mid"], 2), ([], 3),
                                 (["--confidence", "high"], 4)):
-            out = self.out("answer", self.qid, "correct", *confidence, day="2026-10-29")
+            out = self.out("answer", self.qid, "correct", "--hit", "all", "--said", "the learner said this", *confidence, day="2026-10-29")
             self.assertIn(f"now box {box} ·", out)
             self.assertNotIn("low confidence", out)
 
@@ -72,9 +72,9 @@ class ConfidenceScheduleTests(WiseTestCase):
 class VariantTests(WiseTestCase):
     def setUp(self):
         super().setUp()
-        self.kept = self.out("add", "question", "q=Why bytes?", "a=Core.", "box=3",
+        self.kept = self.out("add", "question", "points+=the point", "q=Why bytes?", "a=Core.", "box=3",
                              "due=2026-10-01", "points+=the core indexes bytes").strip()
-        self.new = self.out("add", "question", "q=Why panic?", "a=Boundary.",
+        self.new = self.out("add", "question", "points+=the point", "q=Why panic?", "a=Boundary.",
                             "due=2026-10-01").strip()
 
     def test_due_marks_retained_questions_for_a_variant(self):
@@ -83,7 +83,7 @@ class VariantTests(WiseTestCase):
         self.assertNotIn("variant", lines[self.new])
 
     def test_answer_records_the_question_actually_asked(self):
-        self.run_wise("answer", self.kept, "correct", "--hit", "all", "--asked",
+        self.run_wise("answer", self.kept, "correct", "--said", "the learner said this", "--hit", "all", "--asked",
                       "In span.rs, why can't offsets be char counts?")
         history = self.out("history", "--full")
         self.assertIn("Q: In span.rs, why can't offsets be char counts?", history)
@@ -93,7 +93,7 @@ class VariantTests(WiseTestCase):
         self.assertIn("← answers QA-", self.out("show", self.kept))
 
     def test_asked_can_t_be_empty(self):
-        bad = self.run_wise("answer", self.kept, "correct", "--hit", "all", "--asked", "  ",
+        bad = self.run_wise("answer", self.kept, "correct", "--said", "the learner said this", "--hit", "all", "--asked", "  ",
                             check=False)
         self.assertEqual(bad.returncode, 2)
         self.assertIn("--asked", bad.stderr)
@@ -104,7 +104,7 @@ class DueCountHookTests(hooks.HookCase):
     graph_state = hooks.GraphHookTests.graph_state
 
     def add_question(self, text, due):
-        self.wise("add", "question", f"q={text}", "a=A", f"due={due}")
+        self.wise("add", "question", "points+=the point", f"q={text}", "a=A", f"due={due}")
 
     def test_new_sessions_are_told_how_many_questions_are_due(self):
         self.graph_state()
