@@ -165,6 +165,11 @@ class LearnerJourney(unittest.TestCase):
         self.assertEqual(self.wise(d1, "lint-session").splitlines(),
                          [f"{first} · {d1} · 2 answers", "no flags"])
 
+        # That evening, after the recap, one more question to Claude. It belongs
+        # to no session yet; tomorrow's session must take it.
+        self.wise(d1, "add", "qa", "source=asked", "q=Is Rc a borrow?", "a=No, shared ownership",
+                  "verdict=n/a", "--about", "ownership")
+
         # ---- Day 2: the hook announces the start check and the backlog, as counts.
         context = self.hook(d2)
         self.assertIn("free recall of the last session from memory", context)
@@ -226,7 +231,7 @@ class LearnerJourney(unittest.TestCase):
                            "checkpoints+=When is clone the right call?").strip()
         self.end_of_day(d2)
         lint = self.wise(d2, "lint-session")
-        self.assertIn(f"{second} · {d2} · 6 answers", lint)
+        self.assertIn(f"{second} · {d2} · 7 answers", lint)  # six today, one from last evening
         self.assertEqual([line for line in lint.splitlines() if line.startswith("flag:")],
                          ["flag: 1 of 3 answers without a confidence prefix"])
         self.assertIn("no confidence: 1 of 5 ", self.wise(d2, "calibration"))
