@@ -53,7 +53,7 @@ The learning graph sits one level up in `<state>/graph/`, shared w/ Learn and Qu
 
 ## Session flow
 
-1. Read `MISSION.md`, `NOTES.md`, `assets/`; query `wise.py render glossary`, `wise.py list record --limit 20`, `wise.py weak`. If `<state>/profile.md` exists, read it (read-only) — concepts demonstrated in the graph (`wise.py list concept --where status=demonstrated`) count when judging ZPD. Don't edit Learn's files. Lesson results waiting in `<state>/inbox/` → `wise.py import-lesson --inbox` first.
+1. Read `MISSION.md`, `NOTES.md`, `assets/`; query `wise.py render glossary`, `wise.py list record --limit 20`, `wise.py weak`. If `<state>/profile.md` exists, read it (read-only) — concepts demonstrated in the graph (`wise.py list concept --where status=demonstrated`) count when judging ZPD. Don't edit Learn's files. Lesson results waiting in `<state>/inbox/` → `wise.py import-lesson --inbox` first. Then check where Learn stands in this project ("Project code" below).
 2. No/vague mission → interview user on _why_ before anything else.
 3. `RESOURCES.md` thin → find high-trust resources first. Never trust parametric knowledge. Hand the search to one background agent (Agent tool, `model: sonnet`) briefed with the mission and the source rules of [../research/SKILL.md](../research/SKILL.md); vet its candidates yourself before they enter `RESOURCES.md`.
 4. Pick next lesson: user's explicit req, else most mission-relevant thing in zone of proximal development (ZPD — challenged "just enough"), judged from learning records.
@@ -61,7 +61,20 @@ The learning graph sits one level up in `<state>/graph/`, shared w/ Learn and Qu
 6. Create/update reference docs alongside.
 7. Open lesson via CLI if possible.
 8. After evidence of learning: write learning records (`wise.py add record …`), promote glossary terms (concept `definition`).
-9. Before ending: update shared materials per [../learn/materials.md](../learn/materials.md) — `lesson` QA for exercises answered in chat + learner questions worth keeping (`asked`); up to 3 questions per new learning record (`wise.py add question … --tests <concept> --from <record id>`); atomic facts as cards. One line telling user what was added. Suggest `/wise-code:quiz` when questions are due.
+9. Before ending: update shared materials per [../learn/materials.md](../learn/materials.md) — `lesson` QA for exercises answered in chat + learner questions worth keeping (`asked`); up to 3 questions per new learning record (`wise.py add question … --tests <concept> --from <record id>`); atomic facts as cards. One line telling user what was added. Suggest `/wise-code:quiz` when questions are due. Next step is building in the project and Learn isn't active here → suggest `/wise-code:learn` before the build, in one line.
+
+## Project code
+
+Teach makes lessons. It doesn't build the learner's project: who writes that code is Learn's decision (assist level), and Teach runs without Learn. The canary staying on doesn't mean Learn's rules are loaded.
+
+Project code = any file outside `<state>/`. Lesson code (examples, exercises, simulators in `teach/`) and code shown in chat to explain a concept are yours to write.
+
+Where Learn stands = `<state>/profile.md`:
+
+- **No `profile.md`** → Learn was never set up here. Nothing from its onboarding exists: no assist level, no shell sandbox, no senior reviewer. When the mission is about code, or the folder holds source code, say so once per conversation, in one line, before the lesson: "Learn isn't set up in this project. The sandbox, the senior reviewer and the rule that you write the code come from `/wise-code:learn`; run it before you build." Don't run Learn's onboarding from Teach, and don't repeat the line.
+  Request to write or change project code → don't write it. One line: Teach doesn't build the project; `/wise-code:learn` sets who writes the code. Explaining the concept behind the request, or a lesson on it, is still your job. Learner says to skip ("just write it", "skip") → write it, and say in one line that it was written outside the learning loop.
+- **`Learning mode: active`** → Learn's rules decide. Read [../learn/SKILL.md](../learn/SKILL.md) and the guides it names if they aren't loaded, and follow the assist level in the profile before touching project code.
+- **`Learning mode: paused`** → the learner turned Learn off on purpose. Write project code when asked; no reminder.
 
 ## Philosophy
 

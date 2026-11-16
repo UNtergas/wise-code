@@ -39,6 +39,10 @@ Build and learn:
   tells you when it judges differently. Each section has a "Stuck here?" box for
   a question to Claude. **Copy results**, paste into the chat, and Claude picks
   up your answers and questions in the same session.
+  Teach never writes your project's code: where Learn was never set up, it
+  tells you once that the sandbox, the Codex senior and the rule that you write
+  the code come from `/wise-code:learn`, and declines build requests unless you
+  say to skip.
 - `/wise-code:explore <question>` — how or why existing code works: you predict,
   Claude checks the prediction against the code and its Git history. Read-only.
 - `/wise-code:sharpen <task>` — make a task deeper, not bigger; you rewrite it.
