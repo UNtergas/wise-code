@@ -79,10 +79,32 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
 .quiz button.is-wrong { border-color: var(--bad); color: var(--bad); }
 .quiz .feedback { color: var(--muted); font-size: 0.9rem; min-height: 1.4em; }
 
+/* Typed answer (results.js recallWidget): answer and confidence first, key points after. */
+.wise-recall, .wise-stuck { margin: 1.5rem 0; }
+.wise-recall .wise-question { font-weight: 600; margin-bottom: 0.5rem; }
+.wise-recall textarea, .wise-stuck textarea {
+  display: block; width: 100%; padding: 0.55rem 0.8rem; font: inherit; color: inherit;
+  background: transparent; border: 1px solid var(--rule); border-radius: 4px; resize: vertical;
+}
+.wise-recall textarea[readonly] { color: var(--muted); }
+.wise-confidence { border: 0; padding: 0; margin: 0.6rem 0; }
+.wise-confidence legend { padding: 0; color: var(--muted); font-size: 0.9rem; }
+.wise-confidence label { margin-right: 1rem; }
+.wise-point { display: block; margin: 0.35rem 0; }
+.wise-recall button, .wise-stuck button, #wise-results button {
+  margin: 0.5rem 0.5rem 0 0; padding: 0.45rem 0.9rem; font: inherit; color: inherit;
+  background: transparent; border: 1px solid var(--muted); border-radius: 4px; cursor: pointer;
+}
+.wise-recall button:disabled, #wise-results button:disabled { opacity: 0.45; cursor: default; }
+.wise-stuck summary { color: var(--muted); cursor: pointer; }
+.wise-note { color: var(--muted); font-size: 0.9rem; }
+#wise-results { border-top: 1px solid var(--rule); margin-top: 3rem; padding-top: 1rem; }
+
 .ask { color: var(--muted); font-style: italic; margin-top: 3rem; }
 
 @media print {
   body { background: #fff; color: #000; padding: 0; }
   a { color: #000; }
   .quiz button { border-color: #999; }
+  .wise-stuck, #wise-results { display: none; }
 }

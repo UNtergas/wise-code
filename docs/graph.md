@@ -196,9 +196,21 @@ QA also gets an `at` timestamp so records within one day are ordered.
 
 ## Lesson results
 
-Lessons are static HTML, so a quiz inside one can't write to the repo. The
-lesson's **Download results** button (`skills/teach/templates/results.js`) saves
-`{lesson, result_id, date, answers: [{id, q, answer, correct, expected}]}`. Put the
+Lessons are static HTML, so nothing in one can write to the repo. The lesson's
+**Copy results** and **Download results** buttons
+(`skills/teach/templates/results.js`) produce
+`{lesson, result_id, date, answers: [...], stuck: [{section, title, text}]}`.
+An answer is `{id, q, answer, correct, expected, confidence?}` for a
+multiple-choice question, or `{id, kind: "recall", q, answer, points, hit,
+confidence?}` for a typed one, where `hit` holds the numbers of the points the
+learner ticked. The importer derives a typed answer's verdict from `hit` (all →
+`correct`, some → `partial`, none → `wrong`) and ignores the page's `correct`.
+`wise.py regrade <qa> --hit …` records Claude's reading of the text; the
+learner's verdict stays as `self_verdict`. Each `stuck` entry becomes an `asked`
+QA answered `(not answered yet)`.
+
+Paste the copied line into the chat (`wise.py import-lesson -`, at most 256
+KiB, JSON only), put the downloaded
 file in `.wise-code/inbox/` (imported at the next session start) or run
 `wise.py import-lesson <file>`. Imported inbox files move to `inbox/done/` under
 a free name (`r-2.json`), never over an earlier one; a symlinked `inbox/`,

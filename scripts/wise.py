@@ -57,6 +57,12 @@ WEAK_RECOVERY = 2
 ADVICE_MIN_ANSWERS, ADVICE_DAYS = 5, 30
 
 VERDICTS = ("correct", "partial", "wrong", "n/a")
+# Who judged a typed lesson answer against its key points: the learner in the
+# lesson page, or Claude reading the text afterwards (`regrade`).
+GRADERS = ("self", "claude")
+# The answer of a question the learner typed in a lesson, until Claude answers it.
+STUCK_OPEN = "(not answered yet)"
+PASTE_LIMIT = 256 * 1024
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
               "reflect", "asked", "start-check", "shelf", "repair", "explain-back")
 CONFIDENCE = ("low", "mid", "high")
@@ -90,7 +96,9 @@ TYPES = {
         "verdict": VERDICTS, "hints": "int", "followup": "str",
         "result": "str", "answer_id": "str", "project": "str", "confidence": CONFIDENCE,
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
-        "said_hash": "str", "missed": "list", "point": "int", "exit": "int"}},
+        "said_hash": "str", "missed": "list", "point": "int", "exit": "int",
+        "points": "list", "graded": GRADERS, "self_verdict": VERDICTS,
+        "lesson": "str"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
         "legacy": "str", "points": "list", "check": "str"}},
@@ -2532,6 +2540,9 @@ def parse_lesson_result(data):
     Raises WiseError naming the first bad field, before anything is recorded.
     Each returned answer is {q, answer, correct, expected} with str texts and a
     bool `correct`: truthiness would turn the string "false" into a right answer.
+    A typed answer (kind "recall") also has `points` and `hit`, the numbers of
+    the points the learner ticked; a question the learner typed in the lesson
+    comes back as an item of kind "stuck". Any answer may carry `confidence`.
     """
     if not isinstance(data, dict):
         raise WiseError("not a JSON object")
@@ -2558,8 +2569,56 @@ def parse_lesson_result(data):
             if not isinstance(value, str):
                 raise WiseError(f"answer {number}: {key} must be a string; got {value!r}")
             texts[key] = value.strip()
-        parsed.append(dict(texts, correct=answer["correct"]))
+        item = dict(texts, correct=answer["correct"], kind=answer.get("kind", "choice"))
+        if item["kind"] not in ("choice", "recall"):
+            raise WiseError(f"answer {number}: kind must be choice or recall; "
+                            f"got {item['kind']!r}")
+        confidence = answer.get("confidence")
+        if confidence is not None and confidence not in CONFIDENCE:
+            raise WiseError(f"answer {number}: confidence must be one of "
+                            f"{', '.join(CONFIDENCE)}; got {confidence!r}")
+        item["confidence"] = confidence
+        if item["kind"] == "recall":
+            item["points"], item["hit"] = parse_recall(number, answer)
+        parsed.append(item)
+    parsed += parse_stuck(data.get("stuck", []), lesson)
     return result_id, date, lesson, parsed
+
+
+def parse_recall(number, answer):
+    """The key points of a typed answer and the numbers the learner ticked."""
+    points = answer.get("points")
+    if not isinstance(points, list) or not 1 <= len(points) <= 6 \
+            or not all(isinstance(p, str) and p.strip() for p in points):
+        raise WiseError(f"answer {number}: points must be 1 to 6 non-empty strings")
+    hit = answer.get("hit")
+    if not isinstance(hit, list) or not all(
+            isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(points)
+            for n in hit):
+        raise WiseError(f"answer {number}: hit must be a list of point numbers from 1 "
+                        f"to {len(points)}; got {hit!r}")
+    return [p.strip() for p in points], sorted(set(hit))
+
+
+def parse_stuck(entries, lesson):
+    """Questions the learner typed in the lesson, as items with a stable id."""
+    if not isinstance(entries, list):
+        raise WiseError("stuck must be a list")
+    items = []
+    for number, entry in enumerate(entries, 1):
+        text = entry.get("text") if isinstance(entry, dict) else None
+        if not isinstance(text, str) or not text.strip() or len(text) > 2000:
+            raise WiseError(f"stuck {number}: text must be a non-empty string of at most "
+                            f"2000 characters")
+        title = entry.get("title", "")
+        if not isinstance(title, str):
+            raise WiseError(f"stuck {number}: title must be a string")
+        text, title = " ".join(text.split()), " ".join(title.split())
+        where = " · ".join(part for part in (lesson, title) if part)
+        digest = hashlib.sha256(f"{title}\n{text}".encode("utf-8")).hexdigest()[:12]
+        items.append({"kind": "stuck", "id": f"stuck-{digest}",
+                      "q": f"[{where}] {text}" if where else text})
+    return items
 
 
 def unseen_answers(graph, result_id, answers):
@@ -2581,51 +2640,124 @@ def unseen_answers(graph, result_id, answers):
 
 def import_lesson_file(graph, path):
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        result_id, date, lesson, answers = parse_lesson_result(data)
-    except (ValueError, UnicodeError) as error:
+        text = Path(path).read_text(encoding="utf-8")
+    except UnicodeError as error:
         raise WiseError(f"{path}: not valid JSON ({error})") from None
+    return import_lesson_text(graph, text, str(path), Path(path).name)
+
+
+def import_lesson_text(graph, text, origin, label):
+    try:
+        result_id, date, lesson, items = parse_lesson_result(json.loads(text))
+    except ValueError as error:
+        raise WiseError(f"{origin}: not valid JSON ({error})") from None
     except WiseError as error:
-        raise WiseError(f"{path}: {error}") from None
-    unseen = unseen_answers(graph, result_id, answers)
-    if answers and not unseen:
-        print(f"skip {Path(path).name}: result {result_id} already imported")
+        raise WiseError(f"{origin}: {error}") from None
+    unseen = unseen_answers(graph, result_id, items)
+    if items and not unseen:
+        print(f"skip {label}: result {result_id} already imported")
         return 0
     lesson_node = next((n["id"] for n in graph.of_type("lesson")
                         if lesson and (lesson in n.get("path", "") or lesson == n["id"])), None)
     concepts = graph.out(lesson_node, "covers") if lesson_node else []
-    created = 0
-    for answer in unseen:
-        correct = answer["correct"]
+    notes, wrong, asked = [], 0, 0
+    for item in unseen:
         qa = {"id": new_id("QA", graph.nodes), "type": "qa", "date": date,
-              "created": iso(today()), "source": "lesson",
-              "q": answer["q"] or "(lesson question)",
-              "a": answer["answer"] or "(no answer)",
-              "verdict": "correct" if correct else "wrong", "result": result_id,
-              "at": stamp_now()}
-        if answer["id"]:
-            qa["answer_id"] = answer["id"]
+              "created": iso(today()), "result": result_id, "at": stamp_now(),
+              "q": item["q"] or "(lesson question)"}
+        if item["id"]:
+            qa["answer_id"] = item["id"]
+        if item["kind"] == "stuck":
+            qa.update(source="asked", a=STUCK_OPEN, verdict="n/a")
+            notes.append(f"stuck: {qa['id']} · {short(qa['q'], 300)}")
+            asked += 1
+        else:
+            qa.update(source="lesson", a=item["answer"] or "(no answer)",
+                      verdict="correct" if item["correct"] else "wrong")
+            if lesson:
+                qa["lesson"] = lesson
+            if item["confidence"]:
+                qa["confidence"] = item["confidence"]
+            if item["kind"] == "recall":
+                # The page's own "correct" is ignored: the verdict is what the
+                # ticked points allow, as for any key-point answer.
+                points = item["points"]
+                qa.update(points=points, graded="self",
+                          verdict=verdict_limit(len(item["hit"]), len(points)))
+                missed = [p for n, p in enumerate(points, 1) if n not in item["hit"]]
+                if missed:
+                    qa["missed"] = missed
+                notes.append(f"review: {qa['id']} · self-graded {qa['verdict']} · "
+                             f"{len(item['hit'])} of {len(points)} points · "
+                             f"{short(qa['a'], 300)}")
+            wrong += qa["verdict"] != "correct"
         graph.nodes[qa["id"]] = qa
         for concept in concepts:
             graph.edges.add((qa["id"], "about", concept))
-        if not correct:
-            question = {"id": new_id("QB", graph.nodes), "type": "question",
-                        "created": iso(today()), "q": qa["q"],
-                        "a": answer["expected"] or "(see the lesson)",
-                        "source": f"lesson {lesson}".strip(), "box": 1,
-                        "due": iso(today() + dt.timedelta(days=1))}
-            graph.nodes[question["id"]] = question
-            graph.edges.add((question["id"], "from", qa["id"]))
-            for concept in concepts:
-                graph.edges.add((question["id"], "tests", concept))
-        created += 1
+        if qa["source"] == "lesson" and qa["verdict"] != "correct":
+            question_from_lesson(graph, qa, item.get("expected", ""), lesson)
     graph.dirty = True
-    wrong = sum(1 for a in unseen if not a["correct"])
-    print(f"imported {Path(path).name}: {created} answers · {wrong} wrong → question bank")
-    return created
+    print(f"imported {label}: {len(unseen) - asked} answers · {wrong} wrong → question bank"
+          f"{f' · {asked} questions from the learner' if asked else ''}")
+    for note in notes:
+        print(note)
+    return len(unseen)
+
+
+def question_from_lesson(graph, qa, expected, lesson):
+    """The bank question for a missed lesson answer; a typed one brings its points."""
+    question = {"id": new_id("QB", graph.nodes), "type": "question",
+                "created": iso(today()), "q": qa["q"],
+                "a": expected or "; ".join(qa.get("points", [])) or "(see the lesson)",
+                "source": f"lesson {lesson}".strip(), "box": 1,
+                "due": iso(today() + dt.timedelta(days=1))}
+    if qa.get("points"):
+        question["points"] = list(qa["points"])
+    graph.nodes[question["id"]] = question
+    graph.edges.add((question["id"], "from", qa["id"]))
+    for concept in graph.out(qa["id"], "about"):
+        graph.edges.add((question["id"], "tests", concept))
+    graph.dirty = True
+    return question
+
+
+def cmd_regrade(graph, args):
+    """Claude's reading of a typed lesson answer against its key points."""
+    qa = graph.nodes[graph.resolve(args.id)]
+    points = qa.get("points") if qa["type"] == "qa" else None
+    if not points:
+        raise WiseError(f"{qa['id']} has no key points to regrade against; only a typed "
+                        f"lesson answer does")
+    usage = (f"{qa['id']} has {len(points)} key points; pass --hit all, --hit none, or the "
+             f"numbers the answer covered (--hit 1,3)")
+    hit = chosen_numbers(args.hit, len(points), "--hit", usage)
+    qa.setdefault("self_verdict", qa.get("verdict", "wrong"))
+    qa["verdict"] = verdict_limit(len(hit), len(points))
+    qa["graded"] = "claude"
+    qa["missed"] = [p for n, p in enumerate(points, 1) if n not in hit]
+    if not qa["missed"]:
+        del qa["missed"]
+    graph.touch(qa)
+    if qa["verdict"] != "correct" and not graph.into(qa["id"], "from"):
+        question_from_lesson(graph, qa, "", qa.get("lesson", ""))
+    graph.save()
+    print(f"{qa['id']} · {qa['verdict']} (self-graded {qa['self_verdict']})")
+    announce_confusion(graph, qa)
+    return 0
 
 
 def cmd_import_lesson(graph, args):
+    if "-" in args.paths:
+        # Results the learner copied from the lesson and pasted into the chat.
+        if args.paths != ["-"] or args.inbox:
+            raise WiseError("import-lesson - reads pasted results from standard input; "
+                            "pass it alone")
+        text = sys.stdin.read(PASTE_LIMIT + 1)
+        if len(text) > PASTE_LIMIT:
+            raise WiseError(f"pasted results: too large (over {PASTE_LIMIT // 1024} KiB)")
+        import_lesson_text(graph, text, "pasted results", "pasted results")
+        graph.save()
+        return 0
     paths = [Path(p) for p in args.paths]
     inbox = checked_dir(graph.state, "inbox")
     if args.inbox and inbox.is_dir():
@@ -3214,6 +3346,11 @@ def build_parser():
     p.add_argument("paths", nargs="*")
     p.add_argument("--inbox", action="store_true", help="also import .wise-code/inbox/*.json")
     p.set_defaults(func=cmd_import_lesson, write=True)
+
+    p = sub.add_parser("regrade", help="re-judge a typed lesson answer against its points")
+    p.add_argument("id")
+    p.add_argument("--hit", required=True, help="points the text covers: all, none or 1,3")
+    p.set_defaults(func=cmd_regrade, write=True)
 
     p = sub.add_parser("index", help="register lessons, references, research, ADRs, mission, resources")
     p.set_defaults(func=cmd_index, write=True)
