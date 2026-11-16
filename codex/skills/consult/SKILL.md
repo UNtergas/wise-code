@@ -164,4 +164,7 @@ A question: the same with `--kind question` and without `--disagrees`/`--what`
   skip the record.
 
 End with one line telling the learner the consult is logged and Claude will
-see it at its next session start. Then stop.
+see it at its next checkpoint or session start (sooner if they tell Claude they
+asked you). When you disagreed, add that Claude has to close it with an
+outcome: correct its records, or show the evidence that its claim holds. Then
+stop.

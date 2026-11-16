@@ -1615,6 +1615,44 @@ def lint_flags(graph, session):
     return len(answers), flags
 
 
+def senior_lint(graph, session):
+    """(flags, notes) from the senior's journal: disagreements left open, and
+    lookups since the session before this one.
+
+    Read through consult.py, the journal's own reader. Nothing here writes, and
+    a missing or unreadable journal means nothing to report.
+    """
+    try:
+        import consult  # noqa: PLC0415 - consult.py imports this module
+        state = graph.state
+        waiting = [e.id for e in consult.pending(state) if e.disagrees]
+        open_acks = [e.id for e in consult.unresolved(state)]
+        records, looked = consult.ack_records(state), consult.lookups(state)
+    except Exception:  # noqa: BLE001 - the journal is not this script's to fail on
+        return [], []
+    flags = []
+    if waiting:
+        flags.append(f"{len(waiting)} senior disagreements not gone through: "
+                     f"{', '.join(waiting)} (consult.py pending)")
+    if open_acks:
+        flags.append(f"{len(open_acks)} senior disagreements acknowledged without an "
+                     f"outcome: {', '.join(open_acks)} (consult.py ack <id> --outcome …)")
+    for cid, ack in sorted(records.items()):
+        for record in ack.fixed if ack.outcome == "corrected" else ():
+            if record not in graph.nodes:
+                flags.append(f"senior disagreement {cid} says corrected, but there is no "
+                             f"record {record}")
+    earlier = [n.get("date", "") for n in graph.of_type("session")
+               if n.get("date", "") < session.get("date", "")]
+    since = max(earlier, default="")
+    topics = [topic for day, topic in looked if since < day <= session.get("date", "")]
+    notes = []
+    if topics:
+        notes.append(f"{len(topics)} senior lookups since the last session (full answers, "
+                     f"outside the learning loop): {'; '.join(topics)}")
+    return flags, notes
+
+
 def cmd_lint_session(graph, args):
     sessions = sorted(graph.of_type("session"), key=lambda n: (n.get("date", ""), n["id"]))
     if not sessions:
@@ -1622,11 +1660,16 @@ def cmd_lint_session(graph, args):
         return 0
     session = checked_session(graph, args.id, pending=False) if args.id else sessions[-1]
     count, flags = lint_flags(graph, session)
+    senior_flags, notes = senior_lint(graph, session)
+    flags += senior_flags
     print(f"{session['id']} · {session.get('date', '')} · {count} answers")
     for flag in flags:
         print(f"flag: {flag}")
     if not flags:
         print("no flags")
+    # A note is something to see, not a rule that was skipped.
+    for note in notes:
+        print(f"note: {note}")
     return 0
 
 

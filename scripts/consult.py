@@ -13,6 +13,17 @@ outside `consult/`, so the senior's sandbox can't acknowledge for it, and the
 journal stays Codex's alone. An entry is pending until acknowledged, however
 many sessions pass; `consult.py pending` lists them.
 
+Going through a consult where the senior disagreed ends in an outcome, on the
+same line of the acknowledgments file (tab-separated: id, outcome, records
+fixed, note): `corrected` (the teacher was wrong; names the graph records it
+fixed) or `stands` (the claim holds; the note says on what evidence). Any other
+consult is `noted`. A line with only an id is from before outcomes existed:
+it still acknowledges, and `unresolved` lists it when the senior had disagreed.
+
+A lookup (`$wise-code:google`) is a full answer outside the learning loop. Only
+its date and topic are kept, in `consult/lookups.txt`, so the learner can see
+how often they stepped out; never the question or the answer.
+
 An entry is a `doubt` (the learner doubts something the teacher said; it
 carries a verdict) or a `question` (an independent question; no verdict).
 Format, one entry per consult, one field per line:
@@ -46,6 +57,11 @@ DISAGREES = re.compile(r"^Disagrees with teacher: (yes|no)\b")
 
 Entry = collections.namedtuple("Entry", "id date disagrees topic")
 ACK_ID = re.compile(r"^c-[0-9a-f]{12}$")
+# How going through a consult ended. `outcome` is None on a line written before
+# outcomes existed.
+Ack = collections.namedtuple("Ack", "outcome fixed note")
+OUTCOMES = ("corrected", "stands", "noted")
+TOPIC_LIMIT = 80
 
 
 def journal_path(state):
@@ -105,16 +121,57 @@ def entries(path):
         return []
 
 
-def acknowledged(state):
-    """Ids the teacher acknowledged; empty if absent or linked."""
+def lookups_path(state):
+    return state / "consult" / "lookups.txt"
+
+
+def ack_records(state):
+    """{consult id: Ack} from the teacher's file; the last line for an id wins.
+
+    Empty if the file is absent, linked or unreadable. A line that is only an
+    id acknowledges with no outcome.
+    """
     path = acks_path(state)
     if path.is_symlink() or not path.is_file():
-        return set()
+        return {}
     try:
-        return {line.strip() for line in path.read_text(encoding="utf-8").splitlines()
-                if ACK_ID.match(line.strip())}
+        lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeError):
-        return set()
+        return {}
+    records = {}
+    for line in lines:
+        parts = line.strip().split("\t")
+        if not ACK_ID.match(parts[0]):
+            continue
+        outcome = parts[1] if len(parts) > 1 and parts[1] in OUTCOMES else None
+        fixed = tuple(parts[2].split()) if len(parts) > 2 and parts[2] != "-" else ()
+        records[parts[0]] = Ack(outcome, fixed, parts[3] if len(parts) > 3 else "")
+    return records
+
+
+def acknowledged(state):
+    """Ids the teacher acknowledged; empty if absent or linked."""
+    return set(ack_records(state))
+
+
+def unresolved(state):
+    """Disagreements acknowledged without saying how they ended, oldest first."""
+    records = ack_records(state)
+    return [e for e in entries(journal_path(state))
+            if e.disagrees and e.id in records and records[e.id].outcome is None]
+
+
+def lookups(state):
+    """(date, topic) of each senior lookup, in order; [] if absent or linked."""
+    path = lookups_path(state)
+    if path.is_symlink() or path.parent.is_symlink() or not path.is_file():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return []
+    return [tuple(line.split("\t", 1)) for line in lines
+            if re.match(r"^\d{4}-\d{2}-\d{2}\t.", line)]
 
 
 def pending(state):
@@ -184,8 +241,47 @@ def cmd_pending(args):
             verdict = "disagrees"
         else:
             verdict = "-"
-        print(f"{entry.id} {entry.date} {verdict} {entry.topic}")
+        close = (f" · close with: ack {entry.id} --outcome corrected|stands"
+                 if entry.disagrees else "")
+        print(f"{entry.id} {entry.date} {verdict} {entry.topic}{close}")
     return 0
+
+
+def check_outcome(args, disagreeing):
+    """How this acknowledgment ends, or a WiseError saying what is missing.
+
+    A disagreement is closed alone and with evidence: what was fixed, or why
+    the teacher's claim holds. Anything else is simply noted.
+    """
+    note = one_line(args.note or "")
+    fixed = [one_line(item) for item in args.fixed or []]
+    if not disagreeing:
+        if args.outcome not in (None, "noted"):
+            raise wise.WiseError(f"--outcome {args.outcome} closes a disagreement, and the "
+                                 f"senior did not disagree in {', '.join(args.ids)}")
+        return Ack("noted", (), note)
+    if len(set(args.ids)) > 1:
+        raise wise.WiseError("the senior disagreed in " + ", ".join(disagreeing) + ": close "
+                             "disagreements one at a time, each with its own outcome")
+    if args.outcome not in ("corrected", "stands"):
+        raise wise.WiseError(
+            f"the senior disagreed in {disagreeing[0]}. Re-examine it with the learner, then "
+            "close it: --outcome corrected --fixed <ids of the records you fixed> when you "
+            "were wrong, or --outcome stands --note \"<the evidence>\" when your claim holds")
+    if args.outcome == "stands":
+        if not note:
+            raise wise.WiseError("--outcome stands needs --note: the evidence that the "
+                                 "claim holds (file:line or a source)")
+        return Ack("stands", (), note)
+    if not fixed:
+        raise wise.WiseError("--outcome corrected needs --fixed: the ids of the decisions, "
+                             "questions, cards or concepts you fixed (or --fixed none with "
+                             "--note when no record held the wrong claim)")
+    if fixed == ["none"]:
+        if not note:
+            raise wise.WiseError("--fixed none needs --note: why no record needed fixing")
+        fixed = []
+    return Ack("corrected", tuple(fixed), note)
 
 
 def cmd_ack(args):
@@ -194,20 +290,42 @@ def cmd_ack(args):
     path = acks_path(state)
     if path.is_symlink():
         raise wise.WiseError(f"{path} is a symlink; refusing")
-    known = {e.id for e in entries(journal_path(state))}
+    known = {e.id: e for e in entries(journal_path(state))}
     unknown = [i for i in args.ids if i not in known]
     if unknown:
         raise wise.WiseError(f"no consult {', '.join(unknown)} in the journal; "
                              "nothing acknowledged (see consult.py pending)")
-    done = acknowledged(state)
-    new = [i for i in dict.fromkeys(args.ids) if i not in done]
+    ack = check_outcome(args, [i for i in dict.fromkeys(args.ids) if known[i].disagrees])
+    done = ack_records(state)
+    # Written again only when it adds something: a first acknowledgment, or the
+    # outcome an earlier one lacked. Running the same command twice changes nothing.
+    new = [i for i in dict.fromkeys(args.ids)
+           if i not in done or (done[i].outcome is None and known[i].disagrees)]
     if new:
         existing = path.read_text(encoding="utf-8") if path.is_file() else ""
         with path.open("a", encoding="utf-8") as stream:
             if existing and not existing.endswith("\n"):
                 stream.write("\n")
-            stream.write("".join(f"{i}\n" for i in new))
+            stream.write("".join(
+                f"{i}\t{ack.outcome}\t{' '.join(ack.fixed) or '-'}\t{ack.note}\n" for i in new))
     print(f"acknowledged {len(args.ids)}; {len(pending(state))} pending")
+    return 0
+
+
+def cmd_lookup(args):
+    """Count one lookup: its date and topic, nothing of the question or answer."""
+    topic = one_line(args.topic)[:TOPIC_LIMIT].strip()
+    if not topic:
+        raise wise.WiseError("--topic needs a few words naming what was looked up")
+    state = find_state()
+    folder, path = state / "consult", lookups_path(state)
+    for target in (folder, path):
+        if target.is_symlink():
+            raise wise.WiseError(f"{target} is a symlink; refusing")
+    folder.mkdir(exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(f"{wise.iso(wise.today())}\t{topic}\n")
+    print(f"counted in {path} (date and topic only)")
     return 0
 
 
@@ -229,7 +347,15 @@ def build_parser():
     show.set_defaults(func=cmd_pending)
     ack = commands.add_parser("ack", help="teacher: mark consults as gone through")
     ack.add_argument("ids", nargs="+", help="ids from consult.py pending")
+    ack.add_argument("--outcome", choices=OUTCOMES,
+                     help="a disagreement: corrected (you were wrong) or stands")
+    ack.add_argument("--fixed", nargs="+", metavar="ID",
+                     help="corrected: the graph records you fixed, or none")
+    ack.add_argument("--note", help="stands: the evidence; --fixed none: why")
     ack.set_defaults(func=cmd_ack)
+    lookup = commands.add_parser("lookup", help="senior: count one full-answer lookup")
+    lookup.add_argument("--topic", required=True, help="a few words; never the answer")
+    lookup.set_defaults(func=cmd_lookup)
     return parser
 
 

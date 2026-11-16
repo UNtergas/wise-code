@@ -150,12 +150,20 @@ senior-developer role you call in on purpose, never on its own:
   through `scripts/consult.py`; at the next session start (or compaction),
   even while learning is paused, Claude is told how many consults it hasn't acknowledged yet and how many
   doubts disagree with it, reads them, and re-examines its own call with you.
+  Claude also checks for new consults before each checkpoint, so one made
+  mid-session isn't left for tomorrow.
   It then acknowledges each entry it went through (`consult.py ack <id>`, kept
-  in `.wise-code/consult-acks.txt`); an entry stays pending, and is announced
+  in `.wise-code/consult-acks.txt`). Where the senior disagreed, the
+  acknowledgment has to say how it ended: `corrected`, naming the records Claude
+  fixed, or `stands`, with the evidence. `wise.py lint-session` flags a
+  disagreement left open or closed without one; an entry stays pending, and is announced
   again, until then.
 - `$wise-code:google` — a quick lookup answered in full, ignoring the assist
-  level, from primary sources and checked against this project's versions. Not
-  logged anywhere; your choice to step outside the learning loop for one answer.
+  level, from primary sources and checked against this project's versions. The
+  question and answer are logged nowhere; your choice to step outside the
+  learning loop for one answer. Only the date and a topic of a few words are
+  counted, and the session recap shows the count (`note: 2 senior lookups …`),
+  so you can see when lookups become the main path.
 - `@codex review`: the Code Review Rules in `AGENTS.md` review as a senior
   (clean-code design checks, tests that prove something, and the PR
   description checked against the diff). On GitHub, Codex posts only P0/P1

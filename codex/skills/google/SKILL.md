@@ -1,6 +1,6 @@
 ---
 name: google
-description: Quick senior lookup for an independent coding question (syntax, config, a tool, an API) answered in full and not logged. Use only when the learner explicitly invokes $wise-code:google. Read this SKILL.md in full before your first reply.
+description: Quick senior lookup for an independent coding question (syntax, config, a tool, an API) answered in full; the question and answer are not logged, only that a lookup happened. Use only when the learner explicitly invokes $wise-code:google. Read this SKILL.md in full before your first reply.
 ---
 
 ## Canary
@@ -48,7 +48,16 @@ step outside the learning loop for one answer.
 - Answer for this project when it matters: read its config and code as needed.
   You never edit anything: no source, tests, configs or notes. The learner applies
   the answer.
-- This lookup is not recorded: no journal entry, no learning graph, no notes.
+- The question and the answer are not recorded: no journal entry, no learning
+  graph, no notes. Only the fact of the lookup is counted, with its date and a
+  topic of a few words, so the learner can see how often they stepped outside
+  the loop. After your answer, when the project has `.wise-code/`, run from the
+  project folder:
+  `python3 "<plugin root>/scripts/consult.py" lookup --topic "<a few words>"`
+  (`<plugin root>` is `../../..` from this file's folder). The topic names the
+  subject ("serde rename_all"), never the answer. No `.wise-code/`: skip it. If
+  `python3` is blocked, say so and go on; the answer comes first. End with one
+  line: "Counted as a lookup (topic only)."
 - One question, one answer. If it turns out to be a doubt about something the
   teacher (Claude) said, or the learner wants it at their level and logged,
   point them to `$wise-code:consult` and stop.
