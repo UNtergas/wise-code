@@ -116,6 +116,35 @@ class SkillLayoutTests(unittest.TestCase):
         self.assertIn("local edits", teach)
         self.assertIn("id: String(id)", (ROOT / "skills/teach/templates/results.js").read_text(encoding="utf-8"))
 
+    def test_teach_does_not_build_the_project_and_points_to_learn(self):
+        # Pins that the rule is written where Claude reads it, not that Claude
+        # follows it.
+        teach = (ROOT / "skills/teach/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("## Project code", teach)
+        section = teach.split("## Project code")[1].split("\n## ")[0]
+        # The three states of Learn in this project each have a rule.
+        for state in ("No `profile.md`", "`Learning mode: active`",
+                      "`Learning mode: paused`"):
+            self.assertIn(state, section)
+        self.assertIn("don't write it", section)
+        self.assertIn("/wise-code:learn", section)
+        # What Learn onboarding sets up and Teach doesn't.
+        # ("senior reviewer": Claude skills never name the other tool, see
+        # test_claude_skills_carry_no_codex_adapters.)
+        for missing in ("assist level", "sandbox", "senior reviewer"):
+            self.assertIn(missing, section)
+        # The learner can still skip, and the skip is visible.
+        self.assertIn("just write it", section)
+        self.assertIn("outside the learning loop", section)
+        # Lesson code stays Teach's to write.
+        self.assertIn("Lesson code", section)
+        # The session flow runs the check and the closing suggestion.
+        flow = teach.split("## Session flow")[1].split("\n## ")[0]
+        self.assertIn('"Project code"', flow)
+        self.assertEqual(flow.count("/wise-code:learn"), 1)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Teach never writes your project's code", readme)
+
     def test_bare_consult_asks_everything_in_one_message(self):
         text = (ROOT / "codex/skills/consult/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("invoked with nothing else", text)
