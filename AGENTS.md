@@ -11,6 +11,12 @@ engineering discipline below applies to you.
 ## Repository facts
 
 - Run the tests with `python3 -m pytest -q tests`. All must pass before a commit.
+  CI (`.github/workflows/tests.yml`) runs them on Python 3.9 and 3.13 for every
+  pull request and every push to `main`.
+- `tests/test_e2e.py` walks one learner through two weeks using the real entry
+  points (the session hook as registered, `wise.py` as the skills call it).
+  Unit tests cover a rule's edges; the journey covers the joins between
+  commands.
 - `scripts/` and the hooks are standard library only, Python 3.9+. Don't
   add dependencies or newer syntax.
 - Each skill in `skills/<name>/` has `SKILL.md` (frontmatter `name` and
@@ -78,6 +84,90 @@ Every change follows: first make it work, then make it right, then practice.
   evidence (tests, reproductions, numbers).
 - Answer every review comment with the commit that addresses it, or with the
   evidence for not changing it.
+
+## Changing WiseCode
+
+A checklist for the next change, from what went wrong and right in earlier ones.
+
+### Before you start
+
+- Sync `main` and check for open pull requests and review comments first.
+- One branch per change. Dependent changes are stacked pull requests, merged
+  in order with merge commits, each retargeted to `main` before its merge.
+- Read the guide that calls the code you are changing. A command and the skill
+  step that runs it are one behavior.
+
+### What a change to `wise.py` includes
+
+1. A failing test that calls the command line the way a skill does.
+2. The check where the data enters (an argparse `type`, or the top of the
+   command). A stricter rule applies when a record is written, never when one
+   is loaded: older graphs and imports must keep working.
+3. The guides, in the same commit: `skills/learn/materials.md` (the reference
+   for every command), the skill step that runs the command, `docs/graph.md`,
+   and the README when the learner sees the difference.
+4. `tests/test_e2e.py`, when the change alters what one command writes and
+   another reads, or what the hook says.
+5. `python3 tests/measure_tokens.py`, and the two tables (README,
+   `docs/graph.md`) when a number moved.
+6. The version, in both plugin manifests.
+
+### Where a rule lives
+
+- If the script can enforce a rule, it does (a refused command, a bounded
+  verdict). A rule that exists only as text in a guide is a request.
+- A rule the script can't enforce should leave a record `lint-session` can
+  read (a quote, a prefix, a count). Add the flag with the rule.
+- The script reports what Claude judged; it can't check the judgment. Make the
+  judgment explicit and small (`--hit 1,3`, `--covers 2`), keep the learner's
+  words beside it, and say in the pull request what stays unverified.
+- The script never runs a command stored in the graph.
+- A write command prints its record's id as the first line. Anything else it
+  has to say (`confusion: …`) comes on later lines.
+
+### What a change to the learning design includes
+
+- The learner does the work. A change may not move writing, deciding or
+  recalling from the learner to Claude.
+- Every rule costs the learner time in every session. Say in the pull request
+  what it costs, and what in `calibration`, `weak` or `lint-session` would show
+  that it helps. Prefer changing what is practiced over adding what is tracked.
+- A gate the learner can't skip needs a reason in the guide. Most can be
+  skipped, and a skip is recorded or visibly not counted.
+
+### Tests
+
+- Import a test module, not its classes (`import test_session_start as hooks`):
+  a test class imported by name is collected and run a second time.
+- A question without key points can only be made through `import-md`; `add
+  question` refuses it. A quote needs at least three words.
+- Pass the day (`WISE_TODAY`) in every call; never depend on today's date or on
+  the order of the random id suffix.
+- Check that a new test fails before the change, for the reason you expect,
+  and say in the commit which tests only pin existing behavior.
+- A journey step in `tests/test_e2e.py` asserts what the scenario really
+  implies. When one fails, first work out which is wrong, the code or the
+  expectation, before changing either.
+
+### Committing
+
+- Run the whole suite and read its last line before every commit. Don't rely on
+  `set -e` around a pipeline or a negated command: it doesn't stop.
+- One commit per finding when the hunks separate cleanly. Don't split a file
+  with zero-context patches (`git diff -U0` piped to `git apply`): it can
+  misplace a hunk without an error. Build the commits in order, or commit the
+  related files together and say why.
+- A branch pushed with a failing commit is not rewritten: open a clean branch.
+- Check the oldest supported Python before the pull request:
+  `uv run --no-project --python 3.9 --with pytest python -m pytest -q tests`.
+- A test that fails once is not rerun until green. Get its name (`-rfE`),
+  reproduce it (in a loop, under load), and report it if it can't be found.
+
+### Reporting
+
+- State what was not run (a live Claude Code session, a gate, another OS).
+- Guides are instructions to a model. A test can pin that a rule is written
+  where Claude reads it, not that Claude follows it: say which kind each test is.
 
 ## Code Review Rules
 
