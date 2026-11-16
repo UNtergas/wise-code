@@ -656,11 +656,15 @@ class GraphMigrationTests(unittest.TestCase):
     def test_lesson_results_template_matches_the_importer(self):
         script = (ROOT / "skills/teach/templates/results.js").read_text(encoding="utf-8")
         for key in ("lesson:", "result_id:", "date:", "answers:", "q:", "answer:",
-                    "correct:", "expected:", "Download results"):
+                    "correct:", "expected:", "Download results", "Copy results",
+                    'kind: "recall"', "points:", "hit:", "stuck:", "confidence"):
             self.assertIn(key, script)
         teach = (ROOT / "skills/teach/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("templates/results.js", teach)
         self.assertIn("import-lesson", teach)
+        for call in ("WiseResults.recallWidget(", "WiseResults.stuckWidget(",
+                     "import-lesson -", "wise.py regrade", "a=(not answered yet)"):
+            self.assertIn(call, teach)
 
     def test_code_graph_is_used_never_built(self):
         behavior = (ROOT / "skills/learn/behavior.md").read_text(encoding="utf-8")

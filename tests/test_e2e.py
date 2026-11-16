@@ -35,6 +35,8 @@ TYPED = {
     "sure": "high: only one mutable borrow can exist, and none while a shared one is alive",
     "variant": "high: push needs a mutable borrow of the Vec while first still borrows it",
     "unprefixed": "the borrow ends when it is last used",
+    "lifetime": "high: a region of code where the reference is valid, relating borrows "
+                "to each other without changing anything at run time",
 }
 
 
@@ -61,11 +63,12 @@ class LearnerJourney(unittest.TestCase):
 
     # ------------------------------------------------------------ entry points
 
-    def wise(self, day, *args, ok=True):
+    def wise(self, day, *args, ok=True, pasted=None):
         env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day,
                "HOME": str(self.base / "home")}
         result = subprocess.run([sys.executable, str(SCRIPT), "--root", str(self.project),
-                                 *args], text=True, capture_output=True, env=env, timeout=60)
+                                 *args], text=True, capture_output=True, env=env, timeout=60,
+                                input=pasted)
         if ok:
             self.assertEqual(result.returncode, 0, f"{args}\n{result.stderr}{result.stdout}")
             return result.stdout
@@ -258,13 +261,50 @@ class LearnerJourney(unittest.TestCase):
                                              "--confidence", "high"))
         self.assertIn("now box 2", self.wise(d4, "answer", task, "correct", "--exit", "0"))
 
+        # A lesson, done in the browser. The learner pastes its results: a typed
+        # answer they graded as complete, and a question from a section.
+        lesson = json.dumps({
+            "lesson": "0003-lifetimes", "result_id": "lesson-0003-lifetimes-20261105-ab12cd34",
+            "date": d4, "stuck": [{"section": "s2", "title": "Elision",
+                                   "text": "When do I have to write the lifetime myself?"}],
+            "answers": [{"id": "r1", "kind": "recall", "q": "What does a lifetime name?",
+                         "answer": "how long the reference is allowed to be used",
+                         "points": ["a region of code where the reference is valid",
+                                    "it relates borrows to each other, it changes no runtime"],
+                         "hit": [1, 2], "confidence": "high", "correct": True}]})
+        imported = self.wise(d4, "import-lesson", "-", pasted=lesson)
+        self.assertIn("1 answers · 0 wrong → question bank · 1 questions from the learner",
+                      imported)
+        typed, asked = (line.split()[1] for line in imported.splitlines()[1:])
+        self.assertIn(f"review: {typed} · self-graded correct · 2 of 2 points", imported)
+        self.assertIn(f"stuck: {asked} · [0003-lifetimes · Elision] When do I", imported)
+        self.assertIn("already imported", self.wise(d4, "import-lesson", "-", pasted=lesson))
+
+        # Claude answers the question, then reads the typed answer: it made the
+        # first point only. The learner's own verdict is kept beside Claude's,
+        # and the missed point enters the bank with the lesson's rubric.
+        self.assertIn(asked, self.wise(d4, "list", "qa", "--where", "a=(not answered yet)"))
+        self.wise(d4, "set", asked, "a=When the compiler can't tell which input a returned "
+                                    "reference borrows from")
+        self.assertNotIn(asked, self.wise(d4, "list", "qa", "--where", "a=(not answered yet)"))
+        self.assertIn(f"{typed} · partial (self-graded correct)",
+                      self.wise(d4, "regrade", typed, "--hit", "1"))
+        from_lesson = [l for l in self.wise(d4, "due", "--early").splitlines()
+                       if "What does a lifetime name?" in l]
+        self.assertEqual(len(from_lesson), 1)
+        self.assertNotIn("no key points", from_lesson[0])
+        lesson_question = from_lesson[0].split(" · ")[0]
+        self.wise("2026-11-06", "answer", lesson_question, "correct", "--hit", "all",
+                  "--said", said("lifetime"), "--confidence", "high")
+
         # From box 3 the same words are not asked again: a variant, recorded as asked.
         # Box 3 means seven days: on day 11 only the task is back.
         waiting = self.wise(d11, "due")
         self.assertIn(f"{task} ·", waiting)
         self.assertNotIn(question, waiting)
         later = "2026-11-16"
-        self.assertIn("2 questions are due for review", self.hook(later, source="clear"))
+        # Due by then: the borrowing question, the task, and the lesson's question.
+        self.assertIn("3 questions are due for review", self.hook(later, source="clear"))
         self.assertNotIn("due for review", self.hook(later, source="compact"))
         line = [l for l in self.wise(later, "due").splitlines() if l.startswith(question)][0]
         self.assertTrue(line.endswith("· ask a variant"), line)

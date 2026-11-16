@@ -34,6 +34,11 @@ Build and learn:
 - `/wise-code:learn` — start or resume learning mode while building.
 - `/wise-code:level [hint|example|pseudo|full] [for <topic>]` — show or set the assist level.
 - `/wise-code:teach [topic]` — multi-session lessons on a topic, kept in this project.
+  In a lesson you type your answer and say how sure you are before the key
+  points appear, then tick the ones you made; Claude reads your answer too and
+  tells you when it judges differently. Each section has a "Stuck here?" box for
+  a question to Claude. **Copy results**, paste into the chat, and Claude picks
+  up your answers and questions in the same session.
 - `/wise-code:explore <question>` — how or why existing code works: you predict,
   Claude checks the prediction against the code and its Git history. Read-only.
 - `/wise-code:sharpen <task>` — make a task deeper, not bigger; you rewrite it.

@@ -456,9 +456,14 @@ wise.py link LR-new supersedes LR-old
   run the start check at the next new session.
 - **Teach:** QA for lesson exercises answered in chat and learner questions;
   records, glossary terms (concept `definition`), questions and cards from each
-  new record; lessons, references, mission and resources indexed. In-browser quiz
-  results arrive as a downloaded file: `wise.py import-lesson <file>` or
-  `--inbox`.
+  new record; lessons, references, mission and resources indexed. What the
+  learner did in a lesson arrives as JSON: pasted (`wise.py import-lesson -`),
+  or a file (`import-lesson <file>` or `--inbox`). A typed answer is a `lesson`
+  QA with the learner's text as `a`, `points`, `missed`, `confidence` and
+  `graded: self`; `wise.py regrade <id> --hit …` records Claude's reading and
+  keeps theirs as `self_verdict`. A question typed in the lesson is an `asked`
+  QA whose `a` is `(not answered yet)` until Claude answers it. Text typed in a
+  browser is never a `said` quote: no transcript holds it.
 - **Quiz:** `due`, then `answer` for each reply; offers cards for missed facts.
 - **Explore:** a QA (`explore`) with the prediction and how it compared with the
   code; a meaningfully wrong prediction becomes a question.
