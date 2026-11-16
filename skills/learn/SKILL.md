@@ -179,7 +179,9 @@ a free recall, too few check points. Fix what can still be fixed (run
 `check-said`, add check points with `wise.py set <id> checkpoints+=…`) and show
 the remaining `flag:` lines to the learner as they are, under "Process", in the
 recap. They are about how you ran the session, not about the learner; never
-drop or soften one.
+drop or soften one. Show `note:` lines too, as they are: a note is something
+for the learner to see (how many answers they took from the senior's lookup,
+outside the learning loop), not a rule that was skipped.
 
 Then run `wise.py level-advice`. A `less help:` line names a concept where the
 learner's recent answers were all correct, sure and unhinted. If the topic it

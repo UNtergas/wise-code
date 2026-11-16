@@ -124,12 +124,14 @@ class SkillLayoutTests(unittest.TestCase):
                          "What do you already know"):
             self.assertIn(question, text)
 
-    def test_google_skill_answers_in_full_and_records_nothing(self):
+    def test_google_skill_answers_in_full_and_counts_only_that_it_happened(self):
         text = (ROOT / "codex/skills/google/SKILL.md").read_text(encoding="utf-8")
         for required in ("full answer", "ignores the assist level", "never edit",
-                         "primary source", "not recorded"):
+                         "primary source", "are not recorded", "never the answer",
+                         'consult.py" lookup --topic'):
             self.assertIn(required, text)
-        self.assertNotIn("consult.py", text)
+        # The count is the only thing it writes: no journal entry, no graph.
+        self.assertNotIn('consult.py" add', text)
         self.assertNotIn("wise.py", text)
 
     def test_relative_links_in_guides_resolve(self):

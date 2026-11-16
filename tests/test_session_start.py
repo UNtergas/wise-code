@@ -461,7 +461,7 @@ class ConsultJournalHookTests(HookCase):
         self.consult("ack", first)
         context = self.context(source="startup")
         self.assertIn("1 senior consult not yet acknowledged (1 disagrees", context)
-        self.consult("ack", second)
+        self.consult("ack", second, "--outcome", "stands", "--note", "checked the docs")
         self.assertNotIn("senior consult", self.context(source="startup"))
 
     def test_without_sessions_every_consult_counts(self):

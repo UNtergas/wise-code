@@ -197,7 +197,8 @@ class AcknowledgeTests(ConsultCase):
                  "Disagrees with teacher: yes — cap\n")
         self.journal.write_text(block, encoding="utf-8")
         [first] = self.ids()
-        self.run_consult("ack", first)
+        closed = self.run_consult("ack", first, "--outcome", "stands", "--note", "checked")
+        self.assertEqual(closed.returncode, 0, closed.stderr)
         with self.journal.open("a", encoding="utf-8") as stream:
             stream.write("\n" + block)
         second = self.ids()

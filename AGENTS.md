@@ -32,7 +32,8 @@ engineering discipline below applies to you.
   files directly. The senior consult journal (`.wise-code/consult/`) is
   written only by Codex, through `scripts/consult.py`; the teacher's
   acknowledgments (`.wise-code/consult-acks.txt`) only by Claude, through
-  `consult.py ack`.
+  `consult.py ack`. Codex also counts lookups (`consult.py lookup`, date and
+  topic only) in `.wise-code/consult/lookups.txt`.
 - Releases bump `version` in both `.claude-plugin/plugin.json` and
   `.codex-plugin/plugin.json`.
 - Borrowed material is credited in `THIRD_PARTY_NOTICES.md` with its license.

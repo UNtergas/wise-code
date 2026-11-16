@@ -75,6 +75,16 @@ class LearnerJourney(unittest.TestCase):
         self.assertEqual(result.returncode, 2, f"{args}\n{result.stderr}{result.stdout}")
         return result.stderr
 
+    def senior(self, day, *args, ok=True):
+        """consult.py, as the Codex senior (add, lookup) or the teacher (ack) runs it."""
+        env = {"PATH": os.environ.get("PATH", ""), "WISE_TODAY": day,
+               "HOME": str(self.base / "home")}
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "consult.py"), *args],
+                                text=True, capture_output=True, env=env, timeout=60,
+                                cwd=self.project)
+        self.assertEqual(result.returncode, 0 if ok else 2, f"{args}\n{result.stderr}")
+        return result.stdout if ok else result.stderr
+
     def hook(self, day, source="startup"):
         """Run the SessionStart hook the way hooks.json registers it."""
         payload = json.dumps({"hook_event_name": "SessionStart", "source": source,
@@ -224,6 +234,26 @@ class LearnerJourney(unittest.TestCase):
                   f"said={said('repair')}", "--about", "borrowing", "--repairs", missed_id)
         self.assertNotIn(missed_id, self.wise(d2, "confusions", "--concept", "borrowing"))
 
+        # Mid-session the learner asks the senior, who disagrees with the teacher,
+        # and takes one full answer from its lookup. The teacher finds the consult
+        # at its next checkpoint, can't wave it through, corrects the question it
+        # had written, and closes the entry naming that record.
+        self.senior(d2, "add", "--kind", "doubt", "--topic", "Aliasing rule", "--level", "Hint",
+                    "--asked", "Claude said a shared and a mutable borrow can overlap",
+                    "--tried", "Read the borrow chapter", "--view", "They can't; see NLL",
+                    "--disagrees", "yes", "--what", "shared and mutable borrows can't overlap",
+                    "--refs", "src/names.rs:12")
+        self.senior(d2, "lookup", "--topic", "clippy needless_borrow")
+        pending = self.senior(d2, "pending")
+        consult_id = pending.split()[0]
+        self.assertIn("disagrees", pending)
+        self.assertIn("--outcome corrected", self.senior(d2, "ack", consult_id, ok=False))
+        self.wise(d2, "set", question,
+                  "a=Two could alias; a write through one invalidates the other. "
+                  "A shared borrow can't overlap a mutable one either.")
+        self.senior(d2, "ack", consult_id, "--outcome", "corrected", "--fixed", question)
+        self.assertEqual(self.senior(d2, "pending"), "")
+
         # One checkpoint answer came without a prefix: the session's lint says so.
         self.wise(d2, "add", "qa", "source=checkpoint", "q=When does this borrow end?",
                   "a=at last use", "verdict=correct", f"said={said('unprefixed')}",
@@ -237,6 +267,8 @@ class LearnerJourney(unittest.TestCase):
         self.assertIn(f"{second} · {d2} · 7 answers", lint)  # six today, one from last evening
         self.assertEqual([line for line in lint.splitlines() if line.startswith("flag:")],
                          ["flag: 1 of 3 answers without a confidence prefix"])
+        self.assertIn("note: 1 senior lookups since the last session (full answers, outside "
+                      "the learning loop): clippy needless_borrow", lint)
         self.assertIn("no confidence: 1 of 5 ", self.wise(d2, "calibration"))
 
         # Borrowing was missed twice (explain-back, quiz) and answered right
