@@ -1384,7 +1384,8 @@ class ConfusionTests(WiseTestCase):
             args.append(f"confidence={confidence}")
         for miss in repairs:
             args += ["--repairs", miss]
-        return self.out(*args, day=day).strip()
+        # The id is the first line; a confusion adds a second.
+        return self.out(*args, day=day).splitlines()[0]
 
     def repair(self, concept, *misses, q="Fresh transfer question?", verdict="correct"):
         return self.qa(concept, verdict, q=q, repairs=misses, source="repair")

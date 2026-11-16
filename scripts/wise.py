@@ -1157,7 +1157,20 @@ def cmd_add(graph, args):
         link_session(graph, node["id"])
     graph.save()
     print(node["id"])
+    if kind == "qa":
+        announce_confusion(graph, node)
     return 0
+
+
+def announce_confusion(graph, qa):
+    """Say so when a recorded answer is a confusion, whichever command recorded it.
+
+    Printed after the command's own line, so the first line stays the id.
+    """
+    if is_confusion(qa):
+        concepts = sorted(graph.out(qa["id"], "about"))
+        print(f"confusion: {qa['id']} · repair before building on "
+              f"{', '.join(concepts) or 'this concept'}")
 
 
 def link_session(graph, session_id):
@@ -1385,9 +1398,7 @@ def cmd_answer(graph, args):
     graph.save()
     print(f"{qa['id']} · {qid} now box {question.get('box', 1)} · due {question.get('due', '-')}"
           f"{' · kept in its box: low confidence' if unsure else ''}")
-    if is_confusion(qa):
-        print(f"confusion: {qa['id']} · repair before building on "
-              f"{', '.join(graph.out(qid, 'tests')) or 'this concept'}")
+    announce_confusion(graph, qa)
     return 0
 
 
@@ -1541,9 +1552,7 @@ def cmd_start_check(graph, args):
             "said": args.said, "verdict": args.verdict, "confidence": args.confidence}, about)
         graph.save()
         print(f"{qa['id']} · check point {args.point} · {qa['verdict']}")
-    if is_confusion(qa):
-        print(f"confusion: {qa['id']} · repair before building on "
-              f"{', '.join(about) or 'this concept'}")
+    announce_confusion(graph, qa)
     return 0
 
 

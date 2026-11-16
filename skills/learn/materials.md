@@ -151,6 +151,9 @@ wise.py add qa source=checkpoint q="Why store spans as UTF-8 offsets?" \
   prefix their answer (`high: the move invalidates x`). Never infer or fill it in;
   no prefix → leave it out. See "Confusions and repair".
 - `followup`: what changed (`QB-…` added, concept marked `reinforce`).
+- `wise.py add qa` prints the new id on its first line. When the answer is a
+  confusion it adds a second line, `confusion: <id> · repair before building on
+  <concept>`, as `answer` and `start-check` do: tell the learner in one line.
 - `wise.py history [--concept X] [--since YYYY-MM-DD] [--source S] [--full]` reads
   it, newest first. `--since` takes a date only; anything else is refused.
 
