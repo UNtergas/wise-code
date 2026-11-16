@@ -1,0 +1,41 @@
+name: tests
+
+# The suite on the oldest Python the plugin supports and on a current one.
+# No retries: a test that fails once is reported by name (-rfE) so it can be
+# reproduced, not hidden.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: pytest (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      # The runner image no longer carries Python 3.9, so uv provides the
+      # interpreter under test: the same command AGENTS.md gives for a local run.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install uv
+        run: python -m pip install --quiet uv
+      - name: Run the suite
+        run: >
+          uv run --no-project --python ${{ matrix.python }} --with pytest
+          python -m pytest -q tests -rfE --durations=10
+      - name: Print query sizes
+        run: uv run --no-project --python ${{ matrix.python }} python tests/measure_tokens.py

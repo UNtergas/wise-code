@@ -121,6 +121,30 @@ class PointAndScoreTests(StartCheckCase):
         self.assertIn("jitter", self.out("confusions"))
 
 
+class ConfusionNoticeTests(WiseTestCase):
+    """A confusion is announced when it is recorded, whichever command records it."""
+
+    def add(self, *fields):
+        return self.out("add", "qa", "q=Q", "a=A", f"said={SAID}", *fields)
+
+    def test_add_qa_announces_a_confusion_on_a_second_line(self):
+        self.run_wise("add", "concept", "name=Jitter")
+        out = self.add("source=checkpoint", "verdict=wrong", "confidence=low",
+                       "--about", "jitter").splitlines()
+        self.assertRegex(out[0], r"^QA-\d{8}-[0-9a-f]{4}$")
+        self.assertEqual(out[1], f"confusion: {out[0]} · repair before building on jitter")
+
+    def test_a_partial_answer_is_a_confusion_only_when_sure(self):
+        self.assertIn("confusion:", self.add("source=explain-back", "verdict=partial",
+                                             "confidence=high"))
+        self.assertNotIn("confusion:", self.add("source=explain-back", "verdict=partial",
+                                                "confidence=mid"))
+
+    def test_other_records_print_only_their_id(self):
+        self.assertEqual(len(self.add("source=checkpoint", "verdict=correct").splitlines()), 1)
+        self.assertEqual(len(self.out("add", "concept", "name=Backoff").splitlines()), 1)
+
+
 class LintSessionTests(WiseTestCase):
     def qa(self, source, *fields, day="2026-10-28"):
         return self.out("add", "qa", f"source={source}", "q=Q", "a=A", *fields, day=day).strip()
