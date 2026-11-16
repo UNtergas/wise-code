@@ -158,6 +158,10 @@ senior-developer role you call in on purpose, never on its own:
   fixed, or `stands`, with the evidence. `wise.py lint-session` flags a
   disagreement left open or closed without one; an entry stays pending, and is announced
   again, until then.
+  A doubt you took to the senior also enters your own history (`wise.py history
+  --source consult`), whoever was right, and Claude offers a question on the
+  claim so what holds comes back in a later quiz. It is never counted as a wrong
+  answer.
 - `$wise-code:google` — a quick lookup answered in full, ignoring the assist
   level, from primary sources and checked against this project's versions. The
   question and answer are logged nowhere; your choice to step outside the

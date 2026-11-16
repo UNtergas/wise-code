@@ -141,7 +141,9 @@ wise.py add qa source=checkpoint q="Why store spans as UTF-8 offsets?" \
   (Code review finding), `quiz`, `lesson`, `explore` (a prediction checked
   against the code), `critique`, `reflect`, `start-check` (written by
   `wise.py start-check`), `explain-back` (the question after a Full code step),
-  `shelf` (points to a
+  `consult` (a doubt the
+  learner took to the senior, recorded after you went through it; it names its
+  consult with `consult=<id>` and its verdict is `n/a`), `shelf` (points to a
   shelf citation), `asked` (the learner asked; `a` is the gist of your answer).
 - `a` is a gist of one to three lines, never a transcript. For `asked`, log only
   questions with lasting value (a concept, a why, a tradeoff), not lookups.

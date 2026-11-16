@@ -175,8 +175,11 @@ class LintTests(SeniorCase):
         self.assertNotIn(f"no record {real}", lint)
 
     def test_a_closed_disagreement_and_plain_consults_raise_nothing(self):
-        self.ack(self.disagreement(), "--outcome", "stands", "--note", "checked the docs")
-        self.agreement()
+        closed = self.disagreement()
+        self.ack(closed, "--outcome", "stands", "--note", "checked the docs")
+        self.wise("add", "qa", "source=consult", "q=Is the cap needed?", "a=No: capped upstream",
+                  "verdict=n/a", f"consult={closed}")
+        self.agreement()                               # pending: not gone through yet
         self.session()
         self.assertNotIn("senior", self.lint())
 
