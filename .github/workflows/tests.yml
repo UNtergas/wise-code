@@ -1,0 +1,37 @@
+name: tests
+
+# The suite on the oldest Python the plugin supports and on a current one.
+# No retries: a test that fails once is reported by name (-rfE) so it can be
+# reproduced, not hidden.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: pytest (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install pytest
+        run: python -m pip install --quiet pytest
+      - name: Run the suite
+        run: python -m pytest -q tests -rfE --durations=10
+      - name: Print query sizes
+        run: python tests/measure_tokens.py
