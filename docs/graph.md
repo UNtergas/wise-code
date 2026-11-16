@@ -169,6 +169,9 @@ prefixing the answer. Confusions and repairs are derived on read, never stored:
   are not `demonstrated` or have an open confusion.
 - `level-advice [--days 30] [--min 5]`: concepts whose recent learner answers
   were all correct, not `low`, unhinted, with no open confusion.
+- A doubt taken to the senior becomes a `consult` QA (`consult=<journal id>`,
+  verdict `n/a`) once the teacher has gone through it; `lint-session` flags an
+  acknowledged doubt from the session's days that has none.
 - `lint-session [<session>]`: `flag:` lines for rules the session's records
   show were skipped; read-only.
 - `answer` requires `--said`; `add question` requires `points`. Imported and

@@ -253,6 +253,13 @@ class LearnerJourney(unittest.TestCase):
                   "A shared borrow can't overlap a mutable one either.")
         self.senior(d2, "ack", consult_id, "--outcome", "corrected", "--fixed", question)
         self.assertEqual(self.senior(d2, "pending"), "")
+        # The doubt goes into the learner's own history: not an answer, so it
+        # carries no verdict and opens no confusion.
+        recorded = self.wise(d2, "add", "qa", "source=consult",
+                             "q=Can a shared and a mutable borrow overlap?",
+                             "a=No; the teacher's claim was wrong and is corrected",
+                             "verdict=n/a", f"consult={consult_id}", "--about", "borrowing")
+        self.assertEqual(len(recorded.splitlines()), 1)
 
         # One checkpoint answer came without a prefix: the session's lint says so.
         self.wise(d2, "add", "qa", "source=checkpoint", "q=When does this borrow end?",
@@ -264,7 +271,8 @@ class LearnerJourney(unittest.TestCase):
                            "checkpoints+=When is clone the right call?").strip()
         self.end_of_day(d2)
         lint = self.wise(d2, "lint-session")
-        self.assertIn(f"{second} · {d2} · 7 answers", lint)  # six today, one from last evening
+        # Six answers today, the doubt, and one question from last evening.
+        self.assertIn(f"{second} · {d2} · 8 answers", lint)
         self.assertEqual([line for line in lint.splitlines() if line.startswith("flag:")],
                          ["flag: 1 of 3 answers without a confidence prefix"])
         self.assertIn("note: 1 senior lookups since the last session (full answers, outside "

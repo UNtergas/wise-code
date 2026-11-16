@@ -79,6 +79,16 @@ and never edit the journal.
     `consult.py ack <id> --outcome stands --note "<file:line or source>"`.
   An entry closed without an outcome, or naming a record that doesn't exist, is
   flagged by `wise.py lint-session`.
+- A doubt is learning evidence, whoever was right: the learner was unsure of
+  something that matters. After closing one, put it in their history:
+  `wise.py add qa source=consult q="<what they doubted>" a="<what holds, in one
+  line>" verdict=n/a consult=<id> --about <concept>`. It is not a wrong answer:
+  the verdict stays `n/a`, and it opens no confusion. Doubting a correct claim
+  is how one checks it, and doubting a wrong one was right. Then offer one
+  question on the claim itself, so what holds gets retrieved later
+  (`wise.py add question … points+=… --tests <concept>`); the learner may
+  decline. A doubt gone through without that record is flagged by
+  `lint-session`. A plain question to the senior needs no record.
 
 **Prerequisites.** Before the first step that builds on a concept, run
 `wise.py ready <concept>`. Each `first:` line is something the step rests on

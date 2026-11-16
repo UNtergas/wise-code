@@ -55,7 +55,8 @@ KINDS = ("doubt", "question")
 HEADING = re.compile(r"^## (\d{4}-\d{2}-\d{2}) \d\d:\d\d — ")
 DISAGREES = re.compile(r"^Disagrees with teacher: (yes|no)\b")
 
-Entry = collections.namedtuple("Entry", "id date disagrees topic")
+Entry = collections.namedtuple("Entry", "id date disagrees topic kind")
+KIND = re.compile(r"^Kind: (\w+)\s*$")
 ACK_ID = re.compile(r"^c-[0-9a-f]{12}$")
 # How going through a consult ended. `outcome` is None on a line written before
 # outcomes existed.
@@ -105,9 +106,10 @@ def parse(text):
         heading = HEADING.match(block[0])
         verdicts = [DISAGREES.match(line) for line in block[1:]]
         verdict = next((v for v in verdicts if v), None)
+        kind = next((k.group(1) for k in map(KIND.match, block[1:]) if k), "")
         found.append(Entry(entry_id(text, occurrence), heading.group(1),
                            bool(verdict) and verdict.group(1) == "yes",
-                           block[0][heading.end():].strip()))
+                           block[0][heading.end():].strip(), kind))
     return found
 
 

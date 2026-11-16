@@ -64,7 +64,8 @@ GRADERS = ("self", "claude")
 STUCK_OPEN = "(not answered yet)"
 PASTE_LIMIT = 256 * 1024
 QA_SOURCES = ("checkpoint", "review", "quiz", "lesson", "explore", "critique",
-              "reflect", "asked", "start-check", "shelf", "repair", "explain-back")
+              "reflect", "asked", "start-check", "shelf", "repair", "explain-back",
+              "consult")
 CONFIDENCE = ("low", "mid", "high")
 # Confusions skipped with "skip repair" that may stay open at once. One more
 # skip is refused: the learner repairs one first.
@@ -98,7 +99,7 @@ TYPES = {
         "skipped": "date", "said": "str", "said_check": SAID_CHECKS,
         "said_hash": "str", "missed": "list", "point": "int", "exit": "int",
         "points": "list", "graded": GRADERS, "self_verdict": VERDICTS,
-        "lesson": "str"}},
+        "lesson": "str", "consult": "str"}},
     "question": {"prefix": "QB", "required": ["q", "a"], "fields": {
         "q": "str", "a": "str", "source": "str", "box": "int", "due": "date",
         "legacy": "str", "points": "list", "check": "str"}},
@@ -1140,6 +1141,14 @@ def cmd_add(graph, args):
         node["at"] = stamp_now()
     apply_fields(node, sets, appends, removes)
     problems = validate_node(node) + attribution_problems(node)
+    if kind == "qa" and node.get("source") == "consult" \
+            and not re.match(r"^c-[0-9a-f]{12}$", node.get("consult", "")):
+        problems.append(f"{node['id']}: a consult record names its consult: consult=c-… "
+                        f"(the id consult.py pending printed)")
+    if kind == "qa" and node.get("source") == "consult" and node.get("verdict") != "n/a":
+        # Doubting a claim is not answering wrongly, whoever turned out right.
+        problems.append(f"{node['id']}: a consult record is a doubt, not an answer: "
+                        f"verdict=n/a")
     if kind == "question" and not is_task(node) \
             and not any(str(p).strip() for p in node.get("points", [])):
         # The rubric is written with the question, never while judging an
@@ -1628,6 +1637,8 @@ def senior_lint(graph, session):
         waiting = [e.id for e in consult.pending(state) if e.disagrees]
         open_acks = [e.id for e in consult.unresolved(state)]
         records, looked = consult.ack_records(state), consult.lookups(state)
+        doubts = [e for e in consult.entries(consult.journal_path(state))
+                  if e.kind == "doubt"]
     except Exception:  # noqa: BLE001 - the journal is not this script's to fail on
         return [], []
     flags = []
@@ -1645,6 +1656,14 @@ def senior_lint(graph, session):
     earlier = [n.get("date", "") for n in graph.of_type("session")
                if n.get("date", "") < session.get("date", "")]
     since = max(earlier, default="")
+    # A doubt the teacher went through is something the learner was unsure of:
+    # it belongs in their history, not only in the senior's journal.
+    recorded = {n.get("consult") for n in graph.of_type("qa")}
+    bare = [e.id for e in doubts if e.id in records and e.id not in recorded
+            and since < e.date <= session.get("date", "")]
+    if bare:
+        flags.append(f"{len(bare)} senior doubts gone through without a record in the "
+                     f"graph: {', '.join(bare)} (wise.py add qa source=consult consult=<id> …)")
     topics = [topic for day, topic in looked if since < day <= session.get("date", "")]
     notes = []
     if topics:
